@@ -89,11 +89,28 @@ import { ref, onMounted } from 'vue'
 const mobileMenuOpen = ref(false)
 const fontSizeLevel = ref(0) // Limits adjustment to up to 3 clicks (-3 to 3)
 
+// Cookie with 24 hours duration to persist theme choice
+const themeCookie = useCookie('theme', {
+  maxAge: 60 * 60 * 24, // 24 hours
+  default: () => 'light'
+})
+
+onMounted(() => {
+  if (process.client) {
+    const html = document.documentElement
+    // Apply stored theme if present, otherwise default to light
+    html.setAttribute('data-theme', themeCookie.value || 'light')
+  }
+})
+
 const toggleContrast = () => {
   if (process.client) {
     const html = document.documentElement
     const currentTheme = html.getAttribute('data-theme') || 'light'
-    html.setAttribute('data-theme', currentTheme === 'light' ? 'dark' : 'light')
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light'
+    
+    html.setAttribute('data-theme', newTheme)
+    themeCookie.value = newTheme // updates cookie immediately
   }
 }
 
