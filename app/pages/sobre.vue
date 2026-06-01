@@ -1,38 +1,33 @@
 <template>
   <div class="sobre-page container">
     <section class="section history-section" aria-labelledby="sobre-title">
-      <span class="badge">Nossa História</span>
+      <span class="badge">{{ $t('about.badgeHistory') }}</span>
       <h1 id="sobre-title" class="title">
-        Tudo começou em <span class="gradient-text">2020</span> com o desejo de transformar a realidade das pessoas LGBTI+ com deficiência
+        {{ $t('about.historyTitle') }}<span class="gradient-text">{{ $t('about.historyTitleHighlight') }}</span>{{
+        $t('about.historyTitleEnd') }}
       </h1>
       
       <div class="grid-layout">
         <div class="content-rich text-muted">
-          <p>
-            O <strong>Vale PCD</strong> surgiu a partir da inquietação de não existir um coletivo que falasse sobre a interseccionalidade das pessoas com deficiência que são LGBTQIA+, além de não ser um assunto levado em consideração dentro da comunidade.
-          </p>
-          <p>
-            Conseguimos criar forma dentro do programa de embaixadores da <a href="https://www.todxs.org/" target="_blank" rel="noreferrer noopener" class="link-underlined">TODXS Brasil</a>, em 2019. Em 2020, com o apoio do Programa Impacto, lançamos o Vale e conseguimos recursos para impulsionar o projeto.
-          </p>
-          <p>
-            Hoje, toda a nossa diretoria e produtores de conteúdo são formados por PCDs LGBTQIA+ e somos referência em inclusão e em trabalhos direcionados para os dois recortes.
-          </p>
+          <p v-html="$t('about.p1')"></p>
+          <p v-html="$t('about.p2')"></p>
+          <p>{{ $t('about.p3') }}</p>
         </div>
         
         <div class="info-box glass">
           <div class="info-item">
-            <h3>Nossa Missão</h3>
-            <p>Promover a visibilidade e a inclusão das pessoas com deficiência LGBTI+ dentro da comunidade, por meio de projetos e da conscientização nas redes sociais.</p>
+            <h3>{{ $t('about.mission') }}</h3>
+            <p>{{ $t('about.missionDesc') }}</p>
           </div>
           
           <div class="info-item">
-            <h3>Nossa Visão</h3>
-            <p>Ser referência em acessibilidade e empoderar pessoas com deficiência LGBTI+ a socializar com a comunidade ocupando espaços para que possam ser vistas e incluídas.</p>
+            <h3>{{ $t('about.vision') }}</h3>
+            <p>{{ $t('about.visionDesc') }}</p>
           </div>
 
           <div class="info-item">
-            <h3>Nossos Valores</h3>
-            <p>Respeitar a pluralidade e enfatizar o protagonismo dos sujeitos, enquanto seres sociais e interseccionais.</p>
+            <h3>{{ $t('about.values') }}</h3>
+            <p>{{ $t('about.valuesDesc') }}</p>
           </div>
         </div>
       </div>
@@ -40,8 +35,8 @@
 
     <section class="section team-section" aria-labelledby="team-title">
       <div class="text-center">
-        <span class="badge">Quem Faz Acontecer</span>
-        <h2 id="team-title" class="section-title">Nossa Equipe</h2>
+        <span class="badge">{{ $t('about.badgeTeam') }}</span>
+        <h2 id="team-title" class="section-title">{{ $t('about.teamTitle') }}</h2>
       </div>
       
       <div class="team-grid">
@@ -59,14 +54,12 @@
     <section class="section media-section" aria-labelledby="media-title">
       <div class="media-card glass">
         <div class="media-content">
-          <span class="badge">Na Mídia</span>
-          <h2 id="media-title" class="media-heading">Entrevista com Priscila Siqueira</h2>
-          <p class="text-muted">
-            Confira a entrevista realizada pela <strong>TV Pernambuco</strong> com Priscila Siqueira, uma das idealizadoras do projeto Vale PCD, falando sobre inclusão, representatividade e a história do coletivo.
-          </p>
+          <span class="badge">{{ $t('about.badgeMedia') }}</span>
+          <h2 id="media-title" class="media-heading">{{ $t('about.mediaTitle') }}</h2>
+          <p class="text-muted" v-html="$t('about.mediaDesc')"></p>
           <div class="media-action">
             <a href="https://www.youtube.com/@pcdvale" target="_blank" rel="noreferrer noopener" class="btn btn-primary">
-              <span>Assistir no Canal do YouTube</span>
+              <span>{{ $t('about.mediaBtn') }}</span>
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon></svg>
             </a>
           </div>
@@ -77,28 +70,37 @@
 </template>
 
 <script setup>
-const team = [
+      import { computed } from 'vue'
+
+      const { t, locale } = useI18n()
+
+      useSeoMeta({
+        title: () => `${t('about.badgeHistory')} | Vale PCD`,
+        description: () => t('about.missionDesc')
+      })
+
+      const team = computed(() => [
+        {
+          name: 'Priscila Siqueira',
+          role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundadora & Directora' : 'Co-idealizadora & Diretora'),
+          image: 'https://static.wixstatic.com/media/acd625_94ca0b765630455488fe4e7c377bb1ac~mv2.jpeg/v1/crop/x_51,y_84,w_922,h_922/fill/w_200,h_200,al_c,q_80,usm_0.66_1.00_0.01/WhatsApp%20Image%202022-09-22%20at%2009_08_50%20(1).jpeg'
+        },
   {
     name: 'Alexsandro Sousa',
-    role: 'Co-idealizador & Diretor',
+    role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundador & Director' : 'Co-idealizador & Diretor'),
     image: 'https://static.wixstatic.com/media/acd625_e33e0b315b3a449aa072037cb98aeda1~mv2.jpeg/v1/crop/x_43,y_279,w_857,h_857/fill/w_200,h_200,al_c,q_80,usm_0.66_1.00_0.01/WhatsApp%20Image%202022-09-26%20at%2013_33_14.jpeg'
   },
   {
     name: 'Beto Maia',
-    role: 'Co-idealizador & Diretor',
+    role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundador & Director' : 'Co-idealizador & Diretor'),
     image: 'https://static.wixstatic.com/media/acd625_0e753b340d274702a062918b66a8305f~mv2.jpeg/v1/crop/x_48,y_530,w_605,h_604/fill/w_200,h_200,al_c,q_80,usm_0.66_1.00_0.01/WhatsApp%20Image%202022-08-29%20at%2014_23_40.jpeg'
   },
   {
     name: 'Jonas Marssaro',
-    role: 'Co-idealizador & Diretor',
+    role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundador & Director' : 'Co-idealizador & Diretor'),
     image: 'https://static.wixstatic.com/media/acd625_79ce0c1d8c7547deb58e28e14906ebcf~mv2.jpeg/v1/crop/x_0,y_163,w_970,h_970/fill/w_200,h_200,al_c,q_80,usm_0.66_1.00_0.01/WhatsApp%20Image%202022-10-06%20at%2022_01_25.jpeg'
-  },
-  {
-    name: 'Priscila Siqueira',
-    role: 'Co-idealizadora & Diretora',
-    image: 'https://static.wixstatic.com/media/acd625_94ca0b765630455488fe4e7c377bb1ac~mv2.jpeg/v1/crop/x_51,y_84,w_922,h_922/fill/w_200,h_200,al_c,q_80,usm_0.66_1.00_0.01/WhatsApp%20Image%202022-09-22%20at%2009_08_50%20(1).jpeg'
   }
-]
+])
 </script>
 
 <style scoped>

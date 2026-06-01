@@ -7,6 +7,27 @@ export default defineNuxtConfig({
     '~/assets/css/main.css'
   ],
 
+  modules: [
+    '@nuxtjs/i18n'
+  ],
+
+  i18n: {
+    locales: [
+      { code: 'pt', iso: 'pt-BR', name: 'Português', file: 'pt.json' },
+      { code: 'en', iso: 'en-US', name: 'English', file: 'en.json' },
+      { code: 'es', iso: 'es-ES', name: 'Español', file: 'es.json' }
+    ],
+    defaultLocale: 'pt',
+    lazy: true,
+    langDir: 'locales/',
+    strategy: 'prefix_except_default',
+    detectBrowserLanguage: {
+      useCookie: true,
+      cookieKey: 'i18n_redirected',
+      redirectOn: 'root'
+    }
+  },
+
   app: {
     head: {
       htmlAttrs: {

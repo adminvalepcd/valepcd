@@ -5,40 +5,40 @@
       <div class="footer-brand">
         <div class="logo-container">
           <img 
-            src="/images/logo Vale PcD.png" 
+            :src="currentTheme === 'dark' ? '/images/logo Vale PcD branca.png' : '/images/logo Vale PcD.png'" 
             alt="Logo Vale PCD"
             class="logo-img"
           />
         </div>
         <p class="brand-description">
-          O maior projeto do Brasil sobre visibilidade, orgulho e acessibilidade para pessoas com deficiência da comunidade LGBTQI+.
+          {{ $t('footer.description') }}
         </p>
       </div>
 
       <!-- Quick Links -->
-      <div class="footer-nav" aria-label="Links úteis">
-        <h3 class="footer-heading">Navegação</h3>
+      <div class="footer-nav" :aria-label="$t('footer.navigation')">
+        <h3 class="footer-heading">{{ $t('footer.navigation') }}</h3>
         <ul class="footer-links">
-          <li><NuxtLink to="/" class="footer-link">Início</NuxtLink></li>
-          <li><NuxtLink to="/sobre" class="footer-link">Sobre Nós</NuxtLink></li>
-          <li><NuxtLink to="/servicos" class="footer-link">Serviços</NuxtLink></li>
-          <li><NuxtLink to="/blog" class="footer-link">Blog</NuxtLink></li>
-          <li><NuxtLink to="/contato" class="footer-link">Contato</NuxtLink></li>
+          <li><NuxtLink :to="localePath('/')" class="footer-link">{{ $t('nav.home') }}</NuxtLink></li>
+          <li><NuxtLink :to="localePath('/sobre')" class="footer-link">{{ $t('nav.about') }}</NuxtLink></li>
+          <li><NuxtLink :to="localePath('/servicos')" class="footer-link">{{ $t('nav.services') }}</NuxtLink></li>
+          <li><NuxtLink :to="localePath('/blog')" class="footer-link">{{ $t('nav.blog') }}</NuxtLink></li>
+          <li><NuxtLink :to="localePath('/contato')" class="footer-link">{{ $t('nav.contact') }}</NuxtLink></li>
         </ul>
       </div>
 
       <!-- Legal / Accessibility Info -->
       <div class="footer-accessibility">
-        <h3 class="footer-heading">Compromisso</h3>
+        <h3 class="footer-heading">{{ $t('footer.commitment') }}</h3>
         <ul class="footer-links">
           <li>
-            <span class="badge">Acessibilidade AAA</span>
+            <span class="badge">{{ $t('footer.badge') }}</span>
           </li>
           <li class="commitment-text">
-            Desenvolvido seguindo as diretrizes WCAG 2.2 e o Modelo de Acessibilidade em Governo Eletrônico (eMAG).
+            {{ $t('footer.wcag') }}
           </li>
           <li>
-            <NuxtLink to="/privacidade" class="footer-link">Política de Privacidade & Cookies</NuxtLink>
+            <NuxtLink :to="localePath('/privacidade')" class="footer-link">{{ $t('footer.privacy') }}</NuxtLink>
           </li>
         </ul>
       </div>
@@ -46,13 +46,13 @@
 
     <div class="container footer-bottom">
       <p class="copyright">
-        &copy; {{ currentYear }} Vale PCD. Todos os direitos reservados.
+        {{ $t('footer.copyright', { year: currentYear }) }}
       </p>
       <div class="social-links">
-        <a href="https://instagram.com/valepcd" target="_blank" rel="noopener noreferrer" aria-label="Seguir no Instagram" class="social-link">
+        <a href="https://instagram.com/valepcd" target="_blank" rel="noopener noreferrer" aria-label="Instagram" class="social-link">
           Instagram
         </a>
-        <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" aria-label="Seguir no LinkedIn" class="social-link">
+        <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" class="social-link">
           LinkedIn
         </a>
       </div>
@@ -63,6 +63,8 @@
 <script setup>
 import { computed } from 'vue'
 
+const localePath = useLocalePath()
+const currentTheme = useState('theme', () => 'light')
 const currentYear = computed(() => new Date().getFullYear())
 </script>
 

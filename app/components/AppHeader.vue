@@ -2,48 +2,68 @@
   <header class="app-header glass" role="banner">
     <div class="container header-container">
       <!-- Logo Brand -->
-      <NuxtLink to="/" class="logo-container" aria-label="Vale PCD - Ir para a página inicial">
+      <NuxtLink :to="localePath('/')" class="logo-container" :aria-label="$t('footer.copyright', { year: '' })">
         <img 
-          src="/images/logo Vale PcD.png" 
+          :src="currentTheme === 'dark' ? '/images/logo Vale PcD branca.png' : '/images/logo Vale PcD.png'" 
           alt="Logo Vale PCD"
           class="logo-img"
         />
       </NuxtLink>
 
       <!-- Desktop Navigation -->
-      <nav class="nav-menu" role="navigation" aria-label="Menu principal">
+      <nav class="nav-menu" role="navigation" :aria-label="$t('nav.home')">
         <ul class="nav-list">
-          <li><NuxtLink to="/" class="nav-link" active-class="active">Início</NuxtLink></li>
-          <li><NuxtLink to="/sobre" class="nav-link" active-class="active">Sobre Nós</NuxtLink></li>
-          <li><NuxtLink to="/servicos" class="nav-link" active-class="active">Serviços</NuxtLink></li>
-          <li><NuxtLink to="/blog" class="nav-link" active-class="active">Blog</NuxtLink></li>
-          <li><NuxtLink to="/contato" class="nav-link" active-class="active">Contato</NuxtLink></li>
+          <li>
+            <NuxtLink :to="localePath('/')" class="nav-link" active-class="active">{{ $t('nav.home') }}</NuxtLink>
+          </li>
+          <li>
+            <NuxtLink :to="localePath('/sobre')" class="nav-link" active-class="active">{{ $t('nav.about') }}</NuxtLink>
+          </li>
+          <li>
+            <NuxtLink :to="localePath('/servicos')" class="nav-link" active-class="active">{{ $t('nav.services') }}</NuxtLink>
+          </li>
+          <li>
+            <NuxtLink :to="localePath('/blog')" class="nav-link" active-class="active">{{ $t('nav.blog') }}</NuxtLink>
+          </li>
+          <li>
+            <NuxtLink :to="localePath('/contato')" class="nav-link" active-class="active">{{ $t('nav.contact') }}</NuxtLink>
+          </li>
         </ul>
       </nav>
 
       <!-- Accessibility & Theme Controls -->
       <div class="toolbar" aria-label="Ferramentas de Acessibilidade" role="toolbar">
+        <!-- Language Switcher -->
+        <select :value="locale" @change="e => setLocale(e.target.value)" class="lang-select glass"
+          aria-label="Selecionar idioma">
+          <option value="pt">🇧🇷 PT</option>
+          <option value="en">🇺🇸 EN</option>
+          <option value="es">🇪🇸 ES</option>
+        </select>
+
         <button 
           @click="toggleContrast" 
           class="toolbar-btn btn-contrast" 
-          title="Alternar Alto Contraste"
-          aria-label="Alternar Alto Contraste"
+          :title="$t('nav.toggleContrast')"
+          :aria-label="$t('nav.toggleContrast')"
         >
           🌓
         </button>
         <button 
           @click="changeFontSize(1)" 
           class="toolbar-btn btn-font-up" 
-          title="Aumentar Fonte" 
-          aria-label="Aumentar tamanho do texto"
+          :title="$t('nav.fontSizeUp')" 
+          :aria-label="$t('nav.fontSizeUp')"
+          :disabled="fontSizeLevel === 3"
         >
           A+
         </button>
         <button 
           @click="changeFontSize(-1)" 
           class="toolbar-btn btn-font-down" 
-          title="Diminuir Fonte" 
-          aria-label="Diminuir tamanho do texto"
+          :title="$t('nav.fontSizeDown')" 
+          :aria-label="$t('nav.fontSizeDown')"
+          :disabled="fontSizeLevel === -3"
         >
           A-
         </button>
@@ -71,12 +91,26 @@
         aria-label="Menu principal móvel"
       >
         <ul class="mobile-nav-list">
-          <li><NuxtLink to="/" @click="mobileMenuOpen = false" class="mobile-nav-link">Início</NuxtLink></li>
-          <li><NuxtLink to="/sobre" @click="mobileMenuOpen = false" class="mobile-nav-link">Sobre Nós</NuxtLink></li>
-          <li><NuxtLink to="/servicos" @click="mobileMenuOpen = false" class="mobile-nav-link">Serviços</NuxtLink></li>
-          <li><NuxtLink to="/blog" @click="mobileMenuOpen = false" class="mobile-nav-link">Blog</NuxtLink></li>
-          <li><NuxtLink to="/contato" @click="mobileMenuOpen = false" class="mobile-nav-link">Contato</NuxtLink></li>
-          <li><NuxtLink to="/admin" @click="mobileMenuOpen = false" class="mobile-nav-link font-bold">Painel CMS</NuxtLink></li>
+          <li>
+            <NuxtLink :to="localePath('/')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.home') }}
+            </NuxtLink>
+          </li>
+          <li>
+            <NuxtLink :to="localePath('/sobre')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.about') }}
+            </NuxtLink>
+          </li>
+          <li>
+            <NuxtLink :to="localePath('/servicos')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.services')
+              }}</NuxtLink>
+          </li>
+          <li>
+            <NuxtLink :to="localePath('/blog')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.blog') }}
+            </NuxtLink>
+          </li>
+          <li>
+            <NuxtLink :to="localePath('/contato')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.contact') }}
+            </NuxtLink>
+          </li>
         </ul>
       </nav>
     </transition>
@@ -89,6 +123,13 @@ import { ref, onMounted } from 'vue'
 const mobileMenuOpen = ref(false)
 const fontSizeLevel = ref(0) // Limits adjustment to up to 3 clicks (-3 to 3)
 
+  // Shared state for active theme
+  const currentTheme = useState('theme', () => 'light')
+
+  // Nuxt i18n setup references
+  const { locale, setLocale } = useI18n()
+  const localePath = useLocalePath()
+
 // Cookie with 24 hours duration to persist theme choice
 const themeCookie = useCookie('theme', {
   maxAge: 60 * 60 * 24, // 24 hours
@@ -99,18 +140,20 @@ onMounted(() => {
   if (process.client) {
     const html = document.documentElement
     // Apply stored theme if present, otherwise default to light
-    html.setAttribute('data-theme', themeCookie.value || 'light')
+    const savedTheme = themeCookie.value || 'light'
+    html.setAttribute('data-theme', savedTheme)
+    currentTheme.value = savedTheme
   }
 })
 
 const toggleContrast = () => {
   if (process.client) {
     const html = document.documentElement
-    const currentTheme = html.getAttribute('data-theme') || 'light'
-    const newTheme = currentTheme === 'light' ? 'dark' : 'light'
+    const newTheme = currentTheme.value === 'light' ? 'dark' : 'light'
     
     html.setAttribute('data-theme', newTheme)
     themeCookie.value = newTheme // updates cookie immediately
+    currentTheme.value = newTheme // updates shared state
   }
 }
 
@@ -206,6 +249,29 @@ const changeFontSize = (direction) => {
   gap: 0.8rem;
 }
 
+.lang-select {
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background-color: transparent;
+  color: var(--text);
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.lang-select:hover, .lang-select:focus {
+  border-color: var(--primary);
+}
+
+.lang-select option {
+  background-color: var(--surface);
+  color: var(--text);
+}
+
 .toolbar-btn {
   width: 36px;
   height: 36px;
@@ -225,6 +291,12 @@ const changeFontSize = (direction) => {
   background-color: var(--primary-muted);
   border-color: var(--primary);
   transform: scale(1.05);
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .btn-sm {
@@ -299,6 +371,7 @@ const changeFontSize = (direction) => {
   left: 0;
   width: 100%;
   padding: 1.5rem;
+  background-color: var(--surface); /* Solid opaque background */
   box-shadow: var(--shadow-md);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   border-left: none;

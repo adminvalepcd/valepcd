@@ -2,19 +2,19 @@
   <div class="post-detail-page container">
     <article v-if="post" class="post-article" aria-labelledby="post-title">
       <!-- Back to blog -->
-      <NuxtLink to="/blog" class="back-link">
-        &larr; Voltar para o Blog
+      <NuxtLink :to="localePath('/blog')" class="back-link">
+        &larr; {{ $t('blog.backToBlog') }}
       </NuxtLink>
 
       <!-- Header info -->
       <header class="post-header">
-        <span class="badge">{{ post.category }}</span>
+        <span class="badge">{{ getCategoryLabel(post.category) }}</span>
         <h1 id="post-title" class="post-title">{{ post.title }}</h1>
         
         <div class="post-meta">
-          <span class="meta-item">Por: <strong>{{ post.author }}</strong></span>
+          <span class="meta-item">{{ $t('blog.authorLabel') }}: <strong>{{ post.author }}</strong></span>
           <span class="meta-separator" aria-hidden="true">&bull;</span>
-          <span class="meta-item">Publicado em: <strong>{{ formatDate(post.date) }}</strong></span>
+          <span class="meta-item">{{ $t('blog.publishedAt') }}: <strong>{{ formatDate(post.date) }}</strong></span>
         </div>
       </header>
 
@@ -22,7 +22,7 @@
       <div class="post-cover-wrapper">
         <img 
           :src="post.image || 'https://static.wixstatic.com/media/acd625_9e14ee4333ac4944b72c0ada48128725~mv2.jpg'" 
-          :alt="`Imagem de capa do artigo: ${post.title}`"
+          :alt="post.title"
           class="post-cover-image"
         />
       </div>
@@ -36,20 +36,24 @@
 
     <!-- 404 State -->
     <div v-else class="empty-state glass text-center">
-      <h2>Artigo Não Encontrado</h2>
-      <p class="text-muted">O artigo que você está procurando não existe ou foi movido.</p>
-      <NuxtLink to="/blog" class="btn btn-primary btn-sm">
-        Voltar para o Blog
+      <h2>{{ $t('blog.notFoundTitle') }}</h2>
+      <p class="text-muted">{{ $t('blog.notFoundDesc') }}</p>
+      <NuxtLink :to="localePath('/blog')" class="btn btn-primary btn-sm">
+        {{ $t('blog.backToBlog') }}
       </NuxtLink>
     </div>
   </div>
 </template>
 
 <script setup>
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
+import { computed } from 'vue'
 
 const route = useRoute()
 const slug = route.params.slug
+
+const { t, locale } = useI18n()
+const localePath = useLocalePath()
 
 // Fetch all posts and find the correct one matching the slug
 const { data: posts } = await useFetch('/api/posts')
@@ -61,19 +65,36 @@ const post = computed(() => {
 
 // Dynamic SEO Metadados
 useSeoMeta({
-  title: () => post.value ? `${post.value.title} | Blog Vale PCD` : 'Artigo não encontrado | Vale PCD',
-  ogTitle: () => post.value ? `${post.value.title} | Blog Vale PCD` : 'Artigo não encontrado',
-  description: () => post.value ? post.value.description : 'Leia nosso blog sobre acessibilidade.',
-  ogDescription: () => post.value ? post.value.description : 'Leia nosso blog sobre acessibilidade.',
+  title: () => post.value ? `${post.value.title} | Blog Vale PCD` : `${t('blog.notFoundTitle')} | Vale PCD`,
+  ogTitle: () => post.value ? `${post.value.title} | Blog Vale PCD` : t('blog.notFoundTitle'),
+  description: () => post.value ? post.value.description : t('blog.lead'),
+  ogDescription: () => post.value ? post.value.description : t('blog.lead'),
   ogImage: () => post.value ? post.value.image : undefined
 })
 
 const formatDate = (dateStr) => {
-  return new Date(dateStr).toLocaleDateString('pt-BR', {
+  const localeMap = {
+    pt: 'pt-BR',
+    en: 'en-US',
+    es: 'es-ES'
+  }
+  return new Date(dateStr).toLocaleDateString(localeMap[locale.value] || 'pt-BR', {
     day: '2-digit',
     month: 'long',
     year: 'numeric'
   })
+}
+
+const getCategoryLabel = (cat) => {
+  const categoryMap = {
+    'Todos': 'blog.all',
+    'Acessibilidade': 'blog.accessibility',
+    'LGBTQI+': 'blog.lgbt',
+    'Empresas': 'blog.corporate',
+    'Comunidade': 'blog.community'
+  }
+  const key = categoryMap[cat]
+  return key ? t(key) : cat
 }
 </script>
 

@@ -9,6 +9,7 @@
   --brand-yellow: #D8CC5C;
   --brand-green: #50A456;
   --brand-blue: #6B92C8;
+  --brand-blue-dark: #395780;
 
   /* Pastel shades from Brand Manual (Page 24) */
   --brand-purple-pastel: #F687D4;
@@ -26,7 +27,8 @@
   --primary-hover: hsl(var(--primary-hue), var(--primary-saturation), calc(var(--primary-lightness) + 10%));
   --primary-muted: hsla(var(--primary-hue), var(--primary-saturation), var(--primary-lightness), 0.15);
   
-  --secondary: var(--brand-blue); /* #6B92C8 */
+  --secondary: var(--brand-blue-dark);
+    /* #6B92C8 */
   --secondary-hover: hsl(215, 47%, 50%);
   
   --accent: var(--brand-orange); /* #C87844 */
@@ -77,8 +79,10 @@
   --border-hover: rgba(255, 255, 255, 0.18);
   --border-strong: rgba(255, 255, 255, 0.28);
   
+  --primary: hsl(var(--primary-hue), var(--primary-saturation), 36%);
+    --primary-hover: hsl(var(--primary-hue), var(--primary-saturation), 46%);
   --text: hsl(210, 40%, 98%);
-  --text-muted: hsl(215, 20%, 65%);
+  --text-muted: hsl(215deg 9.84% 91.05%);
   
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
@@ -431,3 +435,16 @@ img {
 
 .w-100 { width: 100% !important; }
 .h-100 { height: 100% !important; }
+
+/* Accessibility visually hidden class */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

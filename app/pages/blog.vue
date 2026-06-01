@@ -1,26 +1,28 @@
 <template>
   <div class="blog-page container">
     <section class="section" aria-labelledby="blog-title">
-      <span class="badge">Nosso Espaço</span>
-      <h1 id="blog-title" class="title">Blog <span class="gradient-text">Vale PCD</span></h1>
+      <span class="badge">{{ $t('blog.badge') }}</span>
+      <h1 id="blog-title" class="title">
+        {{ $t('blog.title1') }}<span class="gradient-text">{{ $t('blog.titleHighlight') }}</span>
+      </h1>
       <p class="lead text-muted">
-        Explore artigos, notícias e discussões sobre acessibilidade digital, diversidade, direitos e visibilidade intersecional.
+        {{ $t('blog.lead') }}
       </p>
 
       <!-- Search & Filters -->
-      <div class="filters-bar glass" aria-label="Filtros do blog">
+      <div class="filters-bar glass" :aria-label="$t('blog.badge')">
         <div class="search-group">
-          <label for="search-input" class="sr-only">Buscar artigos</label>
+          <label for="search-input" class="sr-only">{{ $t('blog.searchPlaceholder') }}</label>
           <input 
             type="text" 
             id="search-input" 
             v-model="searchQuery" 
-            placeholder="Buscar por título ou conteúdo..."
+            :placeholder="$t('blog.searchPlaceholder')"
             class="form-control"
           />
         </div>
         
-        <div class="categories-group" role="group" aria-label="Categorias">
+        <div class="categories-group" role="group" :aria-label="$t('blog.badge')">
           <button 
             v-for="cat in ['Todos', 'Acessibilidade', 'LGBTQI+', 'Empresas', 'Comunidade']" 
             :key="cat"
@@ -29,7 +31,7 @@
             :class="{ 'active': selectedCategory === cat }"
             :aria-pressed="(selectedCategory === cat).toString()"
           >
-            {{ cat }}
+            {{ getCategoryLabel(cat) }}
           </button>
         </div>
       </div>
@@ -49,7 +51,7 @@
               class="post-image"
               aria-hidden="true"
             />
-            <span class="post-category">{{ post.category }}</span>
+            <span class="post-category">{{ getCategoryLabel(post.category) }}</span>
           </div>
 
           <div class="post-body">
@@ -57,8 +59,8 @@
             <h3>{{ post.title }}</h3>
             <p class="post-desc">{{ post.description }}</p>
             
-            <NuxtLink :to="`/blog/${post.slug}`" class="btn btn-secondary btn-sm w-full text-center">
-              Ler Artigo <span class="sr-only">completo: {{ post.title }}</span>
+            <NuxtLink :to="localePath('/blog/' + post.slug)" class="btn btn-secondary btn-sm w-full text-center">
+              {{ $t('blog.readMore') }} <span class="sr-only">completo: {{ post.title }}</span>
             </NuxtLink>
           </div>
         </article>
@@ -66,9 +68,9 @@
 
       <!-- Empty State -->
       <div v-else class="empty-state glass text-center">
-        <p class="empty-text">Nenhum artigo encontrado para a busca realizada.</p>
+        <p class="empty-text">{{ $t('blog.noArticles') }}</p>
         <button @click="resetFilters" class="btn btn-primary btn-sm">
-          Limpar Filtros
+          {{ $t('blog.clearFilters') }}
         </button>
       </div>
     </section>
@@ -77,6 +79,14 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+
+const { t, locale } = useI18n()
+const localePath = useLocalePath()
+
+useSeoMeta({
+  title: () => `${t('blog.title1')}${t('blog.titleHighlight')} | Vale PCD`,
+  description: () => t('blog.lead')
+})
 
 // Fetch posts dynamically using Nuxt data fetching
 const { data: posts } = await useFetch('/api/posts', {
@@ -98,11 +108,28 @@ const filteredPosts = computed(() => {
 })
 
 const formatDate = (dateStr) => {
-  return new Date(dateStr).toLocaleDateString('pt-BR', {
+  const localeMap = {
+    pt: 'pt-BR',
+    en: 'en-US',
+    es: 'es-ES'
+  }
+  return new Date(dateStr).toLocaleDateString(localeMap[locale.value] || 'pt-BR', {
     day: '2-digit',
     month: 'long',
     year: 'numeric'
   })
+}
+
+const getCategoryLabel = (cat) => {
+  const categoryMap = {
+    'Todos': 'blog.all',
+    'Acessibilidade': 'blog.accessibility',
+    'LGBTQI+': 'blog.lgbt',
+    'Empresas': 'blog.corporate',
+    'Comunidade': 'blog.community'
+  }
+  const key = categoryMap[cat]
+  return key ? t(key) : cat
 }
 
 const resetFilters = () => {
@@ -288,17 +315,5 @@ const resetFilters = () => {
 .empty-text {
   font-size: 1.15rem;
   color: var(--text-muted);
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 </style>

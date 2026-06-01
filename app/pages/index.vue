@@ -4,18 +4,17 @@
     <section class="hero-section flex-center" aria-labelledby="hero-title">
       <div class="container hero-container">
         <h1 id="hero-title" class="hero-heading">
-          Somos a <span class="gradient-text">primeira ONG</span> do Brasil
-          dedicada ao recorte de Pessoas com Deficiência <span class="gradient-text">PCD LGBTQIA+</span>
+          {{ $t('home.heroTitle1') }}<span class="gradient-text">{{ $t('home.heroTitleHighlight1') }}</span>{{ $t('home.heroTitle2') }}<span class="gradient-text">{{ $t('home.heroTitleHighlight2') }}</span>
         </h1>
         <p class="hero-lead">
-          Nossa jornada começou em 2020 com o objetivo de mapear espaços acessíveis (Vale Maps) e crescemos ao criar conteúdos anticapacitistas no Instagram. Hoje, o Vale PcD é uma ONG inovadora e acessível, focada em impactar positivamente a comunidade nas áreas de Saúde, Mercado de Trabalho e Acessibilidade de Espaços e Eventos.
+          {{ $t('home.heroLead') }}
         </p>
         <div class="hero-actions">
-          <NuxtLink to="/servicos" class="btn btn-primary">
-            Nossos Serviços
+          <NuxtLink :to="localePath('/servicos')" class="btn btn-primary">
+            {{ $t('home.btnServices') }}
           </NuxtLink>
-          <NuxtLink to="/sobre" class="btn btn-secondary">
-            Conheça Nossa História
+          <NuxtLink :to="localePath('/sobre')" class="btn btn-secondary">
+            {{ $t('home.btnHistory') }}
           </NuxtLink>
         </div>
       </div>
@@ -24,39 +23,39 @@
     <!-- Key Projects Section -->
     <section class="highlights-section" aria-labelledby="highlights-title">
       <div class="container">
-        <span class="badge flex-center-self">Nossos Projetos Vitais</span>
-        <h2 id="highlights-title" class="section-title text-center">Como impactamos a sociedade</h2>
-        <p class="section-subtitle text-center">Atuamos na intersecção entre saúde mental, inclusão territorial e disseminação de conhecimento.</p>
+        <span class="badge flex-center-self">{{ $t('home.badgeProjects') }}</span>
+        <h2 id="highlights-title" class="section-title text-center">{{ $t('home.sectionTitle') }}</h2>
+        <p class="section-subtitle text-center">{{ $t('home.sectionSubtitle') }}</p>
         
         <div class="grid-responsive highlight-grid">
           <!-- Project 1: Psicoterapia -->
           <div class="pillar-card glass pulse-hover">
             <div class="pillar-img-container">
-              <img src="/images/saude.webp" alt="Ilustração em 3D de psicoterapia acessível" class="pillar-img" />
+              <img src="/images/saude.webp" :alt="$t('home.cardSaudeTitle')" class="pillar-img" />
             </div>
-            <h3>Psicoterapia Acessível</h3>
-            <p>Atendimento remoto de psicoterapia com valor social e acessível direcionado para o público PCD e/ou LGBTQIA+. Atendemos a todo o Brasil de forma remota (inclusive com atendimento em LIBRAS).</p>
-            <NuxtLink to="/contato" class="link-more">Saber mais &rarr;</NuxtLink>
+            <h3>{{ $t('home.cardSaudeTitle') }}</h3>
+            <p>{{ $t('home.cardSaudeDesc') }}</p>
+            <a href="https://docs.google.com/forms/d/e/1FAIpQLSfxBMKBY0qycEHDWJSEQ1-mhtQVPb3g7GWwpd5mgrXkWUDpLA/viewform" target="_blank" rel="noopener noreferrer" class="link-more">{{ $t('home.cardSaudeLink') }}<span class="sr-only">{{ $t('home.opensInAnotherWindow') }}</span> &rarr;</a>
           </div>
           
           <!-- Project 2: Vale Maps -->
           <div class="pillar-card glass pulse-hover">
             <div class="pillar-img-container">
-              <img src="/images/valemaps.webp" alt="Ilustração em 3D de mapa e marcador rosa do Vale Maps" class="pillar-img" />
+              <img src="/images/valemaps.webp" :alt="$t('home.cardMapsTitle')" class="pillar-img" />
             </div>
-            <h3>Vale Maps</h3>
-            <p>O primeiro mapa nacional com informações colaborativas detalhadas sobre recursos de acessibilidade física e atitudinal em estabelecimentos de todo o País.</p>
-            <NuxtLink to="/contato" class="link-more">Saber mais &rarr;</NuxtLink>
+            <h3>{{ $t('home.cardMapsTitle') }}</h3>
+            <p>{{ $t('home.cardMapsDesc') }}</p>
+            <a href="https://www.appsheet.com/start/e01fe821-1339-4e92-8efd-0dd8a1785084" target="_blank" rel="noopener noreferrer" class="link-more">{{ $t('home.cardMapsLink') }}<span class="sr-only">{{ $t('home.opensInNewWindow') }}</span> &rarr;</a>
           </div>
           
           <!-- Project 3: Biblioteca -->
           <div class="pillar-card glass pulse-hover">
             <div class="pillar-img-container">
-              <img src="/images/conscientizacao.webp" alt="Ilustração em 3D de estabelecimento com acessibilidade" class="pillar-img" />
+              <img src="/images/conscientizacao.webp" :alt="$t('home.cardConscientizacaoTitle')" class="pillar-img" />
             </div>
-            <h3>Cartilhas e Informativos</h3>
-            <p>Acesse a nossa biblioteca gratuita de cartilhas e informativos práticos e esteja à frente nas melhores práticas de inclusão e acessibilidade para pessoas com deficiência.</p>
-            <NuxtLink to="/blog" class="link-more">Acessar Biblioteca &rarr;</NuxtLink>
+            <h3>{{ $t('home.cardConscientizacaoTitle') }}</h3>
+            <p>{{ $t('home.cardConscientizacaoDesc') }}</p>
+            <NuxtLink :to="localePath('/blog')" class="link-more">{{ $t('home.cardConscientizacaoLink') }} &rarr;</NuxtLink>
           </div>
         </div>
       </div>
@@ -65,32 +64,32 @@
     <!-- Support & Business Solutions Section -->
     <section class="actions-section container" aria-labelledby="actions-title">
       <div class="actions-header">
-        <span class="badge flex-center-self">Como Atuamos</span>
-        <h2 id="actions-title" class="section-title text-center">Nossas Frentes de Engajamento e Apoio</h2>
-        <p class="section-subtitle text-center">Participe ativamente das nossas ações apoiando como pessoa física ou como parceiro corporativo.</p>
+        <span class="badge flex-center-self">{{ $t('home.badgeSupport') }}</span>
+        <h2 id="actions-title" class="section-title text-center">{{ $t('home.actionsTitle') }}</h2>
+        <p class="section-subtitle text-center">{{ $t('home.actionsSubtitle') }}</p>
       </div>
       <div class="actions-grid">
         <!-- Card 1: Doações/Comunidade -->
         <div class="action-card donate-card glass">
-          <span class="badge">Faça a Diferença</span>
-          <h2>Ajude a manter nossos projetos</h2>
+          <span class="badge">{{ $t('home.cardDonateBadge') }}</span>
+          <h2>{{ $t('home.cardDonateTitle') }}</h2>
           <p>
-            Sua contribuição financeira ajuda a subsidiar sessões de psicoterapia para pessoas com deficiência LGBTQIA+ de baixa renda, além de manter nossas ferramentas de mapeamento e produção de cartilhas.
+            {{ $t('home.cardDonateDesc') }}
           </p>
-          <NuxtLink to="/contato" class="btn btn-primary">
-            Quero Doar e Apoiar!
+          <NuxtLink :to="localePath('/contato')" class="btn btn-primary">
+            {{ $t('home.cardDonateBtn') }}
           </NuxtLink>
         </div>
 
         <!-- Card 2: Empresas -->
         <div class="action-card corporate-card glass">
-          <span class="badge">Soluções para Empresas</span>
-          <h2>Acessibilidade é mais do que um dever</h2>
+          <span class="badge">{{ $t('home.cardCorporateBadge') }}</span>
+          <h2>{{ $t('home.cardCorporateTitle') }}</h2>
           <p>
-            É uma oportunidade de inovação e responsabilidade social para a sua empresa. Oferecemos mentorias 360º, palestras, painéis estratégicos e contratação inclusiva.
+            {{ $t('home.cardCorporateDesc') }}
           </p>
-          <NuxtLink to="/servicos" class="btn btn-primary">
-            Conheça Nossos Serviços
+          <NuxtLink :to="localePath('/servicos')" class="btn btn-primary">
+            {{ $t('home.cardCorporateBtn') }}
           </NuxtLink>
         </div>
       </div>
@@ -99,9 +98,12 @@
 </template>
 
 <script setup>
+const { t } = useI18n()
+const localePath = useLocalePath()
+
 useSeoMeta({
-  title: 'Vale PCD | Primeira ONG PCD LGBTQIA+ do Brasil',
-  description: 'Mapeamento de espaços acessíveis (Vale Maps), atendimento de psicoterapia remota acessível, cartilhas de inclusão e consultoria para empresas.'
+  title: () => `${t('home.heroTitle1')}${t('home.heroTitleHighlight1')}${t('home.heroTitle2')}${t('home.heroTitleHighlight2')} | Vale PCD`,
+  description: () => t('home.heroLead')
 })
 </script>
 

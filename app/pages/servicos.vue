@@ -1,18 +1,18 @@
 <template>
   <div class="servicos-page container">
     <section class="section header-section" aria-labelledby="services-page-title">
-      <span class="badge">O que fazemos</span>
+      <span class="badge">{{ $t('services.badgeWhat') }}</span>
       <h1 id="services-page-title" class="title">
-        Nossas Soluções para <span class="gradient-text">Empresas & Eventos</span>
+        {{ $t('services.title') }}<span class="gradient-text">{{ $t('services.titleHighlight') }}</span>
       </h1>
       <p class="lead text-muted">
-        Trabalhamos na intersecção de diversidade, inclusão e acessibilidade digital. Conectamos marcas, pessoas e cultura anticapacitista de verdade.
+        {{ $t('services.lead') }}
       </p>
     </section>
 
     <!-- Accessible Tabs system -->
     <div class="tabs-container">
-      <div class="tab-list" role="tablist" aria-label="Nossos Serviços e Histórico">
+      <div class="tab-list" role="tablist" :aria-label="$t('services.title')">
         <button 
           id="tab-empresas"
           role="tab" 
@@ -21,7 +21,7 @@
           :class="['tab-btn', { active: activeTab === 'empresas' }]"
           @click="activeTab = 'empresas'"
         >
-          🏢 Para Empresas (Consultoria)
+          {{ $t('services.tabCorporate') }}
         </button>
         <button 
           id="tab-portfolio"
@@ -31,7 +31,7 @@
           :class="['tab-btn', { active: activeTab === 'portfolio' }]"
           @click="activeTab = 'portfolio'"
         >
-          🎉 Portfólio de Eventos
+          {{ $t('services.tabPortfolio') }}
         </button>
       </div>
 
@@ -44,55 +44,55 @@
         class="tab-panel"
       >
         <div class="section-intro">
-          <span class="badge">Transforme sua Cultura</span>
-          <h2>Como impulsionamos o seu negócio:</h2>
-          <p class="text-muted">Acessibilidade é mais do que um dever - É uma oportunidade real para sua empresa.</p>
+          <span class="badge">{{ $t('services.badgeTransform') }}</span>
+          <h2>{{ $t('services.corporateHeading') }}</h2>
+          <p class="text-muted">{{ $t('services.corporateSubheading') }}</p>
         </div>
 
         <div class="services-grid">
           <!-- Mentoria 360 -->
           <div class="service-card glass">
-            <div class="service-icon">🎯</div>
-            <h3>Mentoria 360º</h3>
-            <p>
-              Nosso conhecimento abrange pesquisa em Diversidade & Inclusão, Engajamento e Branding, bem como estratégias para tornar produtos e soluções mais acessíveis a clientes e usuários. Nossa mentoria perpassa produto, liderança, colaboradores, gestão de pessoas, comunidade, parceiros, comitês e grupos de pertencimento.
-            </p>
+            <div class="service-card-header">
+              <div class="service-icon">🎯</div>
+              <h3>{{ $t('services.mentorshipTitle') }}</h3>
+            </div>
+            <p>{{ $t('services.mentorshipDesc') }}</p>
           </div>
 
           <!-- Palestras -->
           <div class="service-card glass">
-            <div class="service-icon">🎤</div>
-            <h3>Palestras</h3>
-            <p>
-              Nossos consultores trazem provocações e soluções práticas acerca dos temas de Diversidade, Inclusão e Employee Experience com foco interseccional, servindo como impulsionadores essenciais para a mudança de cultura e mindset no seu negócio.
-            </p>
+            <div class="service-card-header">
+              <div class="service-icon">🎤</div>
+              <h3>{{ $t('services.talksTitle') }}</h3>
+            </div>
+            <p>{{ $t('services.talksDesc') }}</p>
           </div>
 
           <!-- Roda de Conversa -->
           <div class="service-card glass">
-            <div class="service-icon">🗣️</div>
-            <h3>Rodas de Conversa</h3>
-            <p>
-              Criamos discussões horizontais e colaborativas alinhadas às necessidades da sua empresa. Priorizamos bate-papos que estimulam a troca de conhecimento sincera e respondem às principais dúvidas dos colaboradores.
-            </p>
+            <div class="service-card-header">
+              <div class="service-icon">🗣️</div>
+              <h3>{{ $t('services.conversationsTitle') }}</h3>
+            </div>
+            <p>{{ $t('services.conversationsDesc') }}</p>
           </div>
 
           <!-- Painel Estratégico -->
           <div class="service-card glass">
-            <div class="service-icon">👥</div>
-            <h3>Painéis Estratégicos & Formação</h3>
-            <p>
-              Formação dinâmica e compartilhada conduzida por múltiplos consultores especializados. Cruzamos conceitos e experiências vividas em primeira pessoa na intersecção entre LGBTQIA+ e PCD, indo muito além dos métodos tradicionais.
-            </p>
+            <div class="service-card-header">
+              <div class="service-icon">👥</div>
+              <h3>{{ $t('services.panelsTitle') }}</h3>
+            </div>
+            <p>{{ $t('services.panelsDesc') }}</p>
           </div>
 
           <!-- Vagas e Atração -->
           <div class="service-card glass">
-            <div class="service-icon">🚀</div>
-            <h3>Atração & Vagas Inclusivas</h3>
-            <p>
-              Nossas redes ultrapassam bolhas de mercado. Com uma comunidade engajada de milhares de seguidores no país, apoiamos a estratégia de sua marca empregadora com time criativo de design e social media para conectar profissionais diversos ao seu time.
-            </p>
+            <div class="service-card-header">
+              <div class="service-icon">🚀</div>
+              <h3>{{ $t('services.jobsTitle') }}</h3>
+            </div>
+            <p>{{ $t('services.jobsDesc') }}</p>
           </div>
         </div>
 
@@ -100,11 +100,11 @@
         <div class="impact-box glass text-center">
           <div class="impact-metric">
             <span class="metric-number">+30</span>
-            <span class="metric-label">Grandes festivais e eventos nacionais tornados acessíveis com o Vale PCD</span>
+            <span class="metric-label">{{ $t('services.metricLabel') }}</span>
           </div>
           <div class="impact-cta">
-            <h3>Faça parte dessa transformação com o Vale</h3>
-            <NuxtLink to="/contato" class="btn btn-primary">Chame a gente no Fale Conosco</NuxtLink>
+            <h3>{{ $t('services.ctaTitle') }}</h3>
+            <NuxtLink :to="localePath('/contato')" class="btn btn-primary">{{ $t('services.ctaBtn') }}</NuxtLink>
           </div>
         </div>
       </div>
@@ -118,9 +118,9 @@
         class="tab-panel"
       >
         <div class="section-intro">
-          <span class="badge">Case de Sucesso</span>
-          <h2>Eventos e Festivais Acessíveis</h2>
-          <p class="text-muted">Abaixo, destacamos alguns dos principais projetos, festivais e tours nacionais que contaram com a curadoria de acessibilidade do Vale PCD.</p>
+          <span class="badge">{{ $t('services.badgeCase') }}</span>
+          <h2>{{ $t('services.portfolioTitle') }}</h2>
+          <p class="text-muted">{{ $t('services.portfolioLead') }}</p>
           
           <!-- Simple Filter Toolbar -->
           <div class="filter-bar" aria-label="Filtrar eventos por ano">
@@ -130,7 +130,7 @@
               :class="['filter-btn', { active: selectedYear === year }]"
               @click="selectedYear = year"
             >
-              {{ year }}
+              {{ year === 'Todos' ? $t('services.filterAll') : year }}
             </button>
           </div>
         </div>
@@ -144,7 +144,7 @@
             <div class="portfolio-image-wrapper">
               <img 
                 :src="event.image" 
-                :alt="'Flyer do evento ' + event.name"
+                :alt="event.name"
                 class="portfolio-image"
                 loading="lazy"
               />
@@ -152,7 +152,7 @@
             </div>
             <div class="portfolio-body">
               <h3>{{ event.name }}</h3>
-              <time :datetime="event.dateISO" class="event-date">📅 {{ event.dateFormatted }}</time>
+              <time :datetime="event.dateISO" class="event-date">📅 {{ getEventDateFormatted(event.dateISO) }}</time>
             </div>
           </article>
         </div>
@@ -164,13 +164,31 @@
 <script setup>
 import { ref, computed } from 'vue'
 
+const { t, locale } = useI18n()
+const localePath = useLocalePath()
+
 useSeoMeta({
-  title: 'Consultoria e Portfólio de Eventos | Vale PCD',
-  description: 'Soluções em acessibilidade digital, palestras, consultoria corporativa interseccional e nosso amplo histórico de grandes eventos nacionais acessíveis.'
+  title: () => `${t('services.title')}${t('services.titleHighlight')} | Vale PCD`,
+  description: () => t('services.lead')
 })
 
 const activeTab = ref('empresas')
 const selectedYear = ref('Todos')
+
+const getEventDateFormatted = (dateISO) => {
+  const [year, month, day] = dateISO.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  const localeMap = {
+    pt: 'pt-BR',
+    en: 'en-US',
+    es: 'es-ES'
+  }
+  return new Intl.DateTimeFormat(localeMap[locale.value] || 'pt-BR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  }).format(date)
+}
 
 const events = [
   { name: 'La Folie Festival 2023', year: '2023', dateFormatted: '25 de novembro de 2023', dateISO: '2023-11-25', image: '/images/portfolio/la-folie-festival-2023.png' },
@@ -246,34 +264,67 @@ const filteredEvents = computed(() => {
 
 .tab-list {
   display: flex;
-  gap: 1rem;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 0.5rem;
+  gap: 0.3rem;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0;
   flex-wrap: wrap;
 }
 
 .tab-btn {
   background: none;
-  border: none;
+  border: 1px solid transparent;
+  border-bottom: none;
   color: var(--text-muted);
   font-family: 'Poppins', sans-serif;
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   font-weight: 700;
-  padding: 0.8rem 1.5rem;
+  padding: 0.8rem 1.6rem;
   cursor: pointer;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  margin-bottom: -2px; /* Overlaps the border-bottom perfectly */
   transition: all var(--transition-fast);
+  position: relative;
 }
 
 .tab-btn:hover {
   color: var(--text);
-  background-color: var(--primary-muted);
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: var(--border) var(--border) transparent var(--border);
 }
 
 .tab-btn.active {
-  color: var(--text);
-  background-color: var(--primary-muted);
-  box-shadow: inset 0 -3px 0 var(--secondary);
+  color: var(--primary);
+  background-color: var(--bg);
+  border-color: var(--border);
+  border-bottom: 2px solid var(--bg); /* Fuses tab bottom with page background */
+  z-index: 2;
+}
+
+.tab-btn.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-color: var(--primary);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+@media (max-width: 600px) {
+  .tab-list {
+    gap: 0.15rem;
+  }
+  
+  .tab-btn {
+    font-size: 0.9rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  }
+  
+  .tab-btn.active::before {
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  }
 }
 
 .tab-panel {
@@ -317,8 +368,15 @@ const filteredEvents = computed(() => {
   border-color: var(--primary);
 }
 
+.service-card-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .service-icon {
-  font-size: 2.5rem;
+  font-size: 2.2rem;
+  flex-shrink: 0;
 }
 
 .service-card h3 {

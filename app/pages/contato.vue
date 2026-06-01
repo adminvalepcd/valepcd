@@ -1,21 +1,23 @@
 <template>
   <div class="contato-page container">
     <section class="section" aria-labelledby="contact-title">
-      <span class="badge">Contato</span>
-      <h1 id="contact-title" class="title">Fale <span class="gradient-text">Conosco</span></h1>
+      <span class="badge">{{ $t('contact.badge') }}</span>
+      <h1 id="contact-title" class="title">
+        {{ $t('contact.title1') }}<span class="gradient-text">{{ $t('contact.titleHighlight') }}</span>
+      </h1>
       <p class="lead text-muted">
-        Quer levar acessibilidade e diversidade para sua empresa ou tirar alguma dúvida sobre nosso projeto? Preencha o formulário abaixo!
+        {{ $t('contact.lead') }}
       </p>
 
       <div class="contact-layout">
         <!-- Form -->
-        <form @submit.prevent="handleSubmit" class="contact-form glass" aria-label="Formulário de contato">
+        <form @submit.prevent="handleSubmit" class="contact-form glass" :aria-label="$t('contact.badge')">
           <div v-if="successMessage" class="alert alert-success" role="alert">
             {{ successMessage }}
           </div>
 
           <div class="form-group">
-            <label for="name">Seu Nome (obrigatório)</label>
+            <label for="name">{{ $t('contact.nameLabel') }}</label>
             <input 
               type="text" 
               id="name" 
@@ -23,12 +25,12 @@
               required 
               aria-required="true" 
               class="form-control"
-              placeholder="Como prefere ser chamado?"
+              :placeholder="$t('contact.namePlaceholder')"
             />
           </div>
 
           <div class="form-group">
-            <label for="email">Seu E-mail (obrigatório)</label>
+            <label for="email">{{ $t('contact.emailLabel') }}</label>
             <input 
               type="email" 
               id="email" 
@@ -36,12 +38,12 @@
               required 
               aria-required="true" 
               class="form-control"
-              placeholder="Exemplo: email@dominio.com"
+              :placeholder="$t('contact.emailPlaceholder')"
             />
           </div>
 
           <div class="form-group">
-            <label for="message">Mensagem (obrigatório)</label>
+            <label for="message">{{ $t('contact.messageLabel') }}</label>
             <textarea 
               id="message" 
               v-model="form.message" 
@@ -49,24 +51,24 @@
               aria-required="true" 
               rows="5" 
               class="form-control"
-              placeholder="Como podemos ajudar você?"
+              :placeholder="$t('contact.messagePlaceholder')"
             ></textarea>
           </div>
 
           <button type="submit" class="btn btn-primary pulse-hover w-full">
-            Enviar Mensagem
+            {{ $t('contact.submitBtn') }}
           </button>
         </form>
 
         <!-- Info box -->
         <div class="contact-info glass">
-          <h3>Canais de Atendimento</h3>
-          <p class="text-muted">Estamos prontos para construir um ecossistema mais acessível com você.</p>
+          <h3>{{ $t('contact.infoTitle') }}</h3>
+          <p class="text-muted">{{ $t('contact.infoSubtitle') }}</p>
           
           <div class="info-item">
             <span class="info-icon">📧</span>
             <div>
-              <strong>E-mail Geral:</strong>
+              <strong>{{ $t('contact.emailGeneral') }}</strong>
               <p>contato@valepcd.com.br</p>
             </div>
           </div>
@@ -74,7 +76,7 @@
           <div class="info-item">
             <span class="info-icon">🤝</span>
             <div>
-              <strong>Parcerias & Comercial:</strong>
+              <strong>{{ $t('contact.emailComercial') }}</strong>
               <p>comercial@valepcd.com.br</p>
             </div>
           </div>
@@ -87,6 +89,13 @@
 <script setup>
 import { ref } from 'vue'
 
+const { t } = useI18n()
+
+useSeoMeta({
+  title: () => `${t('contact.title1')}${t('contact.titleHighlight')} | Vale PCD`,
+  description: () => t('contact.lead')
+})
+
 const form = ref({
   name: '',
   email: '',
@@ -96,7 +105,7 @@ const form = ref({
 const successMessage = ref('')
 
 const handleSubmit = () => {
-  successMessage.value = 'Sua mensagem foi enviada com sucesso! Responderemos em breve.'
+  successMessage.value = t('contact.successMsg')
   form.value = {
     name: '',
     email: '',
