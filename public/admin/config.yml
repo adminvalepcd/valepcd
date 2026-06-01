@@ -1,5 +1,6 @@
 backend:
-  name: git-gateway
+  name: github
+  repo: adminvalepcd/valepcd
   branch: main # Altere para a branch principal de produção (ex: main ou master)
 
 media_folder: public/images/uploads
