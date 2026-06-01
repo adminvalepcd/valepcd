@@ -1,0 +1,30 @@
+---
+title: "Por que o afeto entre homens incomoda?"
+date: 2021-02-09T14:10:10.203Z
+description: "Foto: dois homens brancos, um com a cabeça no ombro do outro, trocando carinhos. Fonte: temqueter.orgJonas MarssaroHomem gay, autista, estudante de Psicologia e amante de livros e panquecas. Gosto de estudar a sociedade, principalmente as vidas autistas e LGBTI+ que se inserem na sociedade capitalista e brasileira.Esse questionamento passa por muitos corpos que são gays, bissexuais, pansexuais, assexuais e outros homens que atraem-se afetivamente e sexualmente por outros homens, e as respostas p"
+category: "Assuntos gerais"
+author: "Vale PCD"
+image: "/images/blog/3872c8_9ffed9cb8c074fcba1b3bd9f458eff9c_mv2.png"
+---
+
+![Foto: dois homens brancos, um com a cabeça no ombro do outro, trocando carinhos. Fonte: temqueter.org](/images/blog/3872c8_9ffed9cb8c074fcba1b3bd9f458eff9c_mv2.png)
+
+Jonas Marssaro
+
+Homem gay, autista, estudante de Psicologia e amante de livros e panquecas. Gosto de estudar a sociedade, principalmente as vidas autistas e LGBTI+ que se inserem na sociedade capitalista e brasileira.
+
+Esse questionamento passa por muitos corpos que são gays, bissexuais, pansexuais, assexuais e outros homens que atraem-se afetivamente e sexualmente por outros homens, e as respostas podem chegar à muitas possibilidades. Pois bem, vamos abordar algumas possíveis respostas sobre o ódio que culmina à bifobia e à homofobia.
+
+Primeiramente, precisamos compreender as estruturas que levam à LGBTfobia como um todo – e logo vamos nos deparar com o machismo e o patriarcado, bem como as relações de desigualdades entre homens e outras identidades de gênero, sobretudo às mulheres. Os estudos de gênero não descartam e comprovam de diversas formas que essa desigualdade existe, colocando as identidades masculinas como dominantes e acima do poder – incluindo o poder do bem e mal – nas diversas culturas estruturadas à partir do patriarcado, os mitos sempre retratam deuses e criaturas masculinas como detentoras de poder absoluto ou majoritário na relação com outros seres mitológicos ou com a própria natureza; isso acontece com Zeus, Júpiter, Brahma, Jesus Cristo, Javé, Allá, Rá, Tupã, Odin, Tezcatlipoca, Lugh, Olorum, entre tantos outros exemplos. Compreendendo essas relações, entendemos que nos relacionamento entre homens e mulheres há sim uma dominância entre homens.
+
+As relações de patriarcado estão tão impregnadas na sociedade, que em diversas culturas, as representações sociais de homem é justamente aquela de caçador, provedor e estrutura da casa; ao homem é dado o poder de administrar as finanças, os relacionamentos, os costumes e os direcionamentos da casa e da família – à ele é dado o poder de administrar, legislar, conquistar e mandar numa cidade ou em um país. Mas para esse homem dominar, precisar haver alguém que terá que ser dominado – este ser dominado é o papel representado socialmente pela feminilidade.
+
+As relações de poder entre homens e mulheres passa a ser questionada quando a homoafetividade é colocada como uma possibilidade válida, pois na homoafetividade não há a necessidade de um dominante e um dominado. Logo, a homoafetividade questiona os relacionamentos heteroafetivos que se propor numa construção patriarcal e de desigualdade. Essa possibilidade é algo que rompe com as propostas de dominância de poder e com as representações sociais de masculinidade e feminilidade herdadas das sociedades greco-romanas e passadas ao longo das sociedades feudais e capitalistas.
+
+O afeto entre dois homens comunica claramente que podem haver possíveis relacionamentos que não se estabelecem a partir de alianças de guerra, de nobreza, de comércio e de dominância. Pelo contrário, a gente passa a discutir o próprio papel da masculinidade e as suas possibilidades para alcançar uma sociedade igualitária. O afeto entre duas mulheres, por sua vez, destaca sobre a própria liberdade da mulher, em poder ser feliz em completa sem a presença masculina, contradiz a tese de “uma mulher completa” é uma mulher casada [com um homem] e com filhos [geradas por este homem].
+
+O episódio do reality show Big Brother Brasil destacou algo muito mais significativo que o mero afeto entre dois homens; ele discute o amor entre homens pretos, ele perpassa a questão da periferia e do acesso à sexualidade que a juventude periférica tem, além disso, ele discute a bissexualidade e ainda apresenta as diversas performas masculinas em evidência. O peso da representatividade desse beijo traz significâncias extremas para um Brasil que mata deliberativamente jovens pretos, pessoas LGBTs e a população nordestina e nortista – com a falta de políticas públicas de acesso à saúde, renda, educação, segurança, alimentação, previdência e assistência social.
+
+É muito mais que um beijo, é um modelo de afeto que sempre existiu, mas que é colocado na categoria de “nojento” e “sexual”, pois conviver com essa possibilidade de afeto é perpassar a discussão sobre modelos de masculinidades que permeiam nossas relações sociais. Está também profundamente ligada aos modelos de famílias que estamos acostumados a conviver e viver, pois este afeto perpassa as nossas relações familiares e também trabalhistas.
+
+O afeto entre homens precisa ser visibilizado e discutido, pois ele já permeia o meio heterossexual, através da própria “sororidade” masculina. Precisamnos ainda discutir a própria condição da invisibilidade bissexual no meio desses afetos, assim como a construção da masculinidade homossexual, que muitas vezes está embasada na competição e no predatismo do que na solidariedade e cumplicidade. Lucas e Gil apresentam que é sim possível haver afeto entre um homem gay e um homem bissexual, e que, principalmente, é possível dois homens pretos, dois homens de periferia e dois homens estudantes se amarem.

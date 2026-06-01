@@ -28,7 +28,6 @@
   --primary-muted: hsla(var(--primary-hue), var(--primary-saturation), var(--primary-lightness), 0.15);
   
   --secondary: var(--brand-blue-dark);
-    /* #6B92C8 */
   --secondary-hover: hsl(215, 47%, 50%);
   
   --accent: var(--brand-orange); /* #C87844 */
