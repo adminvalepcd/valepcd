@@ -16,48 +16,154 @@
             {{ successMessage }}
           </div>
 
-          <div class="form-group">
-            <label for="name">{{ $t('contact.nameLabel') }}</label>
-            <input 
-              type="text" 
-              id="name" 
-              v-model="form.name" 
-              required 
-              aria-required="true" 
-              class="form-control"
-              :placeholder="$t('contact.namePlaceholder')"
-            />
-          </div>
+          <div class="contact-form-grid">
+            <!-- Nome -->
+            <div class="form-group">
+              <label for="first-name">{{ $t('contact.firstNameLabel') }}</label>
+              <input 
+                type="text" 
+                id="first-name" 
+                v-model="form.firstName" 
+                required 
+                aria-required="true" 
+                class="form-control"
+                :placeholder="$t('contact.firstNamePlaceholder')"
+              />
+            </div>
 
-          <div class="form-group">
-            <label for="email">{{ $t('contact.emailLabel') }}</label>
-            <input 
-              type="email" 
-              id="email" 
-              v-model="form.email" 
-              required 
-              aria-required="true" 
-              class="form-control"
-              :placeholder="$t('contact.emailPlaceholder')"
-            />
-          </div>
+            <!-- Sobrenome -->
+            <div class="form-group">
+              <label for="last-name">{{ $t('contact.lastNameLabel') }}</label>
+              <input 
+                type="text" 
+                id="last-name" 
+                v-model="form.lastName" 
+                required 
+                aria-required="true" 
+                class="form-control"
+                :placeholder="$t('contact.lastNamePlaceholder')"
+              />
+            </div>
 
-          <div class="form-group">
-            <label for="message">{{ $t('contact.messageLabel') }}</label>
-            <textarea 
-              id="message" 
-              v-model="form.message" 
-              required 
-              aria-required="true" 
-              rows="5" 
-              class="form-control"
-              :placeholder="$t('contact.messagePlaceholder')"
-            ></textarea>
-          </div>
+            <!-- E-mail -->
+            <div class="form-group">
+              <label for="email">{{ $t('contact.emailLabel') }}</label>
+              <input 
+                type="email" 
+                id="email" 
+                v-model="form.email" 
+                required 
+                aria-required="true" 
+                class="form-control"
+                :placeholder="$t('contact.emailPlaceholder')"
+              />
+            </div>
 
-          <button type="submit" class="btn btn-primary pulse-hover w-full">
-            {{ $t('contact.submitBtn') }}
-          </button>
+            <!-- Telefone -->
+            <div class="form-group">
+              <label for="phone">{{ $t('contact.phoneLabel') }}</label>
+              <input 
+                type="tel" 
+                id="phone" 
+                v-model="form.phone" 
+                class="form-control"
+                :placeholder="$t('contact.phonePlaceholder')"
+              />
+            </div>
+
+            <!-- Empresa -->
+            <div class="form-group">
+              <label for="company">{{ $t('contact.companyLabel') }}</label>
+              <input 
+                type="text" 
+                id="company" 
+                v-model="form.company" 
+                class="form-control"
+                :placeholder="$t('contact.companyPlaceholder')"
+              />
+            </div>
+
+            <!-- Cargo -->
+            <div class="form-group">
+              <label for="job-title">{{ $t('contact.jobTitleLabel') }}</label>
+              <input 
+                type="text" 
+                id="job-title" 
+                v-model="form.jobTitle" 
+                class="form-control"
+                :placeholder="$t('contact.jobTitlePlaceholder')"
+              />
+            </div>
+
+            <!-- Selecione um assunto -->
+            <div class="form-group full-width">
+              <label for="subject">{{ $t('contact.subjectLabel') }}</label>
+              <div class="select-wrapper">
+                <select 
+                  id="subject" 
+                  v-model="form.subject" 
+                  required 
+                  aria-required="true"
+                  class="form-control select-control"
+                >
+                  <option value="" disabled selected hidden>{{ $t('contact.subjectPlaceholder') }}</option>
+                  <option value="digital">{{ $t('contact.subjectOptions.digital') }}</option>
+                  <option value="events">{{ $t('contact.subjectOptions.events') }}</option>
+                  <option value="guides">{{ $t('contact.subjectOptions.guides') }}</option>
+                  <option value="consulting">{{ $t('contact.subjectOptions.consulting') }}</option>
+                  <option value="jobs">{{ $t('contact.subjectOptions.jobs') }}</option>
+                  <option value="discounts">{{ $t('contact.subjectOptions.discounts') }}</option>
+                  <option value="map">{{ $t('contact.subjectOptions.map') }}</option>
+                  <option value="professional">{{ $t('contact.subjectOptions.professional') }}</option>
+                  <option value="health">{{ $t('contact.subjectOptions.health') }}</option>
+                  <option value="privacy">{{ $t('contact.subjectOptions.privacy') }}</option>
+                  <option value="other">{{ $t('contact.subjectOptions.other') }}</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Mensagem -->
+            <div class="form-group full-width">
+              <label for="message">{{ $t('contact.messageLabel') }}</label>
+              <textarea 
+                id="message" 
+                v-model="form.message" 
+                required 
+                aria-required="true" 
+                rows="5" 
+                class="form-control"
+                :placeholder="$t('contact.messagePlaceholder')"
+              ></textarea>
+            </div>
+
+            <!-- Checkbox LGPD / Termos -->
+            <div class="form-checkbox full-width">
+              <label class="checkbox-container">
+                <input 
+                  type="checkbox" 
+                  v-model="form.agreed" 
+                  required 
+                  aria-required="true"
+                />
+                <span class="checkbox-label-text">
+                  {{ $t('contact.termsCheckbox') }} 
+                  <NuxtLink :to="localePath('/privacidade')" class="link-underline">{{ $t('contact.privacyLink') }}</NuxtLink>.
+                </span>
+              </label>
+            </div>
+
+            <!-- Footnote & Submit -->
+            <div class="form-submit-group full-width">
+              <p class="footnote-text">{{ $t('contact.footnote') }}</p>
+              <button type="submit" class="btn btn-primary pulse-hover w-full">
+                {{ $t('contact.submitBtn') }}
+              </button>
+              <p class="email-fallback-text">
+                {{ $t('contact.emailFallback') }} 
+                <a href="mailto:contato@valepcd.com.br">contato@valepcd.com.br</a>.
+              </p>
+            </div>
+          </div>
         </form>
 
         <!-- Info box -->
@@ -90,6 +196,7 @@
 import { ref } from 'vue'
 
 const { t } = useI18n()
+const localePath = useLocalePath()
 
 useSeoMeta({
   title: () => `${t('contact.title1')}${t('contact.titleHighlight')} | Vale PCD`,
@@ -97,9 +204,15 @@ useSeoMeta({
 })
 
 const form = ref({
-  name: '',
+  firstName: '',
+  lastName: '',
   email: '',
-  message: ''
+  phone: '',
+  company: '',
+  jobTitle: '',
+  subject: '',
+  message: '',
+  agreed: false
 })
 
 const successMessage = ref('')
@@ -107,9 +220,15 @@ const successMessage = ref('')
 const handleSubmit = () => {
   successMessage.value = t('contact.successMsg')
   form.value = {
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
-    message: ''
+    phone: '',
+    company: '',
+    jobTitle: '',
+    subject: '',
+    message: '',
+    agreed: false
   }
 }
 </script>
@@ -162,6 +281,20 @@ const handleSubmit = () => {
   gap: 1.5rem;
 }
 
+.contact-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .contact-form-grid {
+    grid-template-columns: 1fr;
+    gap: 1.2rem;
+  }
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
@@ -183,6 +316,7 @@ const handleSubmit = () => {
   font-family: 'Poppins', sans-serif;
   font-size: 1rem;
   transition: all var(--transition-fast);
+  width: 100%;
 }
 
 .form-control:focus {
@@ -192,8 +326,93 @@ const handleSubmit = () => {
   box-shadow: 0 0 0 2px rgba(109, 40, 217, 0.2);
 }
 
+.full-width {
+  grid-column: span 2;
+}
+
+@media (max-width: 640px) {
+  .full-width {
+    grid-column: span 1;
+  }
+}
+
 .w-full {
   width: 100%;
+}
+
+/* Custom Select Dropdown styling */
+.select-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.select-control {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(255, 255, 255, 0.7)' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1.2rem center;
+  background-size: 1.25rem;
+  padding-right: 3rem !important;
+  cursor: pointer;
+}
+
+/* Checkbox styling */
+.checkbox-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  user-select: none;
+  line-height: 1.4;
+}
+
+.checkbox-container input {
+  margin-top: 0.2rem;
+  accent-color: var(--primary);
+  width: 1.15rem;
+  height: 1.15rem;
+  cursor: pointer;
+}
+
+.link-underline {
+  color: var(--primary);
+  text-decoration: underline;
+  font-weight: 500;
+  transition: color var(--transition-fast);
+}
+
+.link-underline:hover {
+  color: var(--primary-hover, #8b5cf6);
+}
+
+/* Footnote & fallback styling */
+.footnote-text {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  line-height: 1.4;
+}
+
+.email-fallback-text {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 1.2rem;
+}
+
+.email-fallback-text a {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px dashed var(--primary);
+  transition: all var(--transition-fast);
+}
+
+.email-fallback-text a:hover {
+  border-bottom-style: solid;
+  color: var(--primary-hover, #8b5cf6);
 }
 
 .alert {
