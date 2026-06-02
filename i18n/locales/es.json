@@ -111,15 +111,44 @@
     "badge": "Contacto",
     "title1": "Hablemos ",
     "titleHighlight": "Hoy",
-    "lead": "¿Quieres llevar accesibilidad y diversidad a tu empresa o tienes alguna duda sobre nuestro proyecto? ¡Completa el formulario a continuación!",
-    "nameLabel": "Nombre completo (obligatorio)",
-    "namePlaceholder": "¿Cómo prefieres que te llamemos?",
-    "emailLabel": "Correo electrónico (obligatorio)",
+    "lead": "¿Quieres llevar accesibilidad y diversidad a tu empresa o tienes alguma duda sobre nuestro proyecto? ¡Completa el formulario a continuación!",
+    "firstNameLabel": "Nombre *",
+    "firstNamePlaceholder": "Tu primer nombre",
+    "lastNameLabel": "Apellido *",
+    "lastNamePlaceholder": "Tu apellido",
+    "emailLabel": "Correo electrónico *",
     "emailPlaceholder": "Ejemplo: correo{'@'}dominio.com",
-    "messageLabel": "Mensaje (obligatorio)",
-    "messagePlaceholder": "¿Cómo podemos ayudarte?",
-    "submitBtn": "Enviar Mensaje",
+    "phoneLabel": "Teléfono",
+    "phonePlaceholder": "+34 000 000 000",
+    "companyLabel": "Empresa",
+    "companyPlaceholder": "Nombre de la empresa (opcional)",
+    "jobTitleLabel": "Cargo",
+    "jobTitlePlaceholder": "Tu cargo (opcional)",
+    "subjectLabel": "Seleccione un asunto *",
+    "subjectPlaceholder": "Seleccione...",
+    "subjectOptions": {
+      "digital": "Accesibilidad Digital (Sitios Web, Redes Sociales, Lengua de Señas, Subtítulos)",
+      "events": "Accesibilidad en Eventos (Conciertos, Festivales, Congresos)",
+      "guides": "Guías y Materiales",
+      "consulting": "Consultoría (Conferencias, Cursos, Diversidad)",
+      "jobs": "Publicación de Ofertas de Empleo",
+      "discounts": "Lista de Descuento/Gratuidad en Eventos",
+      "map": "Mapa de Accesibilidad (Agregar, Ajustar o Eliminar Establecimiento)",
+      "professional": "Profesional (Orienta Vale PCD)",
+      "health": "Salud Mental (Psicoterapia)",
+      "privacy": "Eliminación de Datos (LGPD/GDPR)",
+      "other": "Otros Asuntos"
+    },
+    "messageLabel": "Mensaje *",
+    "messagePlaceholder": "Ingrese su mensaje",
+    "termsCheckbox": "Acepto los",
+    "termsLink": "términos y condiciones",
+    "and": "y la",
+    "privacyLink": "Política de Privacidad",
+    "footnote": "Al enviar el formulario, aceptas unirte a la lista de contactos de Vale PCD.",
+    "submitBtn": "Enviar mensaje",
     "successMsg": "¡Tu mensaje ha sido enviado con éxito! Te responderemos lo antes posible.",
+    "emailFallback": "Si lo prefieres, envía un correo electrónico a",
     "infoTitle": "Canales de Atención",
     "infoSubtitle": "Estamos listos para construir un ecosistema más accesible junto a ti.",
     "emailGeneral": "Correo General:",
@@ -139,6 +168,8 @@
     "searchPlaceholder": "Buscar por título o contenido...",
     "noArticles": "No se encontraron artículos que coincidan con su búsqueda.",
     "clearFilters": "Limpiar Filtros",
+    "prevPage": "Anterior",
+    "nextPage": "Siguiente",
     "backToBlog": "Volver al Blog",
     "authorLabel": "Por",
     "publishedAt": "Publicado el",
@@ -146,19 +177,77 @@
     "notFoundDesc": "El artículo que está buscando no existe o ha sido movido."
   },
   "privacy": {
-    "badge": "Seguridad",
+    "badge": "Términos y Directrices",
     "title1": "Política de ",
     "titleHighlight": "Privacidad",
     "title2": " y Cookies",
-    "updated": "Última actualización: Mayo de 2026",
-    "p1": "Vale PCD respeta tu privacidad y se compromete a proteger tus datos personales de acuerdo con la Ley General de Protección de Datos de Brasil (LGPD - Ley N° 13.709/2018).",
-    "heading1": "1. Información que Recopilamos",
-    "p2": "Solo recopilamos la información estrictamente necesaria proporcionada de forma voluntaria por ti en nuestros formularios de contacto o boletines informativos, como nombre, correo electrónico y mensaje.",
-    "heading2": "2. Uso de los Datos",
-    "p3": "Utilizamos tus datos personales exclusivamente para responder a tus mensajes, analizar alianzas corporativas y enviar actualizaciones del blog si te has registrado libremente en nuestra lista.",
-    "heading3": "3. Uso de Cookies",
-    "p4": "Nuestro sitio web utiliza cookies estrictamente necesarias y de preferencia para recordar tus preferencias de accesibilidad, como el tamaño de fuente y tu elección de tema claro o oscuro por 24 horas. No utilizamos cookies de seguimiento ni de publicidad de terceros.",
-    "heading4": "4. Tus Derechos",
-    "p5": "Puedes solicitar en cualquier momento el acceso, rectificación, limitación de uso o eliminación definitiva de tus datos personales poniéndote en contacto con nosotros directamente a través del formulario de contacto o vía correo electrónico a contato{'@'}valepcd.com.br."
+    "lastUpdated": "Noviembre de 2023",
+    "introLead": "En Vale PCD, respetamos su privacidad y protegemos sus datos personales. Hemos redactado este documento para explicar cómo tratamos y protegemos sus Datos Personales, cuáles son sus derechos y cómo puede ejercerlos. Si tiene alguna pregunta, póngase en contacto con nosotros a través de los canales indicados en la Sección 9 de esta Política de Privacidad y Cookies.",
+    "indexTitle": "Tabla de Contenidos:",
+    "topics": {
+      "t1": "1. Conceptos Básicos: Lo que necesita saber para entender esta Política",
+      "t2": "2. Cómo recolecta Vale PCD los Datos Personales",
+      "t3": "3. Qué datos se tratan y para qué fines",
+      "t4": "4. Con quién comparte Vale PCD sus datos",
+      "t5": "5. Cuándo transfiere Vale PCD datos a otros países",
+      "t6": "6. Cuáles son los derechos del titular de los datos",
+      "t7": "7. Por cuánto tiempo se almacenarán los datos",
+      "t8": "8. Cuáles son las responsabilidades de Vale PCD y cómo se protegen sus datos",
+      "t9": "9. Cómo hablar con Vale PCD sobre sus datos",
+      "t10": "10. Cómo y cuándo se puede modificar esta Política"
+    },
+    "item1": {
+      "title": "1. Conceptos Básicos: Lo que necesita saber para entender esta Política",
+      "intro": "Tiene derecho a la privacidad y a la protección de sus datos personales. Para ayudar a comprenderlo, presentamos algunos conceptos esenciales:",
+      "legalBasesTerm": "Bases Legales",
+      "legalBasesDesc": "Son los fundamentos legales que autorizan el tratamiento de Datos Personales, como el consentimiento, la ejecución de un contrato o una obligación legal.",
+      "cookiesTerm": "Cookies",
+      "cookiesDesc": "Pequeños archivos que ayudan a entender cómo interactúa con las plataformas de Vale PCD, haciendo que su experiencia sea más eficiente.",
+      "analyticsTerm": "Datos de Analytics",
+      "analyticsDesc": "Información sobre el uso de los sitios web y aplicaciones para comprender el comportamiento de los usuarios.",
+      "deviceTerm": "Datos del Dispositivo de Acceso",
+      "deviceDesc": "Información recopilada por cookies o tecnologías similares, como IP, fecha y hora de acceso, ubicación y tipo de navegador.",
+      "personalTerm": "Datos Personales",
+      "personalDesc": "Información que identifica a una persona, como nombre, documento de identidad, CPF, teléfono o correo electrónico.",
+      "platformsTerm": "Plataformas",
+      "platformsDesc": "Aplicaciones, sitios web y plataformas de Vale PCD."
+    },
+    "item2": {
+      "title": "2. Cómo recolecta Vale PCD los Datos Personales",
+      "desc": "Sus datos se recopilan al interactuar con nosotros, como al completar formularios, ponerse en contacto, realizar compras, participar en eventos o utilizar nuestros servicios. También recopilamos datos a través de cookies, que son esenciales para la funcionalidad del sitio web."
+    },
+    "item3": {
+      "title": "3. Qué datos se tratan y para qué fines",
+      "desc": "Tratamos datos como nombre, correo electrónico, CPF, datos de navegación, datos de pago, entre otros. Los fines incluyen el acceso a las plataformas, análisis, marketing, entre otros, siempre bajo las bases legales adecuadas."
+    },
+    "item4": {
+      "title": "4. Con quién comparte Vale PCD sus datos",
+      "desc": "No compartimos sus datos con ninguna empresa o socio de Vale PCD, respetando siempre las bases legales y garantizando la protección de sus datos."
+    },
+    "item5": {
+      "title": "5. Cuándo transfiere Vale PCD datos a otros países",
+      "desc": "Podemos transferir datos a otros países con la protección adecuada, siempre en conformidad con las leyes de protección de datos."
+    },
+    "item6": {
+      "title": "6. Cuáles son los derechos del titular de los datos",
+      "desc": "Tiene derecho a confirmar, acceder, rectificar, eliminar, oponerse, solicitar la anonimización, bloqueo, eliminación, portabilidad, retirar el consentimiento y obtener información sobre el uso compartido de datos; realice su solicitud a través de nuestra página de"
+    },
+    "item7": {
+      "title": "7. Por cuánto tiempo se almacenarán los datos",
+      "desc": "Los datos se conservan durante el tiempo necesario para cumplir con los fines previstos, incluidas las obligaciones legales."
+    },
+    "item8": {
+      "title": "8. Cuáles son las responsabilidades de Vale PCD y cómo se protegen sus datos",
+      "desc": "Implementamos medidas técnicas y organizativas para proteger sus datos contra incidentes de seguridad. A pesar de ello, no podemos garantizar una seguridad absoluta debido a factores externos."
+    },
+    "item9": {
+      "title": "9. Cómo hablar con Vale PCD sobre sus datos",
+      "desc": "Si tiene alguna duda, póngase en contacto con nosotros a través de nuestra página de"
+    },
+    "item10": {
+      "title": "10. Cómo y cuándo se puede modificar esta Política",
+      "desc": "Esta Política puede sufrir actualizaciones. Las modificaciones relevantes serán comunicadas."
+    },
+    "signature": "Vale PCD, noviembre de 2023."
   }
 }

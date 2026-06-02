@@ -37,9 +37,9 @@
       </div>
 
       <!-- Posts Grid -->
-      <div v-if="filteredPosts.length > 0" class="grid-responsive posts-grid">
+      <div v-if="paginatedPosts.length > 0" class="grid-responsive posts-grid">
         <article 
-          v-for="post in filteredPosts" 
+          v-for="post in paginatedPosts" 
           :key="post.slug" 
           class="post-card glass"
         >
@@ -66,6 +66,42 @@
         </article>
       </div>
 
+      <!-- Pagination Controls -->
+      <nav v-if="totalPages > 1" class="pagination-container" aria-label="Paginação do blog">
+        <button 
+          class="pagination-btn glass" 
+          :disabled="currentPage === 1"
+          @click="goToPage(currentPage - 1)"
+          :aria-label="$t('blog.prevPage')"
+        >
+          <span aria-hidden="true">&larr;</span> {{ $t('blog.prevPage') }}
+        </button>
+        
+        <div class="page-numbers">
+          <button 
+            v-for="(page, index) in displayedPages" 
+            :key="index"
+            class="page-number-btn glass"
+            :class="{ 'active': currentPage === page, 'dots': page === '...' }"
+            :disabled="page === '...'"
+            @click="goToPage(page)"
+            :aria-current="currentPage === page ? 'page' : undefined"
+            :aria-label="page === '...' ? undefined : 'Página ' + page"
+          >
+            {{ page }}
+          </button>
+        </div>
+
+        <button 
+          class="pagination-btn glass" 
+          :disabled="currentPage === totalPages"
+          @click="goToPage(currentPage + 1)"
+          :aria-label="$t('blog.nextPage')"
+        >
+          {{ $t('blog.nextPage') }} <span aria-hidden="true">&rarr;</span>
+        </button>
+      </nav>
+
       <!-- Empty State -->
       <div v-else class="empty-state glass text-center">
         <p class="empty-text">{{ $t('blog.noArticles') }}</p>
@@ -78,8 +114,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 
+const route = useRoute()
 const { t, locale } = useI18n()
 const localePath = useLocalePath()
 
@@ -93,8 +131,14 @@ const { data: posts } = await useFetch('/api/posts', {
   default: () => []
 })
 
-const searchQuery = ref('')
+const searchQuery = ref(route.query.q || '')
 const selectedCategory = ref('Todos')
+const currentPage = ref(1)
+const postsPerPage = 6
+
+watch(() => route.query.q, (newQuery) => {
+  searchQuery.value = newQuery || ''
+})
 
 const filteredPosts = computed(() => {
   if (!posts.value) return []
@@ -106,6 +150,53 @@ const filteredPosts = computed(() => {
     return matchesSearch && matchesCategory
   })
 })
+
+// Reset current page to 1 when the search query or category filter changes
+watch([searchQuery, selectedCategory], () => {
+  currentPage.value = 1
+})
+
+const totalPages = computed(() => {
+  return Math.ceil(filteredPosts.value.length / postsPerPage)
+})
+
+const paginatedPosts = computed(() => {
+  const start = (currentPage.value - 1) * postsPerPage
+  const end = start + postsPerPage
+  return filteredPosts.value.slice(start, end)
+})
+
+const displayedPages = computed(() => {
+  const pages = []
+  const maxVisible = 5
+  if (totalPages.value <= maxVisible) {
+    for (let i = 1; i <= totalPages.value; i++) {
+      pages.push(i)
+    }
+  } else {
+    let start = Math.max(2, currentPage.value - 1)
+    let end = Math.min(totalPages.value - 1, currentPage.value + 1)
+    
+    pages.push(1)
+    if (start > 2) {
+      pages.push('...')
+    }
+    for (let i = start; i <= end; i++) {
+      pages.push(i)
+    }
+    if (end < totalPages.value - 1) {
+      pages.push('...')
+    }
+    pages.push(totalPages.value)
+  }
+  return pages
+})
+
+const goToPage = (page) => {
+  if (page === '...' || page < 1 || page > totalPages.value) return
+  currentPage.value = page
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
 
 const formatDate = (dateStr) => {
   const localeMap = {
@@ -315,5 +406,87 @@ const resetFilters = () => {
 .empty-text {
   font-size: 1.15rem;
   color: var(--text-muted);
+}
+
+/* Pagination Controls */
+.pagination-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 3rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.pagination-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--radius-full);
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: white;
+  transform: translateY(-2px);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.page-numbers {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.page-number-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-full);
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.page-number-btn:hover:not(.dots):not(.active) {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: var(--primary);
+  color: var(--text);
+  transform: translateY(-2px);
+}
+
+.page-number-btn.active {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.page-number-btn.dots {
+  border-color: transparent;
+  background-color: transparent;
+  cursor: default;
 }
 </style>

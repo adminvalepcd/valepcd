@@ -4,7 +4,7 @@ date: 2023-10-27T02:58:26.788Z
 description: "Confira a participação de Thiago Vinícius, nosso Diretor de Tecnologia."
 category: "Eventos"
 author: "Vale PCD"
-image: "/images/blog/46120e_02441c870c8c4eff99290390de16d8c7_mv2.png"
+image: "/images/blog/youtube_Fiq-rnu8nXs_maxresdefault.jpg"
 ---
 
 Confira a participação de Thiago Vinícius, nosso Diretor de Tecnologia.

@@ -4,7 +4,7 @@ date: 2023-11-17T00:24:39.870Z
 description: "Entrevista para a TV Pernambuco com Emmanuel e Alexandre.Transcrição[Música]  Você sabe o que é capacitismo? Uma forma  de exclusão social que pode atingir  pessoas com deficiência. Emmanuel Castro  possui nanismo. Por ser uma pessoa com  deficiência, ele lida diariamente com uma  série de desafios. Desde lidar com o  acesso a espaço sem  acessibilidade, até ser infantilizado.  Então, a questão é, eu falo na parte de  arquitetônica, no sentido de lazer, Museu  cinema, teatro. A gente pensa tem t"
 category: "Entrevistas"
 author: "Vale PCD"
-image: "/images/blog/maxresdefault.jpg"
+image: "/images/blog/youtube_hoF7OUONRzQ_maxresdefault.jpg"
 ---
 
 Entrevista para a TV Pernambuco com Emmanuel e Alexandre.

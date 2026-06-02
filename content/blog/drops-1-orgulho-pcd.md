@@ -4,7 +4,7 @@ date: 2022-07-29T21:35:27.175Z
 description: "Neste episódio especial, falamos sobre a importância de existir um mês para celebrar o orgulho PCDYoutube:Spotify:Transcrição: Jess: Sejam bem vindes a mais um \"piranhas cast\", o podcast das piranhas com deficiência! Eu sou a Jéssica Fontoura.Beto: Eu sou Beto Maia! Zé Felipe: Eu sou Zé Felipe!Jess: E hoje temos uma convidada mais que especial! E ela mesma vai se apresentar, vocês merecem conhecer essa pessoa maravilhosa. Seja bem vinda, Pri!Pri: Olá, gente! Obrigado Jess! O meu nome é Priscila,"
 category: "PiranhasCast"
 author: "Vale PCD"
-image: "/images/blog/maxresdefault.jpg"
+image: "/images/blog/youtube_0kIINBPm9n8_maxresdefault.jpg"
 ---
 
 Neste episódio especial, falamos sobre a importância de existir um mês para celebrar o orgulho PCD

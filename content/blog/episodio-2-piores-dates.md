@@ -4,7 +4,7 @@ date: 2022-08-05T22:22:45.562Z
 description: "Bora rir do caos, bora trocar e ouvir histórias de coisas engraçadas que aconteceram durante encontros. Youtube:Spotify:Transcrição:Jess: Olá sejam todos muito bem vindes a mais episódio do Piranhas cast o podcast das Piranhas com deficiência eu sou a Jéssica FontouraBeto: Eu sou o Beto Maia Zé Felipe: Eu sou o Zé Felipe Beto: E vamos passar vergonha! vamos se expor! Zé Felipe: eu não vou! Jess: eeeee! o episódio de hoje é sobre aquele tema que todo mundo já passou por momento “constrangedoressí"
 category: "PiranhasCast"
 author: "Vale PCD"
-image: "/images/blog/3872c8_2f5cd99f137641edbba10553a6a3efc0_mv2.png"
+image: "/images/blog/youtube_6ypyjG8jzRI_maxresdefault.jpg"
 ---
 
 Bora rir do caos, bora trocar e ouvir histórias de coisas engraçadas que aconteceram durante encontros.

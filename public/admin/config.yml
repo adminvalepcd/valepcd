@@ -3,6 +3,9 @@ backend:
   repo: adminvalepcd/valepcd
   branch: main # Altere para a branch principal de produção (ex: main ou master)
 
+local_backend: true
+
+
 media_folder: public/images/uploads
 public_folder: /images/uploads
 

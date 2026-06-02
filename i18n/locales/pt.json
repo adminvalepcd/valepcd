@@ -112,14 +112,43 @@
     "title1": "Fale ",
     "titleHighlight": "Conosco",
     "lead": "Quer levar acessibilidade e diversidade para sua empresa ou tirar alguma dúvida sobre nosso projeto? Preencha o formulário abaixo!",
-    "nameLabel": "Seu Nome (obrigatório)",
-    "namePlaceholder": "Como prefere ser chamado?",
-    "emailLabel": "Seu E-mail (obrigatório)",
+    "firstNameLabel": "Nome *",
+    "firstNamePlaceholder": "Seu primeiro nome",
+    "lastNameLabel": "Sobrenome *",
+    "lastNamePlaceholder": "Seu sobrenome",
+    "emailLabel": "E-mail *",
     "emailPlaceholder": "Exemplo: email{'@'}dominio.com",
-    "messageLabel": "Mensagem (obrigatório)",
-    "messagePlaceholder": "Como podemos ajudar você?",
-    "submitBtn": "Enviar Mensagem",
+    "phoneLabel": "Telefone",
+    "phonePlaceholder": "(00) 00000-0000",
+    "companyLabel": "Empresa",
+    "companyPlaceholder": "Nome da empresa (opcional)",
+    "jobTitleLabel": "Cargo",
+    "jobTitlePlaceholder": "Seu cargo (opcional)",
+    "subjectLabel": "Selecione um assunto *",
+    "subjectPlaceholder": "Selecione...",
+    "subjectOptions": {
+      "digital": "Acessibilidade Digital (Websites, Redes Sociais, Libras, Legendas)",
+      "events": "Acessibilidade em Eventos (Shows, Festivais, Congressos)",
+      "guides": "Cartilhas e Materiais",
+      "consulting": "Consultoria (Palestras, Cursos, Diversidade)",
+      "jobs": "Divulgação de Vagas de Emprego",
+      "discounts": "Lista de Desconto/Gratuidade em Eventos",
+      "map": "Mapa de Acessibilidade (Adicionar, Ajustar ou Remover Estabelecimento)",
+      "professional": "Profissional (Orienta Vale PCD)",
+      "health": "Saúde Mental (Psicoterapia)",
+      "privacy": "Remoção de Dados (LGPD)",
+      "other": "Outros Assuntos"
+    },
+    "messageLabel": "Mensagem *",
+    "messagePlaceholder": "Insira sua mensagem",
+    "termsCheckbox": "Concordo com os",
+    "termsLink": "termos e condições",
+    "and": "e",
+    "privacyLink": "Política de Privacidade",
+    "footnote": "Ao enviar o formulário, você aceita entrar na base de contatos da Vale PCD.",
+    "submitBtn": "Enviar mensagem",
     "successMsg": "Sua mensagem foi enviada com sucesso! Responderemos o mais breve possível.",
+    "emailFallback": "Se preferir, envie um e-mail para",
     "infoTitle": "Canais de Atendimento",
     "infoSubtitle": "Estamos prontos para construir um ecossistema mais acessível com você.",
     "emailGeneral": "E-mail Geral:",
@@ -139,6 +168,8 @@
     "searchPlaceholder": "Buscar por título ou conteúdo...",
     "noArticles": "Nenhum artigo encontrado para a busca realizada.",
     "clearFilters": "Limpar Filtros",
+    "prevPage": "Anterior",
+    "nextPage": "Próxima",
     "backToBlog": "Voltar para o Blog",
     "authorLabel": "Por",
     "publishedAt": "Publicado em",
@@ -146,19 +177,77 @@
     "notFoundDesc": "O artigo que você está procurando não existe ou foi movido."
   },
   "privacy": {
-    "badge": "Segurança",
+    "badge": "Termos e Diretrizes",
     "title1": "Política de ",
     "titleHighlight": "Privacidade",
     "title2": " e Cookies",
-    "updated": "Última atualização: Maio de 2026",
-    "p1": "O Vale PCD respeita a sua privacidade e se compromete a proteger os seus dados pessoais de acordo com a Lei Geral de Proteção de Dados (LGPD - Lei nº 13.709/2018).",
-    "heading1": "1. Informações que Coletamos",
-    "p2": "Coletamos apenas as informações estritamente necessárias fornecidas por você voluntariamente nos nossos formulários de contato ou boletins informativos, tais como nome, e-mail e a mensagem.",
-    "heading2": "2. Uso dos Dados",
-    "p3": "Utilizamos os seus dados pessoais exclusivamente para responder às suas mensagens de contato, analisar parcerias corporativas e enviar atualizações do blog caso você tenha se inscrito de forma livre e direta em nossa lista.",
-    "heading3": "3. Uso de Cookies",
-    "p4": "Nosso site utiliza cookies estritamente necessários e de preferência para memorizar, por exemplo, o seu controle de tamanho de fonte e a sua escolha de tema claro ou escuro por 24 horas. Não utilizamos cookies de rastreamento ou de anúncios de terceiros.",
-    "heading4": "4. Seus Direitos",
-    "p5": "Você pode a qualquer momento solicitar o acesso, retificação, limitação de uso ou exclusão definitiva dos seus dados pessoais entrando em contato conosco diretamente pelo formulário de contato ou pelo e-mail contato{'@'}valepcd.com.br."
+    "lastUpdated": "Novembro de 2023",
+    "introLead": "Na Vale PCD, respeitamos a sua privacidade e protegemos seus dados. Elaboramos este documento para explicar como tratamos e protegemos os Dados Pessoais, quais são seus direitos e como você pode exercê-los. Se tiver dúvidas, por favor, entre em contato pelos canais indicados no item 9 desta Política de Privacidade e Cookies.",
+    "indexTitle": "Navegue pelos tópicos:",
+    "topics": {
+      "t1": "1. Conceitos Básicos: O que você precisa saber para entender esta Política",
+      "t2": "2. Como a Vale PCD coleta Dados Pessoais",
+      "t3": "3. Quais dados são tratados e para quais finalidades",
+      "t4": "4. Com quem a Vale PCD compartilha dados",
+      "t5": "5. Quando a Vale PCD transfere dados para outros países",
+      "t6": "6. Quais são os direitos do titular de dados",
+      "t7": "7. Por quanto tempo os dados serão armazenados",
+      "t8": "8. Quais são as responsabilidades da Vale PCD e como os seus dados são protegidos",
+      "t9": "9. Como falar com a Vale PCD sobre seus dados",
+      "t10": "10. Como e quando esta Política pode ser alterada"
+    },
+    "item1": {
+      "title": "1. Conceitos Básicos: O que você precisa saber para entender esta Política",
+      "intro": "Você tem direito à privacidade e à proteção dos seus dados pessoais. Para ajudar nisso, apresentamos alguns conceitos essenciais:",
+      "legalBasesTerm": "Bases Legais",
+      "legalBasesDesc": "São as razões legais que autorizam o tratamento de Dados Pessoais, como consentimento, cumprimento de contrato ou obrigação legal.",
+      "cookiesTerm": "Cookies",
+      "cookiesDesc": "Pequenos arquivos que ajudam a entender como você interage com as plataformas da Vale PCD, tornando a experiência mais eficiente.",
+      "analyticsTerm": "Dados de Analytics",
+      "analyticsDesc": "Informações sobre o uso dos sites e aplicativos para compreender o comportamento dos usuários.",
+      "deviceTerm": "Dados do Dispositivo de Acesso",
+      "deviceDesc": "Informações coletadas por cookies ou tecnologias similares, como IP, data e hora de acesso, localização, tipo de navegador.",
+      "personalTerm": "Dado Pessoal",
+      "personalDesc": "Informação que identifica uma pessoa, como nome, RG, CPF, telefone ou e-mail.",
+      "platformsTerm": "Plataformas",
+      "platformsDesc": "Aplicativos, sites e plataformas da Vale PCD."
+    },
+    "item2": {
+      "title": "2. Como a Vale PCD coleta Dados Pessoais",
+      "desc": "Seus dados são coletados ao interagir conosco, como preenchimento de formulários, contato, compras, participação em eventos ou uso de nossos serviços. Também coletamos dados por meio de cookies, essenciais para funcionalidades do site."
+    },
+    "item3": {
+      "title": "3. Quais dados são tratados e para quais finalidades",
+      "desc": "Tratamos dados como nome, e-mail, CPF, dados de navegação, dados de pagamento, entre outros. As finalidades incluem acesso às plataformas, analytics, marketing, entre outros, sempre com bases legais adequadas."
+    },
+    "item4": {
+      "title": "4. Com quem a Vale PCD compartilha os seus dados",
+      "desc": "Não compartilhamos seus dados com nenhuma empresa ou parceiros da Vale PCD, sempre respeitando as bases legais e garantindo a proteção dos seus dados."
+    },
+    "item5": {
+      "title": "5. Quando a Vale PCD transfere dados para outros países",
+      "desc": "Podemos transferir dados para outros países com proteção adequada, sempre em conformidade com a legislação de proteção de dados."
+    },
+    "item6": {
+      "title": "6. Quais são os direitos do titular de dados",
+      "desc": "Você tem direito de confirmar, acessar, retificar, excluir, opor, solicitar anonimização, bloqueio, eliminação, portabilidade, retirar consentimento e obter informações sobre o uso compartilhado de dados - realize sua solicitação através da página de"
+    },
+    "item7": {
+      "title": "7. Por quanto tempo os dados serão armazenados",
+      "desc": "Os dados são mantidos pelo tempo necessário para cumprir as finalidades, inclusive obrigações legais."
+    },
+    "item8": {
+      "title": "8. Quais são as responsabilidades da Vale PCD e como os seus dados são protegidos",
+      "desc": "Implementamos medidas técnicas e organizacionais para proteger seus dados contra incidentes de segurança. Apesar disso, não podemos garantir total segurança devido a fatores externos."
+    },
+    "item9": {
+      "title": "9. Como falar com a Vale PCD sobre seus Dados",
+      "desc": "Se tiver dúvidas, entre em contato através de nossa página de"
+    },
+    "item10": {
+      "title": "10. Como e quando esta Política pode ser alterada",
+      "desc": "Esta Política pode passar por atualizações. Alterações relevantes serão informadas."
+    },
+    "signature": "Vale PCD, novembro de 2023."
   }
 }
