@@ -1,5 +1,6 @@
 <template>
   <div class="blog-page container">
+    <AppSeo :title="$t('seo.blog.title')" :description="$t('seo.blog.description')" />
     <section class="section" aria-labelledby="blog-title">
       <span class="badge">{{ $t('blog.badge') }}</span>
       <h1 id="blog-title" class="title">
@@ -120,11 +121,6 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 const { t, locale } = useI18n()
 const localePath = useLocalePath()
-
-useSeoMeta({
-  title: () => `${t('blog.title1')}${t('blog.titleHighlight')} | Vale PCD`,
-  description: () => t('blog.lead')
-})
 
 // Fetch posts dynamically using Nuxt data fetching
 const { data: posts } = await useFetch('/api/posts', {

@@ -23,3 +23,15 @@ collections:
       - { label: "Categoria", name: "category", widget: "select", options: ["Acessibilidade", "LGBTQI+", "Empresas", "Comunidade", "Eventos", "Outros"] }
       - { label: "Autor", name: "author", widget: "string", default: "Vale PCD" }
       - { label: "Corpo do Artigo", name: "body", widget: "markdown" }
+
+  - name: "institucional"
+    label: "Institucional (Atas e Documentos)"
+    folder: "content/institucional"
+    create: true
+    slug: "{{year}}-{{month}}-{{day}}-{{slug}}"
+    fields:
+      - { label: "Título", name: "title", widget: "string" }
+      - { label: "Data de Publicação", name: "date", widget: "datetime" }
+      - { label: "Descrição/Resumo", name: "description", widget: "text" }
+      - { label: "Arquivo PDF (Opcional)", name: "file", widget: "file", required: false }
+      - { label: "Corpo do Documento", name: "body", widget: "markdown" }

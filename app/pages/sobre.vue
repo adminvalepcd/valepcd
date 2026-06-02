@@ -1,5 +1,6 @@
 <template>
   <div class="sobre-page container">
+    <AppSeo :title="$t('seo.about.title')" :description="$t('seo.about.description')" />
     <section class="section history-section" aria-labelledby="sobre-title">
       <span class="badge">{{ $t('about.badgeHistory') }}</span>
       <h1 id="sobre-title" class="title">
@@ -73,11 +74,6 @@
       import { computed } from 'vue'
 
       const { t, locale } = useI18n()
-
-      useSeoMeta({
-        title: () => `${t('about.badgeHistory')} | Vale PCD`,
-        description: () => t('about.missionDesc')
-      })
 
       const team = computed(() => [
         {

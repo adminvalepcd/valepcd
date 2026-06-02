@@ -1,5 +1,11 @@
 <template>
   <div class="post-detail-page container">
+    <AppSeo
+      :title="post ? `${post.title} | Blog Vale PCD` : `${$t('blog.notFoundTitle')} | Vale PCD`"
+      :description="post ? post.description : $t('blog.lead')"
+      :image="post ? post.image : undefined"
+      type="article"
+    />
     <article v-if="post" class="post-article" aria-labelledby="post-title">
       <!-- Back to blog -->
       <NuxtLink :to="localePath('/blog')" class="back-link">
@@ -174,14 +180,7 @@ const parsedHtmlContent = computed(() => {
   return post.value ? parseMarkdownToHtml(post.value.content) : '';
 })
 
-// Dynamic SEO Metadados
-useSeoMeta({
-  title: () => post.value ? `${post.value.title} | Blog Vale PCD` : `${t('blog.notFoundTitle')} | Vale PCD`,
-  ogTitle: () => post.value ? `${post.value.title} | Blog Vale PCD` : t('blog.notFoundTitle'),
-  description: () => post.value ? post.value.description : t('blog.lead'),
-  ogDescription: () => post.value ? post.value.description : t('blog.lead'),
-  ogImage: () => post.value ? post.value.image : undefined
-})
+// Dynamic SEO Metadados handled by AppSeo component in template
 
 const formatDate = (dateStr) => {
   const localeMap = {

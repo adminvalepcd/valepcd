@@ -5,6 +5,7 @@
     "services": "Servicios",
     "blog": "Blog",
     "contact": "Contacto",
+    "institutional": "Institucional",
     "cms": "Panel CMS",
     "toggleContrast": "Alternar Alto Contraste",
     "fontSizeUp": "Aumentar Fuente",
@@ -249,5 +250,46 @@
       "desc": "Esta Política puede sufrir actualizaciones. Las modificaciones relevantes serán comunicadas."
     },
     "signature": "Vale PCD, noviembre de 2023."
+  },
+  "institutional": {
+    "badge": "Documentos",
+    "title": "Institucional",
+    "titleHighlight": "Vale PCD",
+    "lead": "Acceda a las actas de reuniones, informes de transparencia, estatuto social y otros documentos oficiales de la Asociación Vale PCD.",
+    "noDocuments": "No se encontraron documentos o actas.",
+    "readDocument": "Visualizar documento completo",
+    "downloadPdf": "Descargar PDF Oficial",
+    "dateLabel": "Publicado el",
+    "downloadPdfContext": "referente a: {title}"
+  },
+  "seo": {
+    "home": {
+      "title": "Vale PCD | Accesibilidad para Empresas y Comunidad",
+      "description": "Conozca el Vale PCD: El proyecto más grande de Brasil sobre visibilidad y accesibilidad para personas con discapacidad de la comunidad LGBTQI+."
+    },
+    "about": {
+      "title": "Quiénes Somos | Vale PCD",
+      "description": "Conozca más sobre cómo estamos cambiando la realidad de las personas con discapacidad."
+    },
+    "services": {
+      "title": "Vale PCD | Inclusión PCD en Empresas",
+      "description": "Maximice el potencial de su empresa con nuestros servicios especializados: consultoría, conferencias, contratación personalizada, círculos de debate y talleres estratégicos."
+    },
+    "blog": {
+      "title": "Blog | Vale PCD",
+      "description": "Conozca y aprenda sobre estudios de discapacidad y debates anticapacitistas en el blog de Vale PCD."
+    },
+    "contact": {
+      "title": "Contacto | Vale PCD",
+      "description": "Envíenos un mensaje a través de nuestro formulario de contacto o envíe un correo electrónico a contato{'@'}valepcd.com.br."
+    },
+    "privacy": {
+      "title": "Política de Privacidad | Vale PCD",
+      "description": "Conozca cómo la ONG Vale PCD recopila, protege y utiliza sus datos personales en conformidad con la LGPD."
+    },
+    "institutional": {
+      "title": "Institucional y Actas de Reunión | Vale PCD",
+      "description": "Acceda a las actas de reuniones, informes de transparencia, estatuto social y otros documentos oficiales de la Asociación Vale PCD."
+    }
   }
 }

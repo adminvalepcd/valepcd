@@ -1,5 +1,6 @@
 <template>
   <div class="home-page">
+    <AppSeo :title="$t('seo.home.title')" :description="$t('seo.home.description')" />
     <!-- Hero Section -->
     <section class="hero-section flex-center" aria-labelledby="hero-title">
       <div class="container hero-container">
@@ -100,11 +101,6 @@
 <script setup>
 const { t } = useI18n()
 const localePath = useLocalePath()
-
-useSeoMeta({
-  title: () => `${t('home.heroTitle1')}${t('home.heroTitleHighlight1')}${t('home.heroTitle2')}${t('home.heroTitleHighlight2')} | Vale PCD`,
-  description: () => t('home.heroLead')
-})
 </script>
 
 <style scoped>

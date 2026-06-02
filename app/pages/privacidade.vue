@@ -1,5 +1,6 @@
 <template>
   <div class="privacy-page container">
+    <AppSeo :title="$t('seo.privacy.title')" :description="$t('seo.privacy.description')" />
     <section class="section privacy-section" :aria-labelledby="'privacy-title-' + locale">
       <span class="badge">{{ $t('privacy.badge') }}</span>
       <h1 :id="'privacy-title-' + locale" class="title">
@@ -114,27 +115,6 @@
 <script setup>
 const { locale } = useI18n()
 const localePath = useLocalePath()
-
-// Dynamic SEO Meta Tags based on locale
-const seoMap = {
-  pt: {
-    title: 'Política de Privacidade e Cookies | Vale PCD',
-    description: 'Conheça como a ONG Vale PCD coleta, protege e utiliza seus dados pessoais em conformidade com a LGPD.'
-  },
-  en: {
-    title: 'Privacy and Cookies Policy | Vale PCD',
-    description: 'Learn how the NGO Vale PCD collects, protects, and uses your personal data in compliance with LGPD.'
-  },
-  es: {
-    title: 'Política de Privacidad y Cookies | Vale PCD',
-    description: 'Conozca cómo la ONG Vale PCD recopila, protege y utiliza sus datos personales en conformidad con la LGPD.'
-  }
-}
-
-useSeoMeta({
-  title: () => seoMap[locale.value]?.title || seoMap.pt.title,
-  description: () => seoMap[locale.value]?.description || seoMap.pt.description
-})
 </script>
 
 <style scoped>

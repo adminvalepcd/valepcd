@@ -1,5 +1,6 @@
 <template>
   <div class="contato-page container">
+    <AppSeo :title="$t('seo.contact.title')" :description="$t('seo.contact.description')" />
     <section class="section" aria-labelledby="contact-title">
       <span class="badge">{{ $t('contact.badge') }}</span>
       <h1 id="contact-title" class="title">
@@ -197,11 +198,6 @@ import { ref } from 'vue'
 
 const { t } = useI18n()
 const localePath = useLocalePath()
-
-useSeoMeta({
-  title: () => `${t('contact.title1')}${t('contact.titleHighlight')} | Vale PCD`,
-  description: () => t('contact.lead')
-})
 
 const form = ref({
   firstName: '',

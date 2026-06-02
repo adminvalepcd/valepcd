@@ -26,6 +26,9 @@
             <NuxtLink :to="localePath('/blog')" class="nav-link" active-class="active">{{ $t('nav.blog') }}</NuxtLink>
           </li>
           <li>
+            <NuxtLink :to="localePath('/institucional')" class="nav-link" active-class="active">{{ $t('nav.institutional') }}</NuxtLink>
+          </li>
+          <li>
             <NuxtLink :to="localePath('/contato')" class="nav-link" active-class="active">{{ $t('nav.contact') }}</NuxtLink>
           </li>
         </ul>
@@ -105,6 +108,10 @@
           </li>
           <li>
             <NuxtLink :to="localePath('/blog')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.blog') }}
+            </NuxtLink>
+          </li>
+          <li>
+            <NuxtLink :to="localePath('/institucional')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.institutional') }}
             </NuxtLink>
           </li>
           <li>

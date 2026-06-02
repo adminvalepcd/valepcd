@@ -1,5 +1,6 @@
 <template>
   <div class="servicos-page container">
+    <AppSeo :title="$t('seo.services.title')" :description="$t('seo.services.description')" />
     <section class="section header-section" aria-labelledby="services-page-title">
       <span class="badge">{{ $t('services.badgeWhat') }}</span>
       <h1 id="services-page-title" class="title">
@@ -166,11 +167,6 @@ import { ref, computed } from 'vue'
 
 const { t, locale } = useI18n()
 const localePath = useLocalePath()
-
-useSeoMeta({
-  title: () => `${t('services.title')}${t('services.titleHighlight')} | Vale PCD`,
-  description: () => t('services.lead')
-})
 
 const activeTab = ref('empresas')
 const selectedYear = ref('Todos')

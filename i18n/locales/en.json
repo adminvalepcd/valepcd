@@ -5,6 +5,7 @@
     "services": "Services",
     "blog": "Blog",
     "contact": "Contact",
+    "institutional": "Institutional",
     "cms": "CMS Panel",
     "toggleContrast": "Toggle High Contrast",
     "fontSizeUp": "Increase Font Size",
@@ -249,5 +250,46 @@
       "desc": "This Policy may undergo updates. Relevant changes will be communicated."
     },
     "signature": "Vale PCD, November 2023."
+  },
+  "institutional": {
+    "badge": "Documents",
+    "title": "Institutional",
+    "titleHighlight": "Vale PCD",
+    "lead": "Access meeting minutes, transparency reports, bylaws, and other official documents of the Vale PCD Association.",
+    "noDocuments": "No documents or minutes found.",
+    "readDocument": "View full document",
+    "downloadPdf": "Download Official PDF",
+    "dateLabel": "Published on",
+    "downloadPdfContext": "related to: {title}"
+  },
+  "seo": {
+    "home": {
+      "title": "Vale PCD | Accessibility for Businesses and Community",
+      "description": "Discover Vale PCD: Brazil's largest project dedicated to visibility, pride, and accessibility for people with disabilities within the LGBTQI+ community."
+    },
+    "about": {
+      "title": "Who We Are | Vale PCD",
+      "description": "Learn more about how we are changing the reality of people with disabilities."
+    },
+    "services": {
+      "title": "Vale PCD | D&I Inclusion for Businesses",
+      "description": "Maximize your company's potential with our specialized D&I services: consulting, lectures, custom staffing, discussion circles, and strategic workshops."
+    },
+    "blog": {
+      "title": "Blog | Vale PCD",
+      "description": "Read and learn about disability studies and LGBTQI+ anti-ableism debates on the Vale PCD blog."
+    },
+    "contact": {
+      "title": "Contact Us | Vale PCD",
+      "description": "Send us a message through our contact form or drop us an email at contato{'@'}valepcd.com.br."
+    },
+    "privacy": {
+      "title": "Privacy Policy | Vale PCD",
+      "description": "Learn how the NGO Vale PCD collects, protects, and uses your personal data in compliance with GDPR/LGPD."
+    },
+    "institutional": {
+      "title": "Institutional & Meeting Minutes | Vale PCD",
+      "description": "Access meeting minutes, transparency reports, bylaws, and other official documents of the Vale PCD Association."
+    }
   }
 }
