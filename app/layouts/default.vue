@@ -1,7 +1,7 @@
 <template>
   <div class="app-layout">
     <!-- Atalho de teclado invisível para pular para o conteúdo direto (Acessibilidade) -->
-    <a href="#main-content" class="skip-to-content">Pular para o conteúdo principal</a>
+    <a href="#main-content" class="skip-to-content btn btn-secondary">Pular para o conteúdo principal</a>
 
     <!-- Header Acessível -->
     <AppHeader />
@@ -42,17 +42,12 @@
 
 .skip-to-content:focus {
   position: fixed;
-  top: 90px;
+  top: 16px;
   left: 20px;
   width: auto;
   height: auto;
-  padding: 10px 20px;
-  background-color: var(--accent);
-  color: black;
-  font-weight: bold;
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
   z-index: 999999;
-  outline: none;
+  background-color: var(--surface); /* Fundo opaco para não sobrepor com o texto do header */
+  box-shadow: var(--shadow-md);
 }
 </style>

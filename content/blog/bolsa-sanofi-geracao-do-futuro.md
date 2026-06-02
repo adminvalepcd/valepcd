@@ -34,5 +34,3 @@ BORA SE INSCREVER, MEU POVO!
 Confira os cursos e critérios de elegibilidade no link:
 
 [https://geracaodofuturosanofi.across.jobs/](https://geracaodofuturosanofi.across.jobs/)
-
-[#sanofi](https://www.valepcd.com.br/blog/hashtags/sanofi) [#bolsasanofi](https://www.valepcd.com.br/blog/hashtags/bolsasanofi) [#lgbt](https://www.valepcd.com.br/blog/hashtags/lgbt) [#pcd](https://www.valepcd.com.br/blog/hashtags/pcd) [#pcdlgbt](https://www.valepcd.com.br/blog/hashtags/pcdlgbt) [#across](https://www.valepcd.com.br/blog/hashtags/across) [#valepcd](https://www.valepcd.com.br/blog/hashtags/valepcd) [#carreira](https://www.valepcd.com.br/blog/hashtags/carreira) [#educacao](https://www.valepcd.com.br/blog/hashtags/educacao) [#oportunidade](https://www.valepcd.com.br/blog/hashtags/oportunidade)
