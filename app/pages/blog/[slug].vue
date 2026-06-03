@@ -27,7 +27,7 @@
       <!-- Cover Image -->
       <div class="post-cover-wrapper">
         <img 
-          :src="post.image || 'https://static.wixstatic.com/media/acd625_9e14ee4333ac4944b72c0ada48128725~mv2.jpg'" 
+          :src="post.image || '/images/logo vale pcd seo.png'" 
           :alt="post.title"
           class="post-cover-image"
         />

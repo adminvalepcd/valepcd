@@ -22,6 +22,7 @@
           <li><NuxtLink :to="localePath('/')" class="footer-link">{{ $t('nav.home') }}</NuxtLink></li>
           <li><NuxtLink :to="localePath('/sobre')" class="footer-link">{{ $t('nav.about') }}</NuxtLink></li>
           <li><NuxtLink :to="localePath('/servicos')" class="footer-link">{{ $t('nav.services') }}</NuxtLink></li>
+          <li><NuxtLink :to="localePath('/psicoterapia')" class="footer-link">{{ $t('nav.psychotherapy') }}</NuxtLink></li>
           <li><NuxtLink :to="localePath('/blog')" class="footer-link">{{ $t('nav.blog') }}</NuxtLink></li>
           <li><NuxtLink :to="localePath('/institucional')" class="footer-link">{{ $t('nav.institutional') }}</NuxtLink></li>
           <li><NuxtLink :to="localePath('/contato')" class="footer-link">{{ $t('nav.contact') }}</NuxtLink></li>

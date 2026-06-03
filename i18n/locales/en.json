@@ -6,6 +6,7 @@
     "blog": "Blog",
     "contact": "Contact",
     "institutional": "Institutional",
+    "psychotherapy": "Psychotherapy",
     "cms": "CMS Panel",
     "toggleContrast": "Toggle High Contrast",
     "fontSizeUp": "Increase Font Size",
@@ -290,6 +291,38 @@
     "institutional": {
       "title": "Institutional & Meeting Minutes | Vale PCD",
       "description": "Access meeting minutes, transparency reports, bylaws, and other official documents of the Vale PCD Association."
+    },
+    "psychotherapy": {
+      "title": "Accessible Psychotherapy | Vale PCD",
+      "description": "Affordable online psychotherapy project for people with disabilities (PCD) and/or LGBTI+. Care, welcoming, and accessibility."
     }
+  },
+  "psychotherapy": {
+    "badge": "Psychotherapy Project",
+    "title": "Vale PCD Psychotherapy: ",
+    "titleHighlight": "Care, Welcoming, and Accessibility",
+    "p1_start": "Caring for mental health is an act of resistance, especially when we are part of communities that face daily barriers. Knowing this, our NGO created ",
+    "p1_bold": "Vale PCD Psychotherapy",
+    "p1_end": ", a project designed to offer a safe, accessible, and high-quality space for the PCD and/or LGBTI+ population.",
+    "p2": "Our mission is to democratize access to psychotherapy, ensuring that our experiences and intersectionalities are respected, understood, and welcomed without judgment.",
+    "historyTitle": "Our History in Numbers",
+    "historyLead": "Since our birth in 2021, the project has been transforming realities and building bridges for emotional well-being. The impact of our work is reflected in the results:",
+    "stat1Number": "+1,000",
+    "stat1Label": "people registered and welcomed by the project.",
+    "stat2Number": "+8,000",
+    "stat2Label": "psychological consultations completed.",
+    "stat3Number": "5 years",
+    "stat3Label": "of continuous dedication to the mental health of our communities.",
+    "teamBadge": "Who Makes It Happen?",
+    "teamTitle": "Psychotherapy Team",
+    "teamLead": "Vale PCD Psychotherapy is coordinated and executed by a team of 6 highly qualified, diverse individuals aligned with our causes.",
+    "teamDesc": "More than psychology professionals, we are a team that understands firsthand and theoretically the complexities, challenges, and beauty of being PCD and LGBTI+. This representation ensures humanized, empathetic care with a real focus on the specific demands of our community.",
+    "howTitle": "How It Works",
+    "howDesc": "The project offers more affordable psychotherapy sessions, ensuring there are no barriers to self-care and psychological treatment.",
+    "howHighlight": "Mental health is not a luxury, it is a right. If you are PCD and/or LGBTI+ and are looking for a therapeutic process that truly sees you as a whole, you are in the right place.",
+    "ctaTitle": "Want to be part of this change?",
+    "ctaDesc": "Whether as a patient or a supporter, your place is here with us.",
+    "btnRegister": "I want to sign up for the project",
+    "btnDonate": "Be a supporter/Donate"
   }
 }

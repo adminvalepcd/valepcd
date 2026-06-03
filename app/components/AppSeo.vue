@@ -11,7 +11,7 @@ const props = defineProps({
   image: {
     type: String,
     required: false,
-    default: 'https://static.wixstatic.com/media/acd625_9e14ee4333ac4944b72c0ada48128725~mv2.jpg' // Premium fallback default image
+    default: '/images/logo vale pcd seo.png' // Premium fallback default image
   },
   type: {
     type: String,

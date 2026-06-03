@@ -6,6 +6,7 @@
     "blog": "Blog",
     "contact": "Contato",
     "institutional": "Institucional",
+    "psychotherapy": "Psicoterapia",
     "cms": "Painel CMS",
     "toggleContrast": "Alternar Alto Contraste",
     "fontSizeUp": "Aumentar Fonte",
@@ -290,6 +291,38 @@
     "institutional": {
       "title": "Institucional | Vale PCD",
       "description": "Acesse as atas de reuniões ordinárias, relatórios de transparência, estatuto social e outros documentos oficiais da Associação Vale PCD."
+    },
+    "psychotherapy": {
+      "title": "Psicoterapia Acessível | Vale PCD",
+      "description": "Projeto de psicoterapia online acessível para pessoas com deficiência (PCD) e/ou LGBTI+. Cuidado, acolhimento e acessibilidade."
     }
+  },
+  "psychotherapy": {
+    "badge": "Projeto Psicoterapia",
+    "title": "Psicoterapia Vale PCD: ",
+    "titleHighlight": "Cuidado, Acolhimento e Acessibilidade",
+    "p1_start": "Cuidar da saúde mental é um ato de resistência, especialmente quando fazemos parte de comunidades que enfrentam barreiras diárias. Sabendo disso, a nossa ONG criou o ",
+    "p1_bold": "Psicoterapia Vale PCD",
+    "p1_end": ", um projeto desenhado para oferecer um espaço seguro, acessível e de alta qualidade para a população PCD e/ou LGBTI+.",
+    "p2": "Nossa missão é democratizar o acesso à psicoterapia, garantindo que nossas vivências e interseccionalidades sejam respeitadas, compreendidas e acolhidas sem julgamentos.",
+    "historyTitle": "Nossa História em Números",
+    "historyLead": "Desde o nosso nascimento, em 2021, o projeto vem transformando realidades e construindo pontes para o bem-estar emocional. O impacto do nosso trabalho se reflete nos resultados:",
+    "stat1Number": "+1.000",
+    "stat1Label": "pessoas inscritas e acolhidas pelo projeto.",
+    "stat2Number": "+8.000",
+    "stat2Label": "atendimentos psicológicos realizados.",
+    "stat3Number": "5 anos",
+    "stat3Label": "de dedicação contínua à saúde mental das nossas comunidades.",
+    "teamBadge": "Quem Faz Acontecer?",
+    "teamTitle": "Equipe de Psicoterapia",
+    "teamLead": "O Psicoterapia Vale PCD é coordenado e executado por uma equipe de 6 pessoas altamente capacitadas, diversas e alinhadas com as nossas causas.",
+    "teamDesc": "Mais do que profissionais da psicologia, somos um time que entende na pele e na teoria as complexidades, os desafios e as belezas de ser PCD e LGBTI+. Essa representatividade garante um atendimento humanizado, empático e com foco real nas demandas específicas da nossa comunidade.",
+    "howTitle": "Como Funciona?",
+    "howDesc": "O projeto oferece sessões de psicoterapia mais acessíveis, permitindo que não haja impedimentos para o autocuidado e o tratamento psicológico.",
+    "howHighlight": "Saúde mental não é luxo, é um direito. Se você é PCD e/ou LGBTI+ e busca um processo terapêutico que realmente te enxergue por inteiro, você está no lugar certo.",
+    "ctaTitle": "Quer fazer parte dessa mudança?",
+    "ctaDesc": "Seja como paciente ou apoiador, o seu lugar é aqui conosco.",
+    "btnRegister": "Quero me inscrever no projeto",
+    "btnDonate": "Seja um apoiador/Doar"
   }
 }

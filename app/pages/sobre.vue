@@ -79,24 +79,29 @@
         {
           name: 'Priscila Siqueira',
           role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundadora & Directora' : 'Co-idealizadora & Diretora'),
-          image: 'https://static.wixstatic.com/media/acd625_94ca0b765630455488fe4e7c377bb1ac~mv2.jpeg/v1/crop/x_51,y_84,w_922,h_922/fill/w_200,h_200,al_c,q_80,usm_0.66_1.00_0.01/WhatsApp%20Image%202022-09-22%20at%2009_08_50%20(1).jpeg'
+          image: '/images/sobre/priscila.jpeg'
         },
-  {
-    name: 'Alexsandro Sousa',
-    role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundador & Director' : 'Co-idealizador & Diretor'),
-    image: 'https://static.wixstatic.com/media/acd625_e33e0b315b3a449aa072037cb98aeda1~mv2.jpeg/v1/crop/x_43,y_279,w_857,h_857/fill/w_200,h_200,al_c,q_80,usm_0.66_1.00_0.01/WhatsApp%20Image%202022-09-26%20at%2013_33_14.jpeg'
-  },
-  {
-    name: 'Beto Maia',
-    role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundador & Director' : 'Co-idealizador & Diretor'),
-    image: 'https://static.wixstatic.com/media/acd625_0e753b340d274702a062918b66a8305f~mv2.jpeg/v1/crop/x_48,y_530,w_605,h_604/fill/w_200,h_200,al_c,q_80,usm_0.66_1.00_0.01/WhatsApp%20Image%202022-08-29%20at%2014_23_40.jpeg'
-  },
-  {
-    name: 'Jonas Marssaro',
-    role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundador & Director' : 'Co-idealizador & Diretor'),
-    image: 'https://static.wixstatic.com/media/acd625_79ce0c1d8c7547deb58e28e14906ebcf~mv2.jpeg/v1/crop/x_0,y_163,w_970,h_970/fill/w_200,h_200,al_c,q_80,usm_0.66_1.00_0.01/WhatsApp%20Image%202022-10-06%20at%2022_01_25.jpeg'
-  }
-])
+        {
+          name: 'Alexsandro Sousa',
+          role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundador & Director' : 'Co-idealizador & Diretor'),
+          image: '/images/sobre/alexsandro.jpeg'
+        },
+        {
+          name: 'Beto Maia',
+          role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundador & Director' : 'Co-idealizador & Diretor'),
+          image: '/images/sobre/beto.jpeg'
+        },
+        {
+          name: 'Jonas Marssaro',
+          role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundador & Director' : 'Co-idealizador & Diretor'),
+          image: '/images/sobre/jonas.jpeg'
+        },
+        {
+          name: 'Thomas Nader',
+          role: locale.value === 'en' ? 'Executive Director' : (locale.value === 'es' ? 'Director Ejecutivo' : 'Diretor Executivo'),
+          image: '/images/sobre/thomas.jpg'
+        }
+      ])
 </script>
 
 <style scoped>

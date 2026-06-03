@@ -23,6 +23,9 @@
             <NuxtLink :to="localePath('/servicos')" class="nav-link" active-class="active">{{ $t('nav.services') }}</NuxtLink>
           </li>
           <li>
+            <NuxtLink :to="localePath('/psicoterapia')" class="nav-link" active-class="active">{{ $t('nav.psychotherapy') }}</NuxtLink>
+          </li>
+          <li>
             <NuxtLink :to="localePath('/blog')" class="nav-link" active-class="active">{{ $t('nav.blog') }}</NuxtLink>
           </li>
           <li>
@@ -103,12 +106,13 @@
             </NuxtLink>
           </li>
           <li>
-            <NuxtLink :to="localePath('/servicos')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.services')
-              }}</NuxtLink>
+            <NuxtLink :to="localePath('/servicos')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.services') }}</NuxtLink>
           </li>
           <li>
-            <NuxtLink :to="localePath('/blog')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.blog') }}
-            </NuxtLink>
+            <NuxtLink :to="localePath('/psicoterapia')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.psychotherapy') }}</NuxtLink>
+          </li>
+          <li>
+            <NuxtLink :to="localePath('/blog')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.blog') }}</NuxtLink>
           </li>
           <li>
             <NuxtLink :to="localePath('/institucional')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.institutional') }}

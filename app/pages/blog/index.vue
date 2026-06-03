@@ -47,7 +47,7 @@
           <!-- Capa -->
           <div class="card-image-wrapper">
             <img 
-              :src="post.image || 'https://static.wixstatic.com/media/acd625_9e14ee4333ac4944b72c0ada48128725~mv2.jpg'" 
+              :src="post.image || '/images/logo vale pcd seo.png'" 
               alt=""
               class="post-image"
               aria-hidden="true"
