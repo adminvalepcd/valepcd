@@ -13,6 +13,9 @@
     
     <!-- Rodapé -->
     <AppFooter />
+
+    <!-- VLibras Widget de Acessibilidade -->
+    <AppVLibras />
   </div>
 </template>
 
