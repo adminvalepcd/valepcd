@@ -8,13 +8,10 @@ const getPostRoutes = () => {
     if (fs.existsSync(postsPath)) {
       const posts = JSON.parse(fs.readFileSync(postsPath, 'utf-8'))
       const routes = posts.map(post => `/blog/${post.slug}`)
-      console.log('--- SITEMAP ROUTES GENERATED ---', routes.length + 1)
       return ['/blog', ...routes]
     }
   } catch (e) {
-    console.error('Failed to read posts for sitemap:', e)
   }
-  console.log('--- SITEMAP ROUTES GENERATED --- fallback 1')
   return ['/blog']
 }
 
