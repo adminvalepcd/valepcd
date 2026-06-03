@@ -1,4 +1,6 @@
 <script setup>
+import { computed } from 'vue'
+
 const props = defineProps({
   title: {
     type: String,
@@ -25,18 +27,33 @@ const props = defineProps({
   }
 })
 
+const route = useRoute()
+
+// Resolve absolute URLs for crawlers (e.g. WhatsApp, Facebook, LinkedIn)
+const absoluteImageUrl = computed(() => {
+  const img = props.image
+  if (img && img.startsWith('/')) {
+    return `https://www.valepcd.com.br${img}`
+  }
+  return img
+})
+
+const absolutePageUrl = computed(() => {
+  return props.url || `https://www.valepcd.com.br${route.path}`
+})
+
 useSeoMeta({
   title: () => props.title,
   ogTitle: () => props.title,
   description: () => props.description,
   ogDescription: () => props.description,
-  ogImage: () => props.image,
+  ogImage: () => absoluteImageUrl.value,
   ogType: () => props.type,
-  ogUrl: () => props.url || undefined,
+  ogUrl: () => absolutePageUrl.value,
   twitterCard: 'summary_large_image',
   twitterTitle: () => props.title,
   twitterDescription: () => props.description,
-  twitterImage: () => props.image
+  twitterImage: () => absoluteImageUrl.value
 })
 </script>
 
