@@ -323,6 +323,32 @@
     "ctaTitle": "¿Quieres formar parte de este cambio?",
     "ctaDesc": "Ya sea como paciente o colaborador, tu lugar está aquí con nosotros.",
     "btnRegister": "Quiero inscribirme en el proyecto",
-    "btnDonate": "Sé un colaborador/Donar"
+    "btnDonate": "Sé un colaborador/Donar",
+    "teamMembers": {
+      "camila": {
+        "role": "Psicóloga y Neuropsicóloga",
+        "bio": "Recifense, psicóloga y neuropsicóloga. Curiosa por naturaleza, apasionada por viajar, fan de Lana Del Rey y tutora de 12 gatitos."
+      },
+      "wendy": {
+        "role": "Psicóloga Clínica",
+        "bio": "31 años, mujer LGBTI+ PcD y nordestina, autista y AHSD con hiperenfoque en psicología y animales, izquierdista radical y laureada en moda."
+      },
+      "deyvison": {
+        "role": "Psicólogo Neurodivergente",
+        "bio": "28 años, psicólogo neurodivergente, amante de las caminatas, la música y la lectura."
+      },
+      "lucas": {
+        "role": "Psicólogo Clínico",
+        "bio": "29 años, LGBTI+, psicólogo apasionado por las personas. ¿Pizza, libros y ganchillo? ¡Me apunto!"
+      },
+      "jackson": {
+        "role": "Psicólogo Clínico",
+        "bio": "Psicólogo apasionado por el comportamiento humano, amante de los videojuegos, principiante en el ganchillo, series y buenas conversaciones. Entre sesiones: ciencia, humanización y muchos spoilers (sin contexto)."
+      },
+      "benoit": {
+        "role": "Psicólogo Clínico",
+        "bio": "30 años, LGBTQIA+, PCD (persona con discapacidad), amo a mis mascotas, las artes, los libros y la naturaleza."
+      }
+    }
   }
 }

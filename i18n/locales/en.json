@@ -323,6 +323,32 @@
     "ctaTitle": "Want to be part of this change?",
     "ctaDesc": "Whether as a patient or a supporter, your place is here with us.",
     "btnRegister": "I want to sign up for the project",
-    "btnDonate": "Be a supporter/Donate"
+    "btnDonate": "Be a supporter/Donate",
+    "teamMembers": {
+      "camila": {
+        "role": "Psychologist & Neuropsychologist",
+        "bio": "Born in Recife, psychologist and neuropsychologist. Curious by nature, passionate about travel, fan of Lana Del Rey and guardian of 12 cats."
+      },
+      "wendy": {
+        "role": "Clinical Psychologist",
+        "bio": "31 years old, LGBTI+ woman, person with disabilities (PCD) and from Northeast Brazil, autistic and gifted/talented (AHSD) with a hyperfocus on psychology and animals, radical leftist and fashion graduate."
+      },
+      "deyvison": {
+        "role": "Neurodivergent Psychologist",
+        "bio": "28 years old, neurodivergent psychologist who loves hiking, listening to music, and reading."
+      },
+      "lucas": {
+        "role": "Clinical Psychologist",
+        "bio": "29 years old, LGBTI+, psychologist passionate about people. Pizza, books, and crochet? I'm in!"
+      },
+      "jackson": {
+        "role": "Clinical Psychologist",
+        "bio": "Psychologist passionate about human behavior, crazy about games, beginner crocheter, series and good conversations. Between sessions: science, humanization and many spoilers (without context)."
+      },
+      "benoit": {
+        "role": "Clinical Psychologist",
+        "bio": "30 years old, LGBTQIA+, PCD (person with disabilities), love my pets, arts, books and nature."
+      }
+    }
   }
 }

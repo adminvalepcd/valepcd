@@ -18,7 +18,6 @@
           <p>
             {{ $t('psychotherapy.p1_start') }}<strong>{{ $t('psychotherapy.p1_bold') }}</strong>{{ $t('psychotherapy.p1_end') }}
           </p>
-          <p>{{ $t('psychotherapy.p2') }}</p>
         </div>
 
         <div class="mission-box glass">
@@ -117,7 +116,8 @@
             <div class="avatar-gradient"></div>
           </div>
           <h3 class="member-name">{{ member.name }}</h3>
-          <p class="member-role" v-if="member.role">{{ member.role }}</p>
+          <p class="member-role" v-if="member.roleKey">{{ $t(member.roleKey) }}</p>
+          <p class="member-bio" v-if="member.bioKey">{{ $t(member.bioKey) }}</p>
         </div>
       </div>
 
@@ -130,44 +130,46 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-
-const { locale } = useI18n()
 const localePath = useLocalePath()
 
-// Placeholder team of 6 highly skilled clinical psychologists/professionals
-const team = computed(() => [
+const team = [
   {
-    name: 'Ana Silva',
-    role: locale.value === 'en' ? 'General Coordinator & Clinical Supervisor' : (locale.value === 'es' ? 'Coordinadora General y Supervisora Clínica' : 'Coordenadora Geral e Supervisora Clínica'),
-    image: '/images/avatar_placeholder.png'
+    name: 'Camila Moreira',
+    image: '/images/psicoterapia/Camila Moreira.jpeg',
+    roleKey: 'psychotherapy.teamMembers.camila.role',
+    bioKey: 'psychotherapy.teamMembers.camila.bio'
   },
   {
-    name: 'Bruno Santos',
-    role: locale.value === 'en' ? 'Clinical Psychologist' : (locale.value === 'es' ? 'Psicólogo Clínico' : 'Psicólogo Clínico'),
-    image: '/images/avatar_placeholder.png'
+    name: 'Wendy Lustosa Amorim',
+    image: '/images/psicoterapia/Wendy Lustosa Amorim.jpeg',
+    roleKey: 'psychotherapy.teamMembers.wendy.role',
+    bioKey: 'psychotherapy.teamMembers.wendy.bio'
   },
   {
-    name: 'Carla Souza',
-    role: locale.value === 'en' ? 'Clinical Psychologist' : (locale.value === 'es' ? 'Psicóloga Clínica' : 'Psicóloga Clínica'),
-    image: '/images/avatar_placeholder.png'
+    name: 'Deyvison Ferreira',
+    image: '/images/psicoterapia/Deyvison Ferreira.jpeg',
+    roleKey: 'psychotherapy.teamMembers.deyvison.role',
+    bioKey: 'psychotherapy.teamMembers.deyvison.bio'
   },
   {
-    name: 'Daniel Lima',
-    role: locale.value === 'en' ? 'Clinical Psychologist' : (locale.value === 'es' ? 'Psicólogo Clínico' : 'Psicólogo Clínico'),
-    image: '/images/avatar_placeholder.png'
+    name: 'Lucas Nogueira',
+    image: '/images/psicoterapia/Lucas Nogueira.jpeg',
+    roleKey: 'psychotherapy.teamMembers.lucas.role',
+    bioKey: 'psychotherapy.teamMembers.lucas.bio'
   },
   {
-    name: 'Elisa Oliveira',
-    role: locale.value === 'en' ? 'Clinical Psychologist' : (locale.value === 'es' ? 'Psicóloga Clínica' : 'Psicóloga Clínica'),
-    image: '/images/avatar_placeholder.png'
+    name: 'Jackson Nascimento',
+    image: '/images/psicoterapia/Jackson Nascimento.jpeg',
+    roleKey: 'psychotherapy.teamMembers.jackson.role',
+    bioKey: 'psychotherapy.teamMembers.jackson.bio'
   },
   {
-    name: 'Felipe Costa',
-    role: locale.value === 'en' ? 'Clinical Psychologist' : (locale.value === 'es' ? 'Psicólogo Clínico' : 'Psicólogo Clínico'),
-    image: '/images/avatar_placeholder.png'
+    name: 'Benoit Almeida',
+    image: '/images/psicoterapia/Benoit Almeida.jpeg',
+    roleKey: 'psychotherapy.teamMembers.benoit.role',
+    bioKey: 'psychotherapy.teamMembers.benoit.bio'
   }
-])
+]
 </script>
 
 <style scoped>
@@ -397,6 +399,14 @@ const team = computed(() => [
 .member-role {
   font-size: 0.95rem;
   color: var(--text-muted);
+  font-weight: 600;
+}
+
+.member-bio {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-top: 0.6rem;
 }
 
 .fs-small {
