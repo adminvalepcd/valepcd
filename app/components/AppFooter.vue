@@ -23,8 +23,21 @@
           <li><NuxtLink :to="localePath('/servicos')" class="footer-link">{{ $t('nav.services') }}</NuxtLink></li>
           <li><NuxtLink :to="localePath('/psicoterapia')" class="footer-link">{{ $t('nav.psychotherapy') }}</NuxtLink></li>
           <li><NuxtLink :to="localePath('/blog')" class="footer-link">{{ $t('nav.blog') }}</NuxtLink></li>
-          <li><NuxtLink :to="localePath('/institucional')" class="footer-link">{{ $t('nav.institutional') }}</NuxtLink></li>
-          <li><NuxtLink :to="localePath('/institucional/sobre')" class="footer-link">{{ $t('nav.about') }}</NuxtLink></li>
+          <li class="footer-link-group">
+            <span class="footer-group-title">{{ $t('nav.institutional') }}</span>
+            <ul class="footer-sub-links">
+              <li>
+                <NuxtLink :to="localePath('/institucional')" class="footer-sub-link">
+                  — {{ $t('nav.documents') }}
+                </NuxtLink>
+              </li>
+              <li>
+                <NuxtLink :to="localePath('/institucional/sobre')" class="footer-sub-link">
+                  — {{ $t('nav.about') }}
+                </NuxtLink>
+              </li>
+            </ul>
+          </li>
           <li><NuxtLink :to="localePath('/contato')" class="footer-link">{{ $t('nav.contact') }}</NuxtLink></li>
         </ul>
       </div>
@@ -143,6 +156,38 @@ const currentYear = computed(() => new Date().getFullYear())
   color: var(--primary);
   padding-left: 4px;
   transition: all var(--transition-fast);
+}
+
+.footer-link-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.footer-group-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: default;
+}
+
+.footer-sub-links {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-left: 0.8rem;
+}
+
+.footer-sub-link {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+
+.footer-sub-link:hover {
+  color: var(--primary);
+  padding-left: 4px;
 }
 
 .commitment-text {
