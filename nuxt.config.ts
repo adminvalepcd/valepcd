@@ -7,12 +7,15 @@ const getPostRoutes = () => {
     const postsPath = path.resolve(process.cwd(), 'server/posts-data.json')
     if (fs.existsSync(postsPath)) {
       const posts = JSON.parse(fs.readFileSync(postsPath, 'utf-8'))
-      return posts.map(post => `/blog/${post.slug}`)
+      const routes = posts.map(post => `/blog/${post.slug}`)
+      console.log('--- SITEMAP ROUTES GENERATED ---', routes.length + 1)
+      return ['/blog', ...routes]
     }
   } catch (e) {
     console.error('Failed to read posts for sitemap:', e)
   }
-  return []
+  console.log('--- SITEMAP ROUTES GENERATED --- fallback 1')
+  return ['/blog']
 }
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
@@ -37,7 +40,17 @@ export default defineNuxtConfig({
   },
 
   sitemap: {
-    urls: getPostRoutes
+    urls: getPostRoutes,
+    sitemaps: {
+      pages: {
+        includeAppSources: true,
+        exclude: ['/blog', '/blog/**']
+      },
+      blog: {
+        includeAppSources: true,
+        include: ['/blog', '/blog/**']
+      }
+    }
   },
 
   i18n: {
