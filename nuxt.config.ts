@@ -56,7 +56,7 @@ export default defineNuxtConfig({
         { name: 'twitter:image', content: 'https://www.valepcd.com.br/images/logo-vale-pcd-seo.webp' }
       ],
       link: [
-        { rel: 'icon', type: 'image/png', href: '/images/logo-vale-pcd-seo.webp' }
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }
       ]
     }
   }
