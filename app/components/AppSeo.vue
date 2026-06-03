@@ -41,5 +41,5 @@ useSeoMeta({
 </script>
 
 <template>
-  <!-- Renderless SEO meta-tag manager -->
+  <span style="display: none;" aria-hidden="true"></span>
 </template>
