@@ -6,6 +6,7 @@
     "blog": "Blog",
     "contact": "Contato",
     "institutional": "Institucional",
+    "documents": "Atas e notas públicas",
     "psychotherapy": "Psicoterapia",
     "cms": "Painel CMS",
     "toggleContrast": "Alternar Alto Contraste",
@@ -13,7 +14,7 @@
     "fontSizeDown": "Diminuir Fonte"
   },
   "footer": {
-    "description": "O maior projeto do Brasil sobre visibilidade, orgulho e acessibilidade para pessoas com deficiência da comunidade LGBTQI+.",
+    "description": "O maior projeto do Brasil sobre visibilidade, orgulho e acessibilidade para pessoas com deficiência da comunidade LGBTI+.",
     "navigation": "Navegação",
     "commitment": "Compromisso",
     "badge": "Acessibilidade AAA",
@@ -25,7 +26,7 @@
     "heroTitle1": "Somos a ",
     "heroTitleHighlight1": "primeira ONG",
     "heroTitle2": " do Brasil dedicada as Pessoas com Deficiência ",
-    "heroTitleHighlight2": "LGBTQIA+",
+    "heroTitleHighlight2": "LGBTI+",
     "heroLead": "Nossa jornada começou em 2020 com o objetivo de mapear espaços acessíveis (Vale Maps) e crescemos ao criar conteúdos anticapacitistas no Instagram. Hoje, o Vale PcD é uma ONG inovadora e acessível, focada em impactar positivamente a comunidade nas áreas de Saúde, Mercado de Trabalho e Acessibilidade de Espaços e Eventos.",
     "btnServices": "Nossos Serviços",
     "btnHistory": "Conheça Nossa História",
@@ -33,7 +34,7 @@
     "sectionTitle": "Como impactamos a sociedade",
     "sectionSubtitle": "Atuamos na intersecção entre saúde mental, inclusão territorial e disseminação de conhecimento.",
     "cardSaudeTitle": "Psicoterapia Acessível",
-    "cardSaudeDesc": "Atendimento remoto de psicoterapia com valor social e acessível direcionado para o público PCD e/ou LGBTQIA+. Atendemos a todo o Brasil de forma remota (inclusive com atendimento em LIBRAS).",
+    "cardSaudeDesc": "Atendimento remoto de psicoterapia com valor social e acessível direcionado para o público PCD e/ou LGBTI+. Atendemos a todo o Brasil de forma remota (inclusive com atendimento em LIBRAS).",
     "cardSaudeLink": "Inscreva-se",
     "opensInAnotherWindow": " (Abre em outra janela)",
     "cardMapsTitle": "Vale Maps",
@@ -48,7 +49,7 @@
     "actionsSubtitle": "Participe ativamente das nossas ações apoiando como pessoa física ou como parceiro corporativo.",
     "cardDonateBadge": "Faça a Diferença",
     "cardDonateTitle": "Ajude a manter nossos projetos",
-    "cardDonateDesc": "Sua contribuição financeira ajuda a subsidiar sessões de psicoterapia para pessoas com deficiência LGBTQIA+ de baixa renda, além de manter nossas ferramentas de mapeamento e produção de cartilhas.",
+    "cardDonateDesc": "Sua contribuição financeira ajuda a subsidiar sessões de psicoterapia para pessoas com deficiência LGBTI+ de baixa renda, além de manter nossas ferramentas de mapeamento e produção de cartilhas.",
     "cardDonateBtn": "Quero Doar e Apoiar!",
     "cardCorporateBadge": "Soluções para Empresas",
     "cardCorporateTitle": "Acessibilidade é mais do que um dever",
@@ -60,9 +61,9 @@
     "historyTitle": "Tudo começou em ",
     "historyTitleHighlight": "2020",
     "historyTitleEnd": " com o desejo de transformar a realidade das pessoas LGBTI+ com deficiência",
-    "p1": "O Vale PCD surgiu a partir da inquietação de não existir um coletivo que falasse sobre a interseccionalidade das pessoas com deficiência que são LGBTQIA+, além de não ser um assunto levado em consideração dentro da comunidade.",
+    "p1": "O Vale PCD surgiu a partir da inquietação de não existir um coletivo que falasse sobre a interseccionalidade das pessoas com deficiência que são LGBTI+, além de não ser um assunto levado em consideração dentro da comunidade.",
     "p2": "Conseguimos criar forma dentro do programa de embaixadores da TODXS Brasil, em 2019. Em 2020, com o apoio do Programa Impacto, lançamos o Vale e conseguimos recursos para impulsionar o projeto.",
-    "p3": "Hoje, toda a nossa diretoria e produtores de conteúdo são formados por PCDs LGBTQIA+ e somos referência em inclusão e em trabalhos direcionados para os dois recortes.",
+    "p3": "Hoje, toda a nossa diretoria e produtores de conteúdo são formados por PCDs LGBTI+ e somos referência em inclusão e em trabalhos direcionados para os dois recortes.",
     "mission": "Nossa Missão",
     "missionDesc": "Promover a visibilidade e a inclusão das pessoas com deficiência LGBTI+ dentro da comunidade, por meio de projetos e da conscientização nas redes sociais.",
     "vision": "Nossa Visão",
@@ -93,7 +94,7 @@
     "conversationsTitle": "Rodas de Conversa",
     "conversationsDesc": "Criamos discussões horizontais e colaborativas alinhadas às necessidades da sua empresa. Priorizamos bate-papos que estimulam a troca de conhecimento sincera e respondem às principais dúvidas dos colaboradores.",
     "panelsTitle": "Painéis Estratégicos & Formação",
-    "panelsDesc": "Formação dinâmica e compartilhada conduzida por múltiplos consultores especializados. Cruzamos conceitos e experiências vividas em primeira pessoa na intersecção entre LGBTQIA+ e PCD, indo muito além dos métodos tradicionais.",
+    "panelsDesc": "Formação dinâmica e compartilhada conduzida por múltiplos consultores especializados. Cruzamos conceitos e experiências vividas em primeira pessoa na intersecção entre LGBTI+ e PCD, indo muito além dos métodos tradicionais.",
     "jobsTitle": "Atração & Vagas Inclusivas",
     "jobsDesc": "Nossas redes ultrapassam bolhas de mercado. Com uma comunidade engajada de milhares de seguidores no país, apoiamos a estratégia de sua marca empregadora com time criativo de design e social media para conectar profissionais diversos ao seu time.",
     "badgePortfolio": "Nossa Experiência",
@@ -164,7 +165,7 @@
     "readMore": "Ler artigo completo",
     "all": "Todos",
     "accessibility": "Acessibilidade",
-    "lgbt": "LGBTQI+",
+    "lgbt": "LGBTI+",
     "corporate": "Empresas",
     "community": "Comunidade",
     "searchPlaceholder": "Buscar por título ou conteúdo...",
@@ -266,7 +267,7 @@
   "seo": {
     "home": {
       "title": "Vale PCD | Acessibilidade para Empresas e Comunidade",
-      "description": "Conheça o Vale PCD: O maior projeto do Brasil sobre visibilidade e acessibilidade para pessoas com deficiência da comunidade LGBTQI+"
+      "description": "Conheça o Vale PCD: O maior projeto do Brasil sobre visibilidade e acessibilidade para pessoas com deficiência da comunidade LGBTI+"
     },
     "about": {
       "title": "Quem somos | Vale PCD",
@@ -347,7 +348,7 @@
       },
       "benoit": {
         "role": "Psicólogo Clínico",
-        "bio": "30 anos, LGBTQIA+, PCD, amo meus pets, artes, livros e natureza."
+        "bio": "30 anos, LGBTI+, PCD, amo meus pets, artes, livros e natureza."
       }
     }
   }

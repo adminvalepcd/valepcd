@@ -6,6 +6,7 @@
     "blog": "Blog",
     "contact": "Contacto",
     "institutional": "Institucional",
+    "documents": "Actas y notas públicas",
     "psychotherapy": "Psicoterapia",
     "cms": "Panel CMS",
     "toggleContrast": "Alternar Alto Contraste",
@@ -13,7 +14,7 @@
     "fontSizeDown": "Disminuir Fuente"
   },
   "footer": {
-    "description": "El proyecto más grande de Brasil sobre visibilidad, orgullo y accesibilidad para personas con discapacidad de la comunidad LGBTQI+.",
+    "description": "El proyecto más grande de Brasil sobre visibilidad, orgullo y accesibilidad para personas con discapacidad de la comunidad LGBTI+.",
     "navigation": "Navegación",
     "commitment": "Compromiso",
     "badge": "Accesibilidad AAA",
@@ -25,7 +26,7 @@
     "heroTitle1": "Somos la ",
     "heroTitleHighlight1": "primera ONG",
     "heroTitle2": " de Brasil dedicada a las Personas con Discapacidad ",
-    "heroTitleHighlight2": "LGBTQIA+",
+    "heroTitleHighlight2": "LGBTI+",
     "heroLead": "Nuestra trayectoria comenzó en 2020 con el objetivo de mapear espacios accesibles (Vale Maps) y crecimos al crear contenidos anticapacitistas en Instagram. Hoy, Vale PcD es una ONG innovadora y accesible, enfocada en impactar positivamente a la comunidad en las áreas de Salud, Mercado Laboral y Accesibilidad de Espacios y Eventos.",
     "btnServices": "Nuestros Servicios",
     "btnHistory": "Conoce Nuestra Historia",
@@ -33,7 +34,7 @@
     "sectionTitle": "Cómo impactamos en la sociedad",
     "sectionSubtitle": "Actuamos en la intersección entre salud mental, inclusión territorial y difusión de conocimiento.",
     "cardSaudeTitle": "Psicoterapia Accesible",
-    "cardSaudeDesc": "Atención remota de psicoterapia con valor social y accesible dirigida al público PCD y/o LGBTQIA+. Atendemos a todo Brasil de manera virtual (incluyendo atención en LIBRAS - Lengua de Señas Brasileña).",
+    "cardSaudeDesc": "Atención remota de psicoterapia con valor social y accesible dirigida al público PCD y/o LGBTI+. Atendemos a todo Brasil de manera virtual (incluyendo atención en LIBRAS - Lengua de Señas Brasileña).",
     "cardSaudeLink": "Inscribirse",
     "opensInAnotherWindow": " (Abre en otra ventana)",
     "cardMapsTitle": "Vale Maps",
@@ -48,7 +49,7 @@
     "actionsSubtitle": "Participa activamente en nuestras acciones apoyándonos como persona física o socio corporativo.",
     "cardDonateBadge": "Marca la Diferencia",
     "cardDonateTitle": "Ayuda a mantener nuestros proyectos",
-    "cardDonateDesc": "Tu contribución financiera ayuda a subsidiar sesiones de psicoterapia para personas con discapacidad LGBTQIA+ de bajos recursos, además de mantener nuestras herramientas de mapeo y producción de guías de inclusión.",
+    "cardDonateDesc": "Tu contribución financiera ayuda a subsidiar sesiones de psicoterapia para personas con discapacidad LGBTI+ de bajos recursos, además de mantener nuestras herramientas de mapeo y producción de guías de inclusión.",
     "cardDonateBtn": "¡Quiero Donar y Apoyar!",
     "cardCorporateBadge": "Soluciones para Empresas",
     "cardCorporateTitle": "La accesibilidad es más que un deber",
@@ -60,9 +61,9 @@
     "historyTitle": "Todo comenzó en ",
     "historyTitleHighlight": "2020",
     "historyTitleEnd": " con el deseo de transformar la realidad de las personas LGBTI+ con discapacidad",
-    "p1": "Vale PCD surgió a partir de la inquietud de que no existía un colectivo que hablara sobre la interseccionalidad de las personas con discapacidad que son LGBTQIA+, además de que no era un tema considerado dentro de la comunidad.",
+    "p1": "Vale PCD surgió a partir de la inquietud de que no existía un colectivo que hablara sobre la interseccionalidad de las personas con discapacidad que son LGBTI+, además de que no era un tema considerado dentro de la comunidad.",
     "p2": "Logramos estructurarnos dentro del programa de embajadores de TODXS Brasil en 2019. En 2020, con el apoyo del Programa Impacto, lanzamos oficialmente el proyecto y conseguimos los recursos para impulsarlo.",
-    "p3": "Hoy, toda nuestra junta directiva y creadores de contenido están integrados por PCDs LGBTQIA+, lo que nos convierte en un referente en inclusión y trabajo dirigido a ambos colectivos.",
+    "p3": "Hoy, toda nuestra junta directiva y creadores de contenido están integrados por PCDs LGBTI+, lo que nos convierte en un referente en inclusión y trabajo dirigido a ambos colectivos.",
     "mission": "Nuestra Misión",
     "missionDesc": "Promover la visibilidad y la inclusión de las personas con discapacidad LGBTI+ dentro de la comunidad, a través de proyectos estratégicos y la concientización en redes sociales.",
     "vision": "Nuestra Visión",
@@ -93,7 +94,7 @@
     "conversationsTitle": "Mesas de Diálogo",
     "conversationsDesc": "Creamos debates horizontales y colaborativos adaptados a las necesidades de tu empresa. Priorizamos charlas que estimulan el intercambio sincero de conocimientos y responden a las principales dudas de los colaboradores.",
     "panelsTitle": "Paneles Estratégicos & Capacitación",
-    "panelsDesc": "Formación dinámica y compartida dirigida por múltiples consultores especializados. Cruzamos conceptos y experiencias vividas en primera persona en la intersección entre LGBTQIA+ y discapacidad, yendo mucho más allá de los métodos tradicionales.",
+    "panelsDesc": "Formación dinámica y compartida dirigida por múltiples consultores especializados. Cruzamos conceptos y experiencias vividas en primera persona en la intersección entre LGBTI+ y discapacidad, yendo mucho más allá de los métodos tradicionales.",
     "jobsTitle": "Atracción & Vacantes Inclusivas",
     "jobsDesc": "Nuestras redes superan las burbujas del mercado. Con una comunidad activa de miles de seguidores en el país, apoyamos la estrategia de tu marca empleadora con un equipo creativo de diseño y redes sociales para conectar a profesionales diversos con tu equipo.",
     "badgePortfolio": "Nuestra Trayectoria",
@@ -164,7 +165,7 @@
     "readMore": "Leer artículo completo",
     "all": "Todos",
     "accessibility": "Accesibilidad",
-    "lgbt": "LGBTQI+",
+    "lgbt": "LGBTI+",
     "corporate": "Empresas",
     "community": "Comunidad",
     "searchPlaceholder": "Buscar por título o contenido...",
@@ -266,7 +267,7 @@
   "seo": {
     "home": {
       "title": "Vale PCD | Accesibilidad para Empresas y Comunidad",
-      "description": "Conozca el Vale PCD: El proyecto más grande de Brasil sobre visibilidad y accesibilidad para personas con discapacidad de la comunidad LGBTQI+."
+      "description": "Conozca el Vale PCD: El proyecto más grande de Brasil sobre visibilidad y accesibilidad para personas con discapacidad de la comunidad LGBTI+."
     },
     "about": {
       "title": "Quiénes Somos | Vale PCD",
@@ -347,7 +348,7 @@
       },
       "benoit": {
         "role": "Psicólogo Clínico",
-        "bio": "30 años, LGBTQIA+, PCD (persona con discapacidad), amo a mis mascotas, las artes, los libros y la naturaleza."
+        "bio": "30 años, LGBTI+, PCD (persona con discapacidad), amo a mis mascotas, las artes, los libros y la naturaleza."
       }
     }
   }

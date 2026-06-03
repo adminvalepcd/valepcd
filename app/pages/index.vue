@@ -14,7 +14,7 @@
           <NuxtLink :to="localePath('/servicos')" class="btn btn-primary">
             {{ $t('home.btnServices') }}
           </NuxtLink>
-          <NuxtLink :to="localePath('/sobre')" class="btn btn-secondary">
+          <NuxtLink :to="localePath('/institucional/sobre')" class="btn btn-secondary">
             {{ $t('home.btnHistory') }}
           </NuxtLink>
         </div>

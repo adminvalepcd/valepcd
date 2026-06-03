@@ -17,9 +17,6 @@
             <NuxtLink :to="localePath('/')" class="nav-link" active-class="active">{{ $t('nav.home') }}</NuxtLink>
           </li>
           <li>
-            <NuxtLink :to="localePath('/sobre')" class="nav-link" active-class="active">{{ $t('nav.about') }}</NuxtLink>
-          </li>
-          <li>
             <NuxtLink :to="localePath('/servicos')" class="nav-link" active-class="active">{{ $t('nav.services') }}</NuxtLink>
           </li>
           <li>
@@ -28,8 +25,24 @@
           <li>
             <NuxtLink :to="localePath('/blog')" class="nav-link" active-class="active">{{ $t('nav.blog') }}</NuxtLink>
           </li>
-          <li>
-            <NuxtLink :to="localePath('/institucional')" class="nav-link" active-class="active">{{ $t('nav.institutional') }}</NuxtLink>
+          <li class="nav-item-dropdown" @mouseenter="dropdownOpen = true" @mouseleave="dropdownOpen = false"
+            @focusin="dropdownOpen = true" @focusout="handleFocusOut">
+            <button class="nav-link dropdown-trigger" :class="{ 'active': isInstitutionalActive }" aria-haspopup="true"
+              :aria-expanded="dropdownOpen.toString()">
+              {{ $t('nav.institutional') }} <span class="chevron-icon">▼</span>
+            </button>
+            <ul v-show="dropdownOpen" class="dropdown-menu glass" role="menu">
+              <li role="none">
+                <NuxtLink :to="localePath('/institucional')" class="dropdown-link" role="menuitem" active-class="active">
+                  {{ $t('nav.documents') }}
+                </NuxtLink>
+              </li>
+              <li role="none">
+                <NuxtLink :to="localePath('/institucional/sobre')" class="dropdown-link" role="menuitem" active-class="active">
+                  {{ $t('nav.about') }}
+                </NuxtLink>
+              </li>
+            </ul>
           </li>
           <li>
             <NuxtLink :to="localePath('/contato')" class="nav-link" active-class="active">{{ $t('nav.contact') }}</NuxtLink>
@@ -102,10 +115,6 @@
             </NuxtLink>
           </li>
           <li>
-            <NuxtLink :to="localePath('/sobre')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.about') }}
-            </NuxtLink>
-          </li>
-          <li>
             <NuxtLink :to="localePath('/servicos')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.services') }}</NuxtLink>
           </li>
           <li>
@@ -115,10 +124,30 @@
             <NuxtLink :to="localePath('/blog')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.blog') }}</NuxtLink>
           </li>
           <li>
-            <NuxtLink :to="localePath('/institucional')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.institutional') }}
-            </NuxtLink>
-          </li>
-          <li>
+            <div class="mobile-nav-group">
+              <div class="mobile-nav-group-header" @click="mobileDropdownOpen = !mobileDropdownOpen">
+                <span class="mobile-nav-link" :class="{ 'active': isInstitutionalActive }">
+                  {{ $t('nav.institutional') }}
+                </span>
+                <span class="chevron-icon" :class="{ 'rotated': mobileDropdownOpen }">▼</span>
+              </div>
+              <transition name="expand">
+                <ul v-show="mobileDropdownOpen" class="mobile-sub-list">
+                  <li>
+                    <NuxtLink :to="localePath('/institucional')" @click="mobileMenuOpen = false" class="mobile-sub-link">
+                      {{ $t('nav.documents') }}
+                    </NuxtLink>
+                  </li>
+                  <li>
+                    <NuxtLink :to="localePath('/institucional/sobre')" @click="mobileMenuOpen = false" class="mobile-sub-link">
+                      {{ $t('nav.about') }}
+                    </NuxtLink>
+                    </li>
+                    </ul>
+                    </transition>
+                    </div>
+                    </li>
+                    <li>
             <NuxtLink :to="localePath('/contato')" @click="mobileMenuOpen = false" class="mobile-nav-link">{{ $t('nav.contact') }}
             </NuxtLink>
           </li>
@@ -129,10 +158,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+  import { ref, onMounted, computed } from 'vue'
 
 const mobileMenuOpen = ref(false)
+  const dropdownOpen = ref(false)
+  const mobileDropdownOpen = ref(false)
 const fontSizeLevel = ref(0) // Limits adjustment to up to 3 clicks (-3 to 3)
+
+  const route = useRoute()
+  const isInstitutionalActive = computed(() => {
+    return route.path.includes('/institucional')
+  })
+
+  const handleFocusOut = (event) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      dropdownOpen.value = false
+    }
+  }
 
   // Cookie with 24 hours duration to persist theme choice
   const themeCookie = useCookie('theme', {
@@ -416,6 +458,158 @@ const changeFontSize = (direction) => {
 
 .slide-enter-from, .slide-leave-to {
   transform: translateY(-20px);
+  opacity: 0;
+}
+
+/* Dropdown Menu & Nested Navigation */
+.nav-item-dropdown {
+  position: relative;
+}
+
+.dropdown-trigger {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 0;
+}
+
+.dropdown-trigger:hover,
+.dropdown-trigger.active {
+  color: var(--text);
+}
+
+.dropdown-trigger::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  transition: width var(--transition-smooth);
+}
+
+.dropdown-trigger:hover::after,
+.dropdown-trigger.active::after {
+  width: 100%;
+}
+
+.chevron-icon {
+  font-size: 0.65rem;
+  transition: transform var(--transition-smooth);
+  pointer-events: none;
+}
+
+.nav-item-dropdown:hover .chevron-icon,
+.mobile-nav-group-header .chevron-icon {
+  transform: rotate(0deg);
+}
+
+.nav-item-dropdown:hover .chevron-icon {
+  transform: rotate(180deg);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0;
+  min-width: 180px;
+  list-style: none;
+  box-shadow: var(--shadow-md);
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+}
+
+.dropdown-link {
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 0.6rem 1.2rem;
+  display: block;
+  width: 100%;
+  transition: all var(--transition-fast);
+}
+
+.dropdown-link:hover,
+.dropdown-link.active {
+  color: var(--primary);
+  background-color: var(--primary-muted);
+}
+
+.mobile-nav-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-nav-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.mobile-nav-group-header .mobile-nav-link {
+  border-bottom: none;
+  flex-grow: 1;
+}
+
+.mobile-nav-group-header .chevron-icon {
+  font-size: 0.8rem;
+  margin-right: 0.5rem;
+  color: var(--text-muted);
+  transition: transform var(--transition-smooth);
+}
+
+.mobile-nav-group-header .chevron-icon.rotated {
+  transform: rotate(180deg);
+}
+
+.mobile-sub-list {
+  list-style: none;
+  padding-left: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-top: 0.5rem;
+  border-left: 2px solid var(--border);
+}
+
+.mobile-sub-link {
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  display: block;
+  padding: 0.4rem 0;
+}
+
+.mobile-sub-link:hover,
+.mobile-sub-link.active {
+  color: var(--primary);
+}
+
+/* Expand transition for mobile sub-menu */
+.expand-enter-active, .expand-leave-active {
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  max-height: 200px;
+  overflow: hidden;
+}
+.expand-enter-from, .expand-leave-to {
+  max-height: 0;
   opacity: 0;
 }
 </style>

@@ -6,6 +6,7 @@
     "blog": "Blog",
     "contact": "Contact",
     "institutional": "Institutional",
+    "documents": "Minutes and Public Notes",
     "psychotherapy": "Psychotherapy",
     "cms": "CMS Panel",
     "toggleContrast": "Toggle High Contrast",
@@ -13,7 +14,7 @@
     "fontSizeDown": "Decrease Font Size"
   },
   "footer": {
-    "description": "Brazil's largest project dedicated to visibility, pride, and accessibility for people with disabilities within the LGBTQI+ community.",
+    "description": "Brazil's largest project dedicated to visibility, pride, and accessibility for people with disabilities within the LGBTI+ community.",
     "navigation": "Navigation",
     "commitment": "Our Commitment",
     "badge": "AAA Accessibility",
@@ -25,7 +26,7 @@
     "heroTitle1": "We are the ",
     "heroTitleHighlight1": "first NGO",
     "heroTitle2": " in Brazil dedicated to people with disabilities who are ",
-    "heroTitleHighlight2": "LGBTQIA+",
+    "heroTitleHighlight2": "LGBTI+",
     "heroLead": "Our journey began in 2020 with the mission to map accessible venues (Vale Maps), and we grew by producing anti-ableist content on Instagram. Today, Vale PcD is an innovative and highly accessible NGO focused on generating positive impact in the areas of Healthcare, Inclusive Employment, and Venue & Event Accessibility.",
     "btnServices": "Our Services",
     "btnHistory": "Discover Our Story",
@@ -33,7 +34,7 @@
     "sectionTitle": "How we impact society",
     "sectionSubtitle": "Working at the intersection of mental health, spatial inclusion, and knowledge dissemination.",
     "cardSaudeTitle": "Accessible Psychotherapy",
-    "cardSaudeDesc": "Remote psychotherapy sessions at social, affordable rates tailored specifically for the PCD and/or LGBTQIA+ community. We offer remote care nationwide (including support in LIBRAS - Brazilian Sign Language).",
+    "cardSaudeDesc": "Remote psychotherapy sessions at social, affordable rates tailored specifically for the PCD and/or LGBTI+ community. We offer remote care nationwide (including support in LIBRAS - Brazilian Sign Language).",
     "cardSaudeLink": "Sign up",
     "opensInAnotherWindow": " (Opens in another window)",
     "cardMapsTitle": "Vale Maps",
@@ -48,7 +49,7 @@
     "actionsSubtitle": "Actively participate in our initiatives by supporting us as an individual donor or corporate partner.",
     "cardDonateBadge": "Make a Difference",
     "cardDonateTitle": "Help Sustain Our Projects",
-    "cardDonateDesc": "Your financial contribution directly subsidizes mental health care for low-income LGBTQIA+ people with disabilities, in addition to maintaining our venue mapping platforms and educational guide production.",
+    "cardDonateDesc": "Your financial contribution directly subsidizes mental health care for low-income LGBTI+ people with disabilities, in addition to maintaining our venue mapping platforms and educational guide production.",
     "cardDonateBtn": "Donate & Support Us!",
     "cardCorporateBadge": "Corporate Solutions",
     "cardCorporateTitle": "Accessibility is More Than a Duty",
@@ -59,14 +60,14 @@
     "badgeHistory": "Our History",
     "historyTitle": "It all started in ",
     "historyTitleHighlight": "2020",
-    "historyTitleEnd": " with the desire to transform the reality of LGBTQI+ people with disabilities",
-    "p1": "Vale PCD was born out of the realization that there was no collective addressing the intersectionality of people with disabilities who are LGBTQIA+, nor was this topic being factored in within the broader community.",
+    "historyTitleEnd": " with the desire to transform the reality of LGBTI+ people with disabilities",
+    "p1": "Vale PCD was born out of the realization that there was no collective addressing the intersectionality of people with disabilities who are LGBTI+, nor was this topic being factored in within the broader community.",
     "p2": "We began taking shape inside the TODXS Brasil ambassador program in 2019. In 2020, with support from the Impacto Program, we officially launched Vale and secured the resources to propel the project forward.",
-    "p3": "Today, our entire executive board and content creators are LGBTQIA+ individuals with disabilities, making us a benchmark in inclusion and specialized advocacy for both communities.",
+    "p3": "Today, our entire executive board and content creators are LGBTI+ individuals with disabilities, making us a benchmark in inclusion and specialized advocacy for both communities.",
     "mission": "Our Mission",
-    "missionDesc": "To foster visibility and inclusion for LGBTQI+ people with disabilities within the community through key initiatives and awareness campaigns across social media platforms.",
+    "missionDesc": "To foster visibility and inclusion for LGBTI+ people with disabilities within the community through key initiatives and awareness campaigns across social media platforms.",
     "vision": "Our Vision",
-    "visionDesc": "To be a benchmark in accessibility and empower LGBTQI+ people with disabilities to socialize within the community, occupying spaces so they can be seen and fully included.",
+    "visionDesc": "To be a benchmark in accessibility and empower LGBTI+ people with disabilities to socialize within the community, occupying spaces so they can be seen and fully included.",
     "values": "Our Values",
     "valuesDesc": "Respecting plurality and emphasizing the protagonist role of individuals as social and intersectional subjects.",
     "badgeTeam": "Making It Happen",
@@ -93,7 +94,7 @@
     "conversationsTitle": "Fireside Chats",
     "conversationsDesc": "We moderate flat, highly collaborative discussions tailored to your corporate needs. We prioritize authentic conversations that spark genuine knowledge exchanges and resolve employee D&I doubts.",
     "panelsTitle": "Strategic Panels & Training",
-    "panelsDesc": "Shared, dynamic workshops led by multiple specialized consultants. We merge D&I theory with first-person lived experiences at the intersection of LGBTQIA+ and disability, going far beyond standard training.",
+    "panelsDesc": "Shared, dynamic workshops led by multiple specialized consultants. We merge D&I theory with first-person lived experiences at the intersection of LGBTI+ and disability, going far beyond standard training.",
     "jobsTitle": "Inclusive Hiring & Talent Attraction",
     "jobsDesc": "Our digital reach goes far beyond industry bubbles. Supported by an engaged community of thousands of followers nationwide, we amplify your employer brand with tailored creative D&I content to connect diverse talent to your team.",
     "badgePortfolio": "Our Track Record",
@@ -164,7 +165,7 @@
     "readMore": "Read full article",
     "all": "All",
     "accessibility": "Accessibility",
-    "lgbt": "LGBTQI+",
+    "lgbt": "LGBTI+",
     "corporate": "Corporate",
     "community": "Community",
     "searchPlaceholder": "Search by title or content...",
@@ -266,7 +267,7 @@
   "seo": {
     "home": {
       "title": "Vale PCD | Accessibility for Businesses and Community",
-      "description": "Discover Vale PCD: Brazil's largest project dedicated to visibility, pride, and accessibility for people with disabilities within the LGBTQI+ community."
+      "description": "Discover Vale PCD: Brazil's largest project dedicated to visibility, pride, and accessibility for people with disabilities within the LGBTI+ community."
     },
     "about": {
       "title": "Who We Are | Vale PCD",
@@ -278,7 +279,7 @@
     },
     "blog": {
       "title": "Blog | Vale PCD",
-      "description": "Read and learn about disability studies and LGBTQI+ anti-ableism debates on the Vale PCD blog."
+      "description": "Read and learn about disability studies and LGBTI+ anti-ableism debates on the Vale PCD blog."
     },
     "contact": {
       "title": "Contact Us | Vale PCD",
@@ -347,7 +348,7 @@
       },
       "benoit": {
         "role": "Clinical Psychologist",
-        "bio": "30 years old, LGBTQIA+, PCD (person with disabilities), love my pets, arts, books and nature."
+        "bio": "30 years old, LGBTI+, PCD (person with disabilities), love my pets, arts, books and nature."
       }
     }
   }
