@@ -533,6 +533,16 @@ const changeFontSize = (direction) => {
   flex-direction: column;
 }
 
+.dropdown-menu::before {
+  content: '';
+  position: absolute;
+  top: -15px;
+  left: 0;
+  width: 100%;
+  height: 15px;
+  background: transparent;
+}
+
 .dropdown-link {
   font-family: 'Poppins', sans-serif;
   font-size: 0.95rem;
