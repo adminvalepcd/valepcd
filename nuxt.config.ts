@@ -1,3 +1,20 @@
+import fs from 'fs'
+import path from 'path'
+
+// Get posts slugs to feed to sitemap
+const getPostRoutes = () => {
+  try {
+    const postsPath = path.resolve(process.cwd(), 'server/posts-data.json')
+    if (fs.existsSync(postsPath)) {
+      const posts = JSON.parse(fs.readFileSync(postsPath, 'utf-8'))
+      return posts.map(post => `/blog/${post.slug}`)
+    }
+  } catch (e) {
+    console.error('Failed to read posts for sitemap:', e)
+  }
+  return []
+}
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
@@ -10,8 +27,18 @@ export default defineNuxtConfig({
   modules: [
     '@nuxtjs/i18n',
     '@vercel/analytics/nuxt',
-    '@vercel/speed-insights/nuxt'
+    '@vercel/speed-insights/nuxt',
+    '@nuxtjs/sitemap'
   ],
+
+  site: {
+    url: 'https://www.valepcd.com.br',
+    name: 'Vale PCD'
+  },
+
+  sitemap: {
+    urls: getPostRoutes
+  },
 
   i18n: {
     locales: [
