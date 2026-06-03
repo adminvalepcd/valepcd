@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "build": "node scripts/convert-images.js && nuxt build",
-    "dev": "nuxt dev",
+    "dev": "node scripts/convert-images.js && nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "node scripts/convert-images.js && nuxt prepare"
   },
   "dependencies": {
     "@nuxtjs/i18n": "^10.4.0",

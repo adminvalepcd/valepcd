@@ -72,76 +72,129 @@ function replaceInFile(filePath, replacements) {
   }
 }
 
-async function main() {
-  console.log('--- Starting WebP Image Conversion & Reference Replacement ---');
+// Helper to parse blog posts and compile into static JSON file
+function compileBlogPosts() {
+  console.log('\n--- Compiling Blog Posts to JSON ---');
+  const contentDir = path.join(PROJECT_ROOT, 'content', 'blog');
+  const outputFilePath = path.join(PROJECT_ROOT, 'server', 'posts-data.json');
 
-  // 1. Find all target images in public/images/
-  // Exclude node_modules, .nuxt, .output in recursive search just in case, though we are targeting public/images
-  const imageFiles = findFiles(IMAGES_DIR, TARGET_EXTENSIONS);
-  
-  if (imageFiles.length === 0) {
-    console.log('No images found that need conversion.');
+  if (!fs.existsSync(contentDir)) {
+    console.warn(`Content directory does not exist: ${contentDir}`);
+    // Write empty array to ensure compilation doesn't fail
+    fs.writeFileSync(outputFilePath, JSON.stringify([]), 'utf8');
     return;
   }
 
-  console.log(`Found ${imageFiles.length} image(s) to convert.`);
+  const files = fs.readdirSync(contentDir);
+  const posts = [];
 
-  const replacements = [];
-
-  // 2. Convert each image to WebP and delete original
-  for (const inputPath of imageFiles) {
-    const relativeInputPath = path.relative(PROJECT_ROOT, inputPath);
-    const dir = path.dirname(inputPath);
-    const ext = path.extname(inputPath);
-    const baseName = path.basename(inputPath, ext);
-    const outputPath = path.join(dir, `${baseName}.webp`);
-
-    console.log(`Converting: ${relativeInputPath} -> ${baseName}.webp`);
-
-    try {
-      // Perform conversion
-      await sharp(inputPath).toFile(outputPath);
-
-      // Verify the new file exists and is not empty before deleting the original
-      if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-        fs.unlinkSync(inputPath);
-        console.log(`Deleted original: ${relativeInputPath}`);
+  for (const file of files) {
+    if (file.endsWith('.md')) {
+      const filePath = path.join(contentDir, file);
+      const fileContent = fs.readFileSync(filePath, 'utf-8');
+      
+      const match = fileContent.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+      if (match) {
+        const frontmatterRaw = match[1];
+        const content = match[2].trim();
         
-        // Add to replacements list
-        // Replace exact filename with its webp counterpart
-        const originalFilename = `${baseName}${ext}`;
-        const webpFilename = `${baseName}.webp`;
-        replacements.push({ from: originalFilename, to: webpFilename });
-      } else {
-        throw new Error('Converted WebP file was empty or not written.');
+        const metadata = {};
+        frontmatterRaw.split('\n').forEach((line) => {
+          const parts = line.split(':');
+          if (parts.length >= 2) {
+            const key = parts[0].trim();
+            const value = parts.slice(1).join(':').trim().replace(/^["']|["']$/g, '');
+            metadata[key] = value;
+          }
+        });
+        
+        const slug = file.replace(/\.md$/, '');
+        
+        posts.push({
+          slug,
+          title: metadata.title || 'Sem título',
+          date: metadata.date || new Date().toISOString(),
+          description: metadata.description || '',
+          category: metadata.category || 'Outros',
+          author: metadata.author || 'Vale PCD',
+          image: metadata.image || undefined,
+          content: content
+        });
       }
-    } catch (error) {
-      console.error(`Failed to convert ${relativeInputPath}:`, error.message);
     }
   }
 
-  if (replacements.length === 0) {
-    console.log('No successful conversions, skipping reference updates.');
-    return;
+  // Sort by date (newest first)
+  posts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Ensure output directory exists (server/ might not exist but it should)
+  const outputDir = path.dirname(outputFilePath);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  // 3. Find all codebase files to update references
-  console.log('\nScanning codebase for references...');
-  let codeFiles = [...CODE_FILES];
-  for (const dir of CODE_DIRS) {
-    // Exclude images/ directory itself when scanning public/ to avoid scanning binary files
-    const exclude = [IMAGES_DIR];
-    codeFiles = codeFiles.concat(findFiles(dir, CODE_EXTENSIONS, exclude));
-  }
+  fs.writeFileSync(outputFilePath, JSON.stringify(posts, null, 2), 'utf8');
+  console.log(`Compiled ${posts.length} blog posts into ${path.relative(PROJECT_ROOT, outputFilePath)}`);
+}
 
-  console.log(`Found ${codeFiles.length} file(s) in codebase to check for references.`);
+async function main() {
+  console.log('--- Starting WebP Image Conversion & Reference Replacement ---');
 
-  // 4. Perform search and replace in all code files
-  for (const filePath of codeFiles) {
-    replaceInFile(filePath, replacements);
+  const imageFiles = findFiles(IMAGES_DIR, TARGET_EXTENSIONS);
+  
+  if (imageFiles.length > 0) {
+    console.log(`Found ${imageFiles.length} image(s) to convert.`);
+    const replacements = [];
+
+    for (const inputPath of imageFiles) {
+      const relativeInputPath = path.relative(PROJECT_ROOT, inputPath);
+      const dir = path.dirname(inputPath);
+      const ext = path.extname(inputPath);
+      const baseName = path.basename(inputPath, ext);
+      const outputPath = path.join(dir, `${baseName}.webp`);
+
+      console.log(`Converting: ${relativeInputPath} -> ${baseName}.webp`);
+
+      try {
+        await sharp(inputPath).toFile(outputPath);
+
+        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+          fs.unlinkSync(inputPath);
+          console.log(`Deleted original: ${relativeInputPath}`);
+          
+          const originalFilename = `${baseName}${ext}`;
+          const webpFilename = `${baseName}.webp`;
+          replacements.push({ from: originalFilename, to: webpFilename });
+        } else {
+          throw new Error('Converted WebP file was empty or not written.');
+        }
+      } catch (error) {
+        console.error(`Failed to convert ${relativeInputPath}:`, error.message);
+      }
+    }
+
+    if (replacements.length > 0) {
+      console.log('\nScanning codebase for references...');
+      let codeFiles = [...CODE_FILES];
+      for (const dir of CODE_DIRS) {
+        const exclude = [IMAGES_DIR];
+        codeFiles = codeFiles.concat(findFiles(dir, CODE_EXTENSIONS, exclude));
+      }
+
+      console.log(`Found ${codeFiles.length} file(s) in codebase to check for references.`);
+
+      for (const filePath of codeFiles) {
+        replaceInFile(filePath, replacements);
+      }
+    }
+  } else {
+    console.log('No images found that need conversion.');
   }
 
   console.log('\n--- WebP Conversion & Reference Replacement Complete ---');
+
+  // Compile blog posts to static JSON so they bundle inside production server build
+  compileBlogPosts();
 }
 
 main().catch(error => {
