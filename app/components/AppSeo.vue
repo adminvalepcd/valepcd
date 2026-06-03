@@ -11,7 +11,7 @@ const props = defineProps({
   image: {
     type: String,
     required: false,
-    default: 'images/logo-vale-pcd-seo.png' // Premium fallback default image
+    default: '/images/logo-vale-pcd-seo.png' // Premium fallback default image
   },
   type: {
     type: String,
