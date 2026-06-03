@@ -4,7 +4,7 @@
       <!-- Logo Brand -->
       <NuxtLink :to="localePath('/')" class="logo-container" :aria-label="$t('footer.copyright', { year: '' })">
         <img 
-          :src="currentTheme === 'dark' ? '/images/logo Vale PcD branca.png' : '/images/logo Vale PcD.png'" 
+          :src="currentTheme === 'dark' ? '/images/logo Vale PcD branca.webp' : '/images/logo Vale PcD.webp'" 
           alt="Logo Vale PCD"
           class="logo-img"
         />

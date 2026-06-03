@@ -4,10 +4,10 @@ date: 2020-08-03T21:35:38.637Z
 description: "Foto de Luddy Searom usando uma camisa branca, sorrindo e com uma mão no óculos que está no rosto. Eu sempre fui uma criança diferente. Nunca soube o porquê. Por muito tempo, achei que era por conta da minha sexualidade, a qual vim a ter noção aos 6 anos de idade. Muitos autistas compreendem a própria sexualidade em idades precoces, mas isso não é uma característica exclusiva do autismo. Meus pais desconfiaram de hiperatividade ou déficit de atenção quando eu era criança, porque meu pediatra, na"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_e48bc964a3364497843ea9d55ef72bcf_mv2.jpg"
+image: "/images/blog/3872c8_e48bc964a3364497843ea9d55ef72bcf_mv2.webp"
 ---
 
-![Foto de Luddy Searom usando uma camisa branca, sorrindo e com uma mão no óculos que está no rosto.](/images/blog/3872c8_e48bc964a3364497843ea9d55ef72bcf_mv2.jpg)
+![Foto de Luddy Searom usando uma camisa branca, sorrindo e com uma mão no óculos que está no rosto.](/images/blog/3872c8_e48bc964a3364497843ea9d55ef72bcf_mv2.webp)
 
 Eu sempre fui uma criança diferente. Nunca soube o porquê. Por muito tempo, achei que era por conta da minha sexualidade, a qual vim a ter noção aos 6 anos de idade. Muitos autistas compreendem a própria sexualidade em idades precoces, mas isso não é uma característica exclusiva do autismo.
 

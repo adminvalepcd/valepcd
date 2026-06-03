@@ -4,10 +4,10 @@ date: 2020-09-18T21:09:32.442Z
 description: "Foto de Lorena usando um óculos redondo, uma jaqueta jeans clara com detalhes felpudos na gola. Ela é branca, tem cabelos loiros, está com uma mão no queixo e sorrindo de lado. Ao fundo, uma parede clara e a bandeira LGBT. No canto superior esquerdo, a logo do Vale.  Sou a Lorena Eltz, tenho 20 anos, lésbica e PCD. Quando criança eu recebi o diagnóstico de uma doença crônica que me causou várias dificuldades ao longo da infância e adolescência. Com 12 anos eu precisei retirar meu intestino gross"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_f8d80f99d6f74a4fba557eae8050ec3b_mv2.jpg"
+image: "/images/blog/3872c8_f8d80f99d6f74a4fba557eae8050ec3b_mv2.webp"
 ---
 
-![Foto de Lorena usando um óculos redondo, uma jaqueta jeans clara com detalhes felpudos na gola. Ela é branca, tem cabelos loiros, está com uma mão no queixo e sorrindo de lado. Ao fundo, uma parede clara e a bandeira LGBT. No canto superior esquerdo, a logo do Vale.](/images/blog/3872c8_f8d80f99d6f74a4fba557eae8050ec3b_mv2.jpg)
+![Foto de Lorena usando um óculos redondo, uma jaqueta jeans clara com detalhes felpudos na gola. Ela é branca, tem cabelos loiros, está com uma mão no queixo e sorrindo de lado. Ao fundo, uma parede clara e a bandeira LGBT. No canto superior esquerdo, a logo do Vale.](/images/blog/3872c8_f8d80f99d6f74a4fba557eae8050ec3b_mv2.webp)
 
 Sou a Lorena Eltz, tenho 20 anos, lésbica e PCD. Quando criança eu recebi o diagnóstico de uma doença crônica que me causou várias dificuldades ao longo da infância e adolescência. Com 12 anos eu precisei retirar meu intestino grosso devido a inflamações e com isso precisei colocar a bolsa de colostomia, me tornando mulher PCD. Sou uma menina que sempre gostou de estudar, buscou seus objetivos e acabou encontrando na internet uma forma de expressar seu sentimentos através de vídeos e textos em 2015. Em 2017 comecei a passar por processos de descoberta de sexualidade, abri meus olhos para esse mundo e percebi que eu também era lésbica. Desde então tenho passado por processos de aceitação e autoconhecimento maiores mas sempre tentando dividir isso online.
 

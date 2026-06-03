@@ -187,34 +187,34 @@ const getEventDateFormatted = (dateISO) => {
 }
 
 const events = [
-  { name: 'La Folie Festival 2023', year: '2023', dateFormatted: '25 de novembro de 2023', dateISO: '2023-11-25', image: '/images/portfolio/la-folie-festival-2023.png' },
-  { name: 'Marina Sena - Vício Inerente Tour', year: '2023', dateFormatted: '29 de julho de 2023', dateISO: '2023-07-29', image: '/images/portfolio/marina-sena-vicio-inerente-tour.jpg' },
-  { name: 'Dia Mundial de Conscientização do Autismo 2023', year: '2023', dateFormatted: '2 de abril de 2023', dateISO: '2023-04-02', image: '/images/portfolio/dia-mundial-de-conscientizacao-do-autismo-2023.jpg' },
-  { name: 'Sofar Floripa', year: '2023', dateFormatted: '1 de março de 2023', dateISO: '2023-03-01', image: '/images/portfolio/sofar-floripa.jpg' },
-  { name: 'Festival Saravá', year: '2023', dateFormatted: '21 de janeiro de 2023', dateISO: '2023-01-21', image: '/images/portfolio/festival-sarava.jpg' },
-  { name: 'Bloco do Silva', year: '2023', dateFormatted: '14 de janeiro de 2023', dateISO: '2023-01-14', image: '/images/portfolio/bloco-do-silva.jpeg' },
-  { name: 'Tarantina', year: '2023', dateFormatted: '13 de janeiro de 2023', dateISO: '2023-01-13', image: '/images/portfolio/tarantina.jpeg' },
-  { name: 'Carnaval Parador 2023', year: '2023', dateFormatted: '19 de fevereiro de 2023', dateISO: '2023-02-19', image: '/images/portfolio/carnaval-parador-2023.jpeg' },
-  { name: 'Olinda Beer 2023', year: '2023', dateFormatted: '12 de fevereiro de 2023', dateISO: '2023-02-12', image: '/images/portfolio/olinda-beer-2023.jpeg' },
-  { name: 'Reveião Golarrolê 2023', year: '2023', dateFormatted: '14 de janeiro de 2023', dateISO: '2023-01-14', image: '/images/portfolio/reveiao-golarrole-2023.jpg' },
-  { name: 'Festival do Futuro', year: '2023', dateFormatted: '1 de janeiro de 2023', dateISO: '2023-01-01', image: '/images/portfolio/festival-do-futuro.jpg' },
+  { name: 'La Folie Festival 2023', year: '2023', dateFormatted: '25 de novembro de 2023', dateISO: '2023-11-25', image: '/images/portfolio/la-folie-festival-2023.webp' },
+  { name: 'Marina Sena - Vício Inerente Tour', year: '2023', dateFormatted: '29 de julho de 2023', dateISO: '2023-07-29', image: '/images/portfolio/marina-sena-vicio-inerente-tour.webp' },
+  { name: 'Dia Mundial de Conscientização do Autismo 2023', year: '2023', dateFormatted: '2 de abril de 2023', dateISO: '2023-04-02', image: '/images/portfolio/dia-mundial-de-conscientizacao-do-autismo-2023.webp' },
+  { name: 'Sofar Floripa', year: '2023', dateFormatted: '1 de março de 2023', dateISO: '2023-03-01', image: '/images/portfolio/sofar-floripa.webp' },
+  { name: 'Festival Saravá', year: '2023', dateFormatted: '21 de janeiro de 2023', dateISO: '2023-01-21', image: '/images/portfolio/festival-sarava.webp' },
+  { name: 'Bloco do Silva', year: '2023', dateFormatted: '14 de janeiro de 2023', dateISO: '2023-01-14', image: '/images/portfolio/bloco-do-silva.webp' },
+  { name: 'Tarantina', year: '2023', dateFormatted: '13 de janeiro de 2023', dateISO: '2023-01-13', image: '/images/portfolio/tarantina.webp' },
+  { name: 'Carnaval Parador 2023', year: '2023', dateFormatted: '19 de fevereiro de 2023', dateISO: '2023-02-19', image: '/images/portfolio/carnaval-parador-2023.webp' },
+  { name: 'Olinda Beer 2023', year: '2023', dateFormatted: '12 de fevereiro de 2023', dateISO: '2023-02-12', image: '/images/portfolio/olinda-beer-2023.webp' },
+  { name: 'Reveião Golarrolê 2023', year: '2023', dateFormatted: '14 de janeiro de 2023', dateISO: '2023-01-14', image: '/images/portfolio/reveiao-golarrole-2023.webp' },
+  { name: 'Festival do Futuro', year: '2023', dateFormatted: '1 de janeiro de 2023', dateISO: '2023-01-01', image: '/images/portfolio/festival-do-futuro.webp' },
   
-  { name: 'Batidão de Natal', year: '2022', dateFormatted: '24 de dezembro de 2022', dateISO: '2022-12-24', image: '/images/portfolio/batidao-de-natal.jpg' },
-  { name: 'La Folie Festival 2022', year: '2022', dateFormatted: '26 de novembro de 2022', dateISO: '2022-11-26', image: '/images/portfolio/la-folie-festival-2022.jpg' },
-  { name: 'No Ar Coquetel Molotov', year: '2022', dateFormatted: '19 de novembro de 2022', dateISO: '2022-11-19', image: '/images/portfolio/no-ar-coquetel-molotov.jpg' },
-  { name: 'Transborda - As Linguagens da Cena', year: '2022', dateFormatted: '18 de novembro de 2022', dateISO: '2022-11-18', image: '/images/portfolio/transborda-as-linguagens-da-cena.jpg' },
-  { name: 'Terça do Vinil', year: '2022', dateFormatted: '11 de outubro de 2022', dateISO: '2022-10-11', image: '/images/portfolio/terca-do-vinil.jpg' },
-  { name: 'ODARA ÔDESCE 10 anos | com SILVA', year: '2022', dateFormatted: '8 de outubro de 2022', dateISO: '2022-10-08', image: '/images/portfolio/odara-odesce-10-anos-com-silva.jpg' },
-  { name: 'Limonada Pop Renaissance', year: '2022', dateFormatted: '30 de julho de 2022', dateISO: '2022-07-30', image: '/images/portfolio/limonada-pop-renaissance.jpg' },
+  { name: 'Batidão de Natal', year: '2022', dateFormatted: '24 de dezembro de 2022', dateISO: '2022-12-24', image: '/images/portfolio/batidao-de-natal.webp' },
+  { name: 'La Folie Festival 2022', year: '2022', dateFormatted: '26 de novembro de 2022', dateISO: '2022-11-26', image: '/images/portfolio/la-folie-festival-2022.webp' },
+  { name: 'No Ar Coquetel Molotov', year: '2022', dateFormatted: '19 de novembro de 2022', dateISO: '2022-11-19', image: '/images/portfolio/no-ar-coquetel-molotov.webp' },
+  { name: 'Transborda - As Linguagens da Cena', year: '2022', dateFormatted: '18 de novembro de 2022', dateISO: '2022-11-18', image: '/images/portfolio/transborda-as-linguagens-da-cena.webp' },
+  { name: 'Terça do Vinil', year: '2022', dateFormatted: '11 de outubro de 2022', dateISO: '2022-10-11', image: '/images/portfolio/terca-do-vinil.webp' },
+  { name: 'ODARA ÔDESCE 10 anos | com SILVA', year: '2022', dateFormatted: '8 de outubro de 2022', dateISO: '2022-10-08', image: '/images/portfolio/odara-odesce-10-anos-com-silva.webp' },
+  { name: 'Limonada Pop Renaissance', year: '2022', dateFormatted: '30 de julho de 2022', dateISO: '2022-07-30', image: '/images/portfolio/limonada-pop-renaissance.webp' },
   { name: 'Romero Ferro - Turnê Encerramento Álbum Ferro', year: '2022', dateFormatted: '1 de maio de 2022', dateISO: '2022-05-01', image: '/images/portfolio/romero-ferro-turne-de-encerramento-do-album-ferro.webp' },
-  { name: 'ODARA ÔDESCE + REC BEAT apresentam Marina Sena', year: '2022', dateFormatted: '13 de maio de 2022', dateISO: '2022-05-13', image: '/images/portfolio/odara-odesce-rec-beat-apresentam-marina-sena.png' },
-  { name: 'Carvalheira na Ladeira', year: '2022', dateFormatted: '15 de abril de 2022', dateISO: '2022-04-15', image: '/images/portfolio/carvalheira-na-ladeira.jpg' },
+  { name: 'ODARA ÔDESCE + REC BEAT apresentam Marina Sena', year: '2022', dateFormatted: '13 de maio de 2022', dateISO: '2022-05-13', image: '/images/portfolio/odara-odesce-rec-beat-apresentam-marina-sena.webp' },
+  { name: 'Carvalheira na Ladeira', year: '2022', dateFormatted: '15 de abril de 2022', dateISO: '2022-04-15', image: '/images/portfolio/carvalheira-na-ladeira.webp' },
   { name: 'ARVO Festival', year: '2022', dateFormatted: '15 de abril de 2022', dateISO: '2022-04-15', image: '/images/portfolio/arvo-festival.webp' },
-  { name: 'Baile da Anaconda', year: '2022', dateFormatted: '19 de março de 2022', dateISO: '2022-03-19', image: '/images/portfolio/baile-da-anaconda.jpg' },
-  { name: 'Prêmio Biscoito 2022', year: '2022', dateFormatted: '28 de junho de 2022', dateISO: '2022-06-28', image: '/images/portfolio/premio-biscoito-2022.jpeg' },
+  { name: 'Baile da Anaconda', year: '2022', dateFormatted: '19 de março de 2022', dateISO: '2022-03-19', image: '/images/portfolio/baile-da-anaconda.webp' },
+  { name: 'Prêmio Biscoito 2022', year: '2022', dateFormatted: '28 de junho de 2022', dateISO: '2022-06-28', image: '/images/portfolio/premio-biscoito-2022.webp' },
   
-  { name: 'Reveião Golarrolê 2022', year: '2021', dateFormatted: '31 de dezembro de 2021', dateISO: '2021-12-31', image: '/images/portfolio/reveiao-golarrole-2022.jpeg' },
-  { name: 'No Ar Coquetel Molotov - 18ª Edição', year: '2021', dateFormatted: '13 de novembro de 2021', dateISO: '2021-11-13', image: '/images/portfolio/no-ar-coquetel-molotov-18-edicao.jpg' }
+  { name: 'Reveião Golarrolê 2022', year: '2021', dateFormatted: '31 de dezembro de 2021', dateISO: '2021-12-31', image: '/images/portfolio/reveiao-golarrole-2022.webp' },
+  { name: 'No Ar Coquetel Molotov - 18ª Edição', year: '2021', dateFormatted: '13 de novembro de 2021', dateISO: '2021-11-13', image: '/images/portfolio/no-ar-coquetel-molotov-18-edicao.webp' }
 ]
 
 const filteredEvents = computed(() => {

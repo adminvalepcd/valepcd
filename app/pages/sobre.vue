@@ -79,27 +79,27 @@
         {
           name: 'Priscila Siqueira',
           role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundadora & Directora' : 'Co-idealizadora & Diretora'),
-          image: '/images/sobre/priscila.jpeg'
+          image: '/images/sobre/priscila.webp'
         },
         {
           name: 'Alexsandro Sousa',
           role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundador & Director' : 'Co-idealizador & Diretor'),
-          image: '/images/sobre/alexsandro.jpeg'
+          image: '/images/sobre/alexsandro.webp'
         },
         {
           name: 'Beto Maia',
           role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundador & Director' : 'Co-idealizador & Diretor'),
-          image: '/images/sobre/beto.jpeg'
+          image: '/images/sobre/beto.webp'
         },
         {
           name: 'Jonas Marssaro',
           role: locale.value === 'en' ? 'Co-founder & Director' : (locale.value === 'es' ? 'Co-fundador & Director' : 'Co-idealizador & Diretor'),
-          image: '/images/sobre/jonas.jpeg'
+          image: '/images/sobre/jonas.webp'
         },
         {
           name: 'Thomas Nader',
           role: locale.value === 'en' ? 'Executive Director' : (locale.value === 'es' ? 'Director Ejecutivo' : 'Diretor Executivo'),
-          image: '/images/sobre/thomas.jpg'
+          image: '/images/sobre/thomas.webp'
         }
       ])
 </script>

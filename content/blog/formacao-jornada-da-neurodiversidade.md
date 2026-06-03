@@ -4,10 +4,10 @@ date: 2024-01-31T03:00:00.000Z
 description: "Não perca a oportunidade de aprender sobre a neurodiversidade e promover a inclusão e igualdade de oportunidades para pessoas neurodivergentes. Clique aqui e saiba mais."
 category: "Formações"
 author: "Vale PCD"
-image: "/images/blog/e4309b_c3f880ee8fee4979b7352f76b4aa3673_mv2.png"
+image: "/images/blog/e4309b_c3f880ee8fee4979b7352f76b4aa3673_mv2.webp"
 ---
 
-![A neurodiversidade é um conceito que abraça a riqueza das variações neurocognitivas humanas. Inclui pessoas com TDAH, autismo, dislexia, dispraxia e outras condições. Essas pessoas enfrentam desafios únicos no mercado de trabalho, como falta de compreensão, preconceito e estigma.](/images/blog/e4309b_c3f880ee8fee4979b7352f76b4aa3673_mv2.png)
+![A neurodiversidade é um conceito que abraça a riqueza das variações neurocognitivas humanas. Inclui pessoas com TDAH, autismo, dislexia, dispraxia e outras condições. Essas pessoas enfrentam desafios únicos no mercado de trabalho, como falta de compreensão, preconceito e estigma.](/images/blog/e4309b_c3f880ee8fee4979b7352f76b4aa3673_mv2.webp)
 
 O curso "Jornada da Diversidade" é uma oportunidade única de aprender sobre a neurodiversidade e como promover a inclusão e igualdade de oportunidades para pessoas neurodivergentes.
 

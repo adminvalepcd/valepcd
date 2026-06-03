@@ -4,7 +4,7 @@ date: 2023-10-07T03:00:00.000Z
 description: "O Vale Maps é uma plataforma inovadora que permite que você mapeie e avalie a acessibilidade de espaços públicos e privados em sua cidade | Mapa de Acessibilidade"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/youtube_xbAmyQakZDY_maxresdefault.jpg"
+image: "/images/blog/youtube_xbAmyQakZDY_maxresdefault.webp"
 ---
 
 Animação criada em agosto de 2023 pelos estudantes de animação Daniel Eron e Tiago Rodrigues da Universidade da Região de Joinville (UNIVILLE).Universidade da Região de Joinville (UNIVILLE).

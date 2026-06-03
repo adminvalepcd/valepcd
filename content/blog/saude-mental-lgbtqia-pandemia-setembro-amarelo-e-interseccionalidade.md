@@ -4,10 +4,10 @@ date: 2020-09-11T14:11:24.427Z
 description: "Foto de Cadu num fundo azul claro. Ele é um homem careca, tem barba, está sorrindo e usa uma camisa de mangas longas e detalhes coloridos nas laterais. No canto superior direito, a logo do projeto.Sou o Cadu Barros, sou psicólogo e militante da causa LGBTQIA+Fico feliz que em setembro se dê um foco maior a saúde mental por conta do movimento setembro amarelo, mas vale lembrar que as pessoas estão suscetíveis a precisar de apoio psicológico o ano todo! E quando a gente traz pra comunidade LGBTQIA"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_162610a5390c4a71a44fb4686d998d1c_mv2.jpg"
+image: "/images/blog/3872c8_162610a5390c4a71a44fb4686d998d1c_mv2.webp"
 ---
 
-![Foto de Cadu num fundo azul claro. Ele é um homem careca, tem barba, está sorrindo e usa uma camisa de mangas longas e detalhes coloridos nas laterais. No canto superior direito, a logo do projeto.](/images/blog/3872c8_162610a5390c4a71a44fb4686d998d1c_mv2.jpg)
+![Foto de Cadu num fundo azul claro. Ele é um homem careca, tem barba, está sorrindo e usa uma camisa de mangas longas e detalhes coloridos nas laterais. No canto superior direito, a logo do projeto.](/images/blog/3872c8_162610a5390c4a71a44fb4686d998d1c_mv2.webp)
 
 Sou o Cadu Barros, sou psicólogo e militante da causa LGBTQIA+
 

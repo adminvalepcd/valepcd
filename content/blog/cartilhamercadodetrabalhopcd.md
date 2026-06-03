@@ -4,7 +4,7 @@ date: 2023-11-21T23:57:08.030Z
 description: "Baixe agora mesmo nossa cartilha que aborda de forma abrangente e informativa os principais aspectos relacionados à inclusão de pessoas com deficiência, incluindo acessibilidade, direitos, capacitismo, mercado de trabalho e outros temas pertinentes."
 category: "Cartilhas"
 author: "Vale PCD"
-image: "/images/blog/46120e_6975cf91cdba47d49f019f40620d8502_mv2.png"
+image: "/images/blog/46120e_6975cf91cdba47d49f019f40620d8502_mv2.webp"
 ---
 
 Saiba mais sobre o processo de criação da cartilja por Jully Neves.
@@ -41,12 +41,12 @@ Baixe agora: [https://www.valepcd.com.br/post/cartilhamercadodetrabalhopcd](http
 
 Realização
 
-![Jully Neves é uma mulher negra, cis, lésbica, nordestina, candomblecista, pessoa com deficiência psicossocial e neurodivergente. Consultora e especialista em Diversidade e Inclusão, gestora de projetos, pesquisadora de neurodiversidade. Além disso, é diretora do Vale PcD e faz parte do projeto Guerreira Sem Armas pelo Instituto Elos. Formada em Administração de Empresas, pós-graduada em Direitos Humanos e possuí certificação em gestão de projetos de impacto.](/images/blog/46120e_d34c57085f394becb70a3ff73547ae64_mv2.png)
+![Jully Neves é uma mulher negra, cis, lésbica, nordestina, candomblecista, pessoa com deficiência psicossocial e neurodivergente. Consultora e especialista em Diversidade e Inclusão, gestora de projetos, pesquisadora de neurodiversidade. Além disso, é diretora do Vale PcD e faz parte do projeto Guerreira Sem Armas pelo Instituto Elos. Formada em Administração de Empresas, pós-graduada em Direitos Humanos e possuí certificação em gestão de projetos de impacto.](/images/blog/46120e_d34c57085f394becb70a3ff73547ae64_mv2.webp)
 
 Revisão Técnica
 
-![Julia Piccolomini é uma mulher cis, branca, bissexual, umbandista e possuí uma deficiência física chamada distrofia muscular de cinturas. Diretora da ONG Vale PcD, consultora de D&I e especialista com 14 anos de atuação em Gestão de Pessoas.](/images/blog/46120e_5cfcba733a814a82a67fe335d3b87e69_mv2.jpg)
+![Julia Piccolomini é uma mulher cis, branca, bissexual, umbandista e possuí uma deficiência física chamada distrofia muscular de cinturas. Diretora da ONG Vale PcD, consultora de D&I e especialista com 14 anos de atuação em Gestão de Pessoas.](/images/blog/46120e_5cfcba733a814a82a67fe335d3b87e69_mv2.webp)
 
 Projeto Gráfico e Diagramação
 
-![Luciana Terra é uma mulher cis, branca, lésbica, designer social, diretora de arte,  produtora cultural e fundadora da Mútua Criativa. Formada em Designer Gráfico e Geografia.](/images/blog/46120e_2f601741cd254ce1835d9e021f7a7e8a_mv2.jpg)
+![Luciana Terra é uma mulher cis, branca, lésbica, designer social, diretora de arte,  produtora cultural e fundadora da Mútua Criativa. Formada em Designer Gráfico e Geografia.](/images/blog/46120e_2f601741cd254ce1835d9e021f7a7e8a_mv2.webp)

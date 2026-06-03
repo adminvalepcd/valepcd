@@ -4,10 +4,10 @@ date: 2020-07-01T21:42:26.067Z
 description: "Foto com fundo azul, do lado direito a frase \"com Bianca Galvão\" e abaixo a logo do projeto. À esquerda, foto de Bianca com os cabelos soltos, usando uma blusa azul.Meu nome é Bianca Galvão, e eu decidi começar a fazer vídeos falando sobre o autismo pra tentar mudar essa visão que as pessoas tem. Dar maior visibilidade para meninas autistas, também é o meu foco.- O que é o autismo?Autismo não é uma doença. Autismo trata-se de uma condição na qual temos um déficit na comunicação e socialização."
 category: "Vivências"
 author: "Vale PCD"
-image: "/images/blog/3872c8_c2d8e0a1ee584f23b5eec93fe543966a_mv2.jpg"
+image: "/images/blog/3872c8_c2d8e0a1ee584f23b5eec93fe543966a_mv2.webp"
 ---
 
-![Foto com fundo azul, do lado direito a frase "com Bianca Galvão" e abaixo a logo do projeto. À esquerda, foto de Bianca com os cabelos soltos, usando uma blusa azul.](/images/blog/3872c8_c2d8e0a1ee584f23b5eec93fe543966a_mv2.jpg)
+![Foto com fundo azul, do lado direito a frase "com Bianca Galvão" e abaixo a logo do projeto. À esquerda, foto de Bianca com os cabelos soltos, usando uma blusa azul.](/images/blog/3872c8_c2d8e0a1ee584f23b5eec93fe543966a_mv2.webp)
 
 Meu nome é Bianca Galvão, e eu decidi começar a fazer vídeos falando sobre o autismo pra tentar mudar essa visão que as pessoas tem. Dar maior visibilidade para meninas autistas, também é o meu foco.
 

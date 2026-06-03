@@ -4,10 +4,10 @@ date: 2020-08-04T11:32:37.537Z
 description: "Foto de Luddy Searom usando uma camisa branca, sorrindo e com uma mão no óculos que está no rosto.2018 foi um ano de grandes mudanças. Em março (ou fevereiro), por conta de uma amiga, a Fernanda, que tem um primo autista e viu muitas similaridades entre eu e ele, retomei a ideia de ser autista, que eu tinha abandonado no final de 2015. Comecei a pesquisar muito sobre o assunto, como se fosse um pequeno hiperfoco. Fiz um teste de internet chamado AspieQuizz, bem conhecido e baseado em artigos, qu"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_e48bc964a3364497843ea9d55ef72bcf_mv2.jpg"
+image: "/images/blog/3872c8_e48bc964a3364497843ea9d55ef72bcf_mv2.webp"
 ---
 
-![Foto de Luddy Searom usando uma camisa branca, sorrindo e com uma mão no óculos que está no rosto.](/images/blog/3872c8_e48bc964a3364497843ea9d55ef72bcf_mv2.jpg)
+![Foto de Luddy Searom usando uma camisa branca, sorrindo e com uma mão no óculos que está no rosto.](/images/blog/3872c8_e48bc964a3364497843ea9d55ef72bcf_mv2.webp)
 
 2018 foi um ano de grandes mudanças. Em março (ou fevereiro), por conta de uma amiga, a Fernanda, que tem um primo autista e viu muitas similaridades entre eu e ele, retomei a ideia de ser autista, que eu tinha abandonado no final de 2015. Comecei a pesquisar muito sobre o assunto, como se fosse um pequeno hiperfoco. Fiz um teste de internet chamado AspieQuizz, bem conhecido e baseado em artigos, que acusou que eu provavelmente tinha asperger, então pedi para que todos os meus amigos fizessem o mesmo teste – para a maioria deles, o teste disse que eram neurotípicos. Eu precisava de um número amostral maior, mas meus amigos haviam acabado. Sendo assim, entrei em grupos de autismo na internet e comecei a conversar com diferentes autistas adultos e a identificação, além de descoberta de “sintomas” autísticos que se encaixavam perfeitamente em mim, só aumentava.
 

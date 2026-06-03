@@ -4,10 +4,10 @@ date: 2020-07-07T09:01:01.411Z
 description: "Foto de Jonas, foco no seu rosto com uma expressão séria. Ele usa camisa preta com detalhes coloridos. A logo do projeto está no canto superior esquerdo.Ser autista e LGBT é muita coisa, e ao mesmo tempo é simples. É complexo e simples. Ser uma pessoa LGBT e uma pessoa autista, me faz ter duas questões de vulnerabilidade social: primeiro porque eu não estou na normatividade hetero-cis-normativa social, segundo porque não estou na normatividade neuro-bio-psicológica, sendo que eu sou uma pessoa c"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_8e374f46647e4a37b366461567da7f2d_mv2.png"
+image: "/images/blog/3872c8_8e374f46647e4a37b366461567da7f2d_mv2.webp"
 ---
 
-![Foto de Jonas, foco no seu rosto com uma expressão séria. Ele usa camisa preta com detalhes coloridos. A logo do projeto está no canto superior esquerdo.](/images/blog/3872c8_8e374f46647e4a37b366461567da7f2d_mv2.png)
+![Foto de Jonas, foco no seu rosto com uma expressão séria. Ele usa camisa preta com detalhes coloridos. A logo do projeto está no canto superior esquerdo.](/images/blog/3872c8_8e374f46647e4a37b366461567da7f2d_mv2.webp)
 
 Ser autista e LGBT é muita coisa, e ao mesmo tempo é simples. É complexo e simples. Ser uma pessoa LGBT e uma pessoa autista, me faz ter duas questões de vulnerabilidade social: primeiro porque eu não estou na normatividade hetero-cis-normativa social, segundo porque não estou na normatividade neuro-bio-psicológica, sendo que eu sou uma pessoa com um transtorno mental e um transtorno global do neurodesenvolvimento. Normalmente isso funciona pra mim, porque são duas esferas que, apesar de serem separadas na minha vida, elas se relacionam muito diretamente.
 

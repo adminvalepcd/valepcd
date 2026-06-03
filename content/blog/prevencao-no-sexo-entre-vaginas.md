@@ -4,10 +4,10 @@ date: 2020-08-13T21:59:34.306Z
 description: "Foto preto e branco de duas pessoas negras, sem camisa, se abraçando. No canto direito, a bandeira lésbica.Pouco se fala sobre a prevenção no sexo entre vaginas e não existem métodos específicos pensados para tal. A transmissão de ISTs não se dá apenas com a penetração durante o sexo, mas de várias formas, entre elas está o contato entre mucosas, sangue e sexo oral. Por isso, de nada tem a ver a orientação sexual com a contração de ISTs, devemos pensar apenas nas práticas sexuais. O que se deve"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_238ea7d7c10245cba2fcdd9ea48e4011_mv2.jpg"
+image: "/images/blog/3872c8_238ea7d7c10245cba2fcdd9ea48e4011_mv2.webp"
 ---
 
-![Foto preto e branco de duas pessoas negras, sem camisa, se abraçando. No canto direito, a bandeira lésbica.](/images/blog/3872c8_238ea7d7c10245cba2fcdd9ea48e4011_mv2.jpg)
+![Foto preto e branco de duas pessoas negras, sem camisa, se abraçando. No canto direito, a bandeira lésbica.](/images/blog/3872c8_238ea7d7c10245cba2fcdd9ea48e4011_mv2.webp)
 
 Pouco se fala sobre a prevenção no sexo entre vaginas e não existem métodos específicos pensados para tal. A transmissão de ISTs não se dá apenas com a penetração durante o sexo, mas de várias formas, entre elas está o contato entre mucosas, sangue e sexo oral. Por isso, de nada tem a ver a orientação sexual com a contração de ISTs, devemos pensar apenas nas práticas sexuais. O que se deve evitar? Transar menstruada, dividir brinquedos, usar o mesmo dedo em diferentes cavidades, algum machucado que possa sangrar (na boca, na vulva, no dedo), verrugas genitais presentes em pessoas com HPV, plástico filme é poroso, calcinha de látex não protege no sexo oral.
 

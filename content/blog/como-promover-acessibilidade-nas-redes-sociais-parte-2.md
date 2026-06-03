@@ -4,10 +4,10 @@ date: 2020-07-01T21:33:07.705Z
 description: "Foto com fundo cinza, um arco-íris no centro e uma mulher segurando o celular com expressão de surpresa. Ela veste uma camisa de manga, preta com listras brancas na horizontal e está com o cabelo preso. No canto inferior direito, a logo do projeto. No post anterior, trouxemos muitas informações sobre como tornar suas redes acessíveis com foco em pessoas com deficiência visual, mas você sabe como promover a inclusão de pessoas com deficiência auditiva? No Brasil há cerca de 32.121 pessoas com def"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_e141029ab2754ae4b8b44d908e3de5da_mv2.png"
+image: "/images/blog/3872c8_e141029ab2754ae4b8b44d908e3de5da_mv2.webp"
 ---
 
-![Foto com fundo cinza, um arco-íris no centro e uma mulher segurando o celular com expressão de surpresa. Ela veste uma camisa de manga, preta com listras brancas na horizontal e está com o cabelo preso. No canto inferior direito, a logo do projeto.](/images/blog/3872c8_e141029ab2754ae4b8b44d908e3de5da_mv2.png)
+![Foto com fundo cinza, um arco-íris no centro e uma mulher segurando o celular com expressão de surpresa. Ela veste uma camisa de manga, preta com listras brancas na horizontal e está com o cabelo preso. No canto inferior direito, a logo do projeto.](/images/blog/3872c8_e141029ab2754ae4b8b44d908e3de5da_mv2.webp)
 
 No post anterior, trouxemos muitas informações sobre como tornar suas redes acessíveis com foco em pessoas com deficiência visual, mas você sabe como promover a inclusão de pessoas com deficiência auditiva?
 

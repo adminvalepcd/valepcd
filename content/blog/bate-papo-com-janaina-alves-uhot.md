@@ -4,10 +4,10 @@ date: 2020-09-06T18:31:30.736Z
 description: "Foto de uma pessoa deitada na cama, abraçando um travesseiro que cobre seu rosto, com as pernas levantadas e a janela aberta, permitindo que o quarto seja iluminado com a luz do sol. No canto superior direito, a logo do projeto. A Uhot é uma boutique sensual que funciona online, pelo Instagram e Whatsapp. Conversamos com Janaina, que cuida da loja, sobre tabus, produtinhos, clientes e outras coisas. Olha só:- O que você percebe como maior a dificuldade/barreira das pessoas em adquirirem produto"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_3b845aa4a6cf417893c7278f6d40728d_mv2.png"
+image: "/images/blog/3872c8_3b845aa4a6cf417893c7278f6d40728d_mv2.webp"
 ---
 
-![Foto de uma pessoa deitada na cama, abraçando um travesseiro que cobre seu rosto, com as pernas levantadas e a janela aberta, permitindo que o quarto seja iluminado com a luz do sol. No canto superior direito, a logo do projeto.](/images/blog/3872c8_3b845aa4a6cf417893c7278f6d40728d_mv2.png)
+![Foto de uma pessoa deitada na cama, abraçando um travesseiro que cobre seu rosto, com as pernas levantadas e a janela aberta, permitindo que o quarto seja iluminado com a luz do sol. No canto superior direito, a logo do projeto.](/images/blog/3872c8_3b845aa4a6cf417893c7278f6d40728d_mv2.webp)
 
 A Uhot é uma boutique sensual que funciona online, pelo [Instagram](https://www.instagram.com/uhotbr/) e [Whatsapp](https://api.whatsapp.com/send?phone=558198434269&text=Oiii%2C%20quero%20saber%20mais%20sobre%20seus%20produtos.%20%20). Conversamos com Janaina, que cuida da loja, sobre tabus, produtinhos, clientes e outras coisas. Olha só:
 

@@ -4,10 +4,10 @@ date: 2020-12-05T18:53:18.124Z
 description: "Elayne está com o rosto apoiado na mão, com uma expressão séria. Ela usa óculos, tem cabelos médios escuros, é uma mulher branca. Quem é Elayne?Sou uma mulher, branca, cisgênero. Tenho 29 anos, uma aprendiz de gente, graduada em design de moda e cursando psicopedagogia. Mãe de um garoto bem legal chamado Guilherme.A sua formação é Design de Moda, o que te levou a estudarpsicopedagogia?A partir das demandas de Gui, comecei a usar o que tinha no meu repertório como Design, mais sempre fui muito se"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_5e16cdf5143f477a911de5ddd70350cf_mv2.png"
+image: "/images/blog/3872c8_5e16cdf5143f477a911de5ddd70350cf_mv2.webp"
 ---
 
-![Elayne está com o rosto apoiado na mão, com uma expressão séria. Ela usa óculos, tem cabelos médios escuros, é uma mulher branca.](/images/blog/3872c8_5e16cdf5143f477a911de5ddd70350cf_mv2.png)
+![Elayne está com o rosto apoiado na mão, com uma expressão séria. Ela usa óculos, tem cabelos médios escuros, é uma mulher branca.](/images/blog/3872c8_5e16cdf5143f477a911de5ddd70350cf_mv2.webp)
 
 Quem é Elayne?
 

@@ -4,12 +4,12 @@ date: 2020-07-01T21:22:15.837Z
 description: "Descubra os benefícios fiscais para PCD na compra de carros! Isenção de ICMS, IPVA, IPI e IOF. Prioridade na restituição do IR e deduções especiais."
 category: "Direito PCD"
 author: "Vale PCD"
-image: "/images/blog/3872c8_9b27a284e0414d228867b8e46f517197_mv2.png"
+image: "/images/blog/3872c8_9b27a284e0414d228867b8e46f517197_mv2.webp"
 ---
 
 Descubra os benefícios fiscais para PCD na compra de carros! Isenção de ICMS, IPVA, IPI e IOF. Prioridade na restituição do IR e deduções especiais
 
-![Foto de um leão e a logo do projeto no canto inferior direito.](/images/blog/3872c8_9b27a284e0414d228867b8e46f517197_mv2.png)
+![Foto de um leão e a logo do projeto no canto inferior direito.](/images/blog/3872c8_9b27a284e0414d228867b8e46f517197_mv2.webp)
 
 A Lei 8.989, de 24 de fevereiro de 1995, institui a isenção de alguns impostos para pessoas com deficiência na compra de um novo carro. São eles:
 

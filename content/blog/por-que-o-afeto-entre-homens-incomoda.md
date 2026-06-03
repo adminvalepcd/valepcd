@@ -4,10 +4,10 @@ date: 2021-02-09T14:10:10.203Z
 description: "Foto: dois homens brancos, um com a cabeça no ombro do outro, trocando carinhos. Fonte: temqueter.orgJonas MarssaroHomem gay, autista, estudante de Psicologia e amante de livros e panquecas. Gosto de estudar a sociedade, principalmente as vidas autistas e LGBTI+ que se inserem na sociedade capitalista e brasileira.Esse questionamento passa por muitos corpos que são gays, bissexuais, pansexuais, assexuais e outros homens que atraem-se afetivamente e sexualmente por outros homens, e as respostas p"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_9ffed9cb8c074fcba1b3bd9f458eff9c_mv2.png"
+image: "/images/blog/3872c8_9ffed9cb8c074fcba1b3bd9f458eff9c_mv2.webp"
 ---
 
-![Foto: dois homens brancos, um com a cabeça no ombro do outro, trocando carinhos. Fonte: temqueter.org](/images/blog/3872c8_9ffed9cb8c074fcba1b3bd9f458eff9c_mv2.png)
+![Foto: dois homens brancos, um com a cabeça no ombro do outro, trocando carinhos. Fonte: temqueter.org](/images/blog/3872c8_9ffed9cb8c074fcba1b3bd9f458eff9c_mv2.webp)
 
 Jonas Marssaro
 

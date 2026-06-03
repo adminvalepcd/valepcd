@@ -4,10 +4,10 @@ date: 2020-08-31T21:41:51.880Z
 description: "Foto que mostra uma fila fotografada de cima, antes do período de distanciamento social, num dia ensolarado. No canto inferior esquerdo, a logo do projeto.As Leis Federais 10.048 e 10.098, ambas do ano de 2000, regulamentadas pelo Decreto Federal no 5.296/2004, já asseguram:- Atendimento preferencial para pessoas com deficiência, idosos, gestantes, lactantes, pessoas com mobilidade reduzida, crianças de colo e obesos direito a atendimento prioritário em repartições públicas e empresas concession"
 category: "Direito PCD"
 author: "Vale PCD"
-image: "/images/blog/3872c8_28844dbc8e494246a5584db0e99c0ef3_mv2.png"
+image: "/images/blog/3872c8_28844dbc8e494246a5584db0e99c0ef3_mv2.webp"
 ---
 
-![Foto que mostra uma fila fotografada de cima, antes do período de distanciamento social, num dia ensolarado. No canto inferior esquerdo, a logo do projeto.](/images/blog/3872c8_28844dbc8e494246a5584db0e99c0ef3_mv2.png)
+![Foto que mostra uma fila fotografada de cima, antes do período de distanciamento social, num dia ensolarado. No canto inferior esquerdo, a logo do projeto.](/images/blog/3872c8_28844dbc8e494246a5584db0e99c0ef3_mv2.webp)
 
 As Leis Federais 10.048 e 10.098, ambas do ano de 2000, regulamentadas pelo Decreto Federal no 5.296/2004, já asseguram:
 

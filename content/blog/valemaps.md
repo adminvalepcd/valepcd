@@ -4,7 +4,7 @@ date: 2023-06-09T03:00:00.000Z
 description: "Entrevista para a TV Pernambuco sobre o nosso mapa de acessibilidade"
 category: "Entrevistas"
 author: "Vale PCD"
-image: "/images/blog/youtube_X2VvAiFHUFk_maxresdefault.jpg"
+image: "/images/blog/youtube_X2VvAiFHUFk_maxresdefault.webp"
 ---
 
 Entrevista para a TV Pernambuco sobre o nosso mapa de acessibilidade

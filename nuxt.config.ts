@@ -47,16 +47,16 @@ export default defineNuxtConfig({
         { property: 'og:description', content: 'Conheça o Vale PCD: O maior projeto do Brasil sobre visibilidade e acessibilidade para pessoas com deficiência da comunidade LGBTQI+.' },
         { property: 'og:url', content: 'https://www.valepcd.com.br' },
         { property: 'og:site_name', content: 'Vale PCD' },
-        { property: 'og:image', content: 'https://www.valepcd.com.br/images/logo-vale-pcd-seo.png' },
+        { property: 'og:image', content: 'https://www.valepcd.com.br/images/logo-vale-pcd-seo.webp' },
 
         // Twitter
         { name: 'twitter:card', content: 'summary_large_image' },
         { name: 'twitter:title', content: 'Vale PCD | Acessibilidade para Empresas e Comunidade' },
         { name: 'twitter:description', content: 'Conheça o Vale PCD: O maior projeto do Brasil sobre visibilidade e acessibilidade para pessoas com deficiência da comunidade LGBTQI+.' },
-        { name: 'twitter:image', content: 'https://www.valepcd.com.br/images/logo-vale-pcd-seo.png' }
+        { name: 'twitter:image', content: 'https://www.valepcd.com.br/images/logo-vale-pcd-seo.webp' }
       ],
       link: [
-        { rel: 'icon', type: 'image/png', href: '/images/logo-vale-pcd-seo.png' }
+        { rel: 'icon', type: 'image/png', href: '/images/logo-vale-pcd-seo.webp' }
       ]
     }
   }

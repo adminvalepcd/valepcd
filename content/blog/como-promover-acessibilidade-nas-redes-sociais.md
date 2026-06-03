@@ -4,10 +4,10 @@ date: 2020-07-01T21:30:35.409Z
 description: "Foto com fundo cinza, um arco-íris no centro e uma mulher segurando o celular sorrindo. Ela veste uma camisa de manga, preta com listras brancas na horizontal e está com o cabelo preso. No canto inferior direito, a logo do projeto.   Já pensou em tornar seu perfil mais acessível para todes? Pesquisamos e vamos te contar algumas formas de ser inclusivo, fazendo poucas mudanças durante as suas postagens.A hashtag #pracegover, embora muito usada e até bem intencionada, pode não ser a melhor forma d"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_4d7953980c0f44f88e5ef5b2c792fb0c_mv2.png"
+image: "/images/blog/3872c8_4d7953980c0f44f88e5ef5b2c792fb0c_mv2.webp"
 ---
 
-![Foto com fundo cinza, um arco-íris no centro e uma mulher segurando o celular sorrindo. Ela veste uma camisa de manga, preta com listras brancas na horizontal e está com o cabelo preso. No canto inferior direito, a logo do projeto.](/images/blog/3872c8_4d7953980c0f44f88e5ef5b2c792fb0c_mv2.png)
+![Foto com fundo cinza, um arco-íris no centro e uma mulher segurando o celular sorrindo. Ela veste uma camisa de manga, preta com listras brancas na horizontal e está com o cabelo preso. No canto inferior direito, a logo do projeto.](/images/blog/3872c8_4d7953980c0f44f88e5ef5b2c792fb0c_mv2.webp)
 
 Já pensou em tornar seu perfil mais acessível para todes? Pesquisamos e vamos te contar algumas formas de ser inclusivo, fazendo poucas mudanças durante as suas postagens.
 

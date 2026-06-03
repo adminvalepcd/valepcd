@@ -5,7 +5,7 @@
       <div class="footer-brand">
         <div class="logo-container">
           <img 
-            :src="currentTheme === 'dark' ? '/images/logo Vale PcD branca.png' : '/images/logo Vale PcD.png'" 
+            :src="currentTheme === 'dark' ? '/images/logo Vale PcD branca.webp' : '/images/logo Vale PcD.webp'" 
             alt="Logo Vale PCD"
             class="logo-img"
           />

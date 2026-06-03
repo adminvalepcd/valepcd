@@ -135,37 +135,37 @@ const localePath = useLocalePath()
 const team = [
   {
     name: 'Camila Moreira',
-    image: '/images/psicoterapia/Camila Moreira.jpeg',
+    image: '/images/psicoterapia/Camila Moreira.webp',
     roleKey: 'psychotherapy.teamMembers.camila.role',
     bioKey: 'psychotherapy.teamMembers.camila.bio'
   },
   {
     name: 'Wendy Lustosa Amorim',
-    image: '/images/psicoterapia/Wendy Lustosa Amorim.jpeg',
+    image: '/images/psicoterapia/Wendy Lustosa Amorim.webp',
     roleKey: 'psychotherapy.teamMembers.wendy.role',
     bioKey: 'psychotherapy.teamMembers.wendy.bio'
   },
   {
     name: 'Deyvison Ferreira',
-    image: '/images/psicoterapia/Deyvison Ferreira.jpeg',
+    image: '/images/psicoterapia/Deyvison Ferreira.webp',
     roleKey: 'psychotherapy.teamMembers.deyvison.role',
     bioKey: 'psychotherapy.teamMembers.deyvison.bio'
   },
   {
     name: 'Lucas Nogueira',
-    image: '/images/psicoterapia/Lucas Nogueira.jpeg',
+    image: '/images/psicoterapia/Lucas Nogueira.webp',
     roleKey: 'psychotherapy.teamMembers.lucas.role',
     bioKey: 'psychotherapy.teamMembers.lucas.bio'
   },
   {
     name: 'Jackson Nascimento',
-    image: '/images/psicoterapia/Jackson Nascimento.jpeg',
+    image: '/images/psicoterapia/Jackson Nascimento.webp',
     roleKey: 'psychotherapy.teamMembers.jackson.role',
     bioKey: 'psychotherapy.teamMembers.jackson.bio'
   },
   {
     name: 'Benoit Almeida',
-    image: '/images/psicoterapia/Benoit Almeida.jpeg',
+    image: '/images/psicoterapia/Benoit Almeida.webp',
     roleKey: 'psychotherapy.teamMembers.benoit.role',
     bioKey: 'psychotherapy.teamMembers.benoit.bio'
   }

@@ -4,7 +4,7 @@ date: 2022-08-19T16:04:22.853Z
 description: "Governo espanhol 'rouba' imagem de modelo com perna mecânica e edita foto Imagem foi usada em campanha publicitária incentivando a positividade sobre corpos.YoutubeSpotifyTranscriçãoJess: Sejam todos muito bem-vindos ao Piranhas cast, o podcast das Piranhas com deficiência, eu sou a Jéssica Fontoura!Beto: Eu sou Beto Maia!Zé: Eu sou Zé Felipe! Jess: E esse é mais um episódio drops, onde a gente vai falar sobre algo que permeou as nossas existências nos últimos dias, e hoje o assunto infelizmente"
 category: "PiranhasCast"
 author: "Vale PCD"
-image: "/images/blog/youtube_JRSWO_cDqU8_maxresdefault.jpg"
+image: "/images/blog/youtube_JRSWO_cDqU8_maxresdefault.webp"
 ---
 
 Governo espanhol &#x27;rouba&#x27; imagem de modelo com perna mecânica e edita foto Imagem foi usada em campanha publicitária incentivando a positividade sobre corpos.

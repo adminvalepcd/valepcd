@@ -4,7 +4,7 @@ date: 2022-07-18T21:50:58.510Z
 description: "O primeiro episódio do podcast é uma conversa descontraída, leve e sincera sobre a nossa sexualidade,  experiências e vivências como PcD."
 category: "PiranhasCast"
 author: "Vale PCD"
-image: "/images/blog/youtube_upppHmDwRNk_maxresdefault.jpg"
+image: "/images/blog/youtube_upppHmDwRNk_maxresdefault.webp"
 ---
 
 O primeiro episódio do podcast é uma conversa descontraída, leve e sincera sobre a nossa sexualidade,  experiências e vivências como PcD. No episódio contamos sobre histórias engraçadas, sérias, constrangedoras e muito mais...

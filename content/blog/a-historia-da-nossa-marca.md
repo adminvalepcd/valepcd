@@ -4,10 +4,10 @@ date: 2020-07-01T21:20:12.643Z
 description: "Foto com fundo roxo, do lado esquerdo a foto de Thiago e da constelação Lacerta. À direita, a logo do projeto e o título \"Vale PCD\".Meu nome é Thiago Henrique Durval, porém adotei o sobrenome Lacerta (com T) porque eu queria um nome de designer. Me chamavam de calango no ensino médio. Não queria pegar o nome puramente “calango” devido as páginas de humor no Facebook (Calango mancoso e afins). Daí, descobri que existe uma constelação chamada Lacerta e é a constelação do lagarto! Olha só: O calang"
 category: "Entrevistas"
 author: "Vale PCD"
-image: "/images/blog/3872c8_ed5b2ba925c4463c8fa635dc77a8ff8b_mv2.png"
+image: "/images/blog/3872c8_ed5b2ba925c4463c8fa635dc77a8ff8b_mv2.webp"
 ---
 
-![Foto com fundo roxo, do lado esquerdo a foto de Thiago e da constelação Lacerta. À direita, a logo do projeto e o título "Vale PCD".](/images/blog/3872c8_ed5b2ba925c4463c8fa635dc77a8ff8b_mv2.png)
+![Foto com fundo roxo, do lado esquerdo a foto de Thiago e da constelação Lacerta. À direita, a logo do projeto e o título "Vale PCD".](/images/blog/3872c8_ed5b2ba925c4463c8fa635dc77a8ff8b_mv2.webp)
 
 Meu nome é Thiago Henrique Durval, porém adotei o sobrenome Lacerta (com T) porque eu queria um nome de designer. Me chamavam de calango no ensino médio. Não queria pegar o nome puramente “calango” devido as páginas de humor no Facebook (Calango mancoso e afins). Daí, descobri que existe uma constelação chamada Lacerta e é a constelação do lagarto! Olha só: O calango estelar! Nada mais eu do que isso. Assim surgiu o Thiago Lacerta.
 

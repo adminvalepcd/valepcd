@@ -27,7 +27,7 @@
       <!-- Cover Image -->
       <div class="post-cover-wrapper">
         <img 
-          :src="post.image || '/images/logo-vale-pcd-seo.png'" 
+          :src="post.image || '/images/logo-vale-pcd-seo.webp'" 
           :alt="post.title"
           class="post-cover-image"
         />

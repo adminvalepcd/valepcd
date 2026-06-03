@@ -4,10 +4,10 @@ date: 2020-07-03T10:47:17.502Z
 description: "Foto de Laís sorrindo, usando brincos de argola dourados, maquiagem com glitter e cabelos presos na parte de cima. A logo do projeto está no canto inferior esquerdo.O diagnóstico de quando perdi a audição do ouvido direito não é certo. Nasci com otite (infecção de ouvido) e saí da maternidade tomando antibióticos. Aos 4 anos, em uma cirurgia de amigdalectomia, coloquei carretéis de ventilação nos ouvidos, de forma a impedir ou minimizar infecções, e é partir dessa idade que tenho lembranças de n"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_2415adc66ffa401bbcddb42e906db80a_mv2.png"
+image: "/images/blog/3872c8_2415adc66ffa401bbcddb42e906db80a_mv2.webp"
 ---
 
-![Foto de Laís sorrindo, usando brincos de argola dourados, maquiagem com glitter e cabelos presos na parte de cima. A logo do projeto está no canto inferior esquerdo.](/images/blog/3872c8_2415adc66ffa401bbcddb42e906db80a_mv2.png)
+![Foto de Laís sorrindo, usando brincos de argola dourados, maquiagem com glitter e cabelos presos na parte de cima. A logo do projeto está no canto inferior esquerdo.](/images/blog/3872c8_2415adc66ffa401bbcddb42e906db80a_mv2.webp)
 
 O diagnóstico de quando perdi a audição do ouvido direito não é certo. Nasci com otite (infecção de ouvido) e saí da maternidade tomando antibióticos. Aos 4 anos, em uma cirurgia de amigdalectomia, coloquei carretéis de ventilação nos ouvidos, de forma a impedir ou minimizar infecções, e é partir dessa idade que tenho lembranças de não ouvir do ouvido direito. Pelo fato de tudo ter acontecido quando era muito nova, nem sequer me lembro se algum dia tive a audição perfeita ou de qual seria a sensação de ouvir dos dois ouvidos.
 

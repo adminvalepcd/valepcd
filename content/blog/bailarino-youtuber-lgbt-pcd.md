@@ -4,12 +4,12 @@ date: 2020-06-05T21:05:45.102Z
 description: "Explore a inspiradora jornada de Icaro no mundo da dança e superação. Um exemplo de determinação, representatividade e amor pela arte."
 category: "Vivências"
 author: "Vale PCD"
-image: "/images/blog/3872c8_713cfa441bf641b8aa4e0f0b6735b486_mv2.jpg"
+image: "/images/blog/3872c8_713cfa441bf641b8aa4e0f0b6735b486_mv2.webp"
 ---
 
 Explore a inspiradora jornada de Icaro no mundo da dança: determinação, representatividade e amor pela arte.
 
-![Foto de Icaro no palco, ao lado a frase entre aspas "começou com a vontade de mostrar para o mundo e para pessoas com deficiência que todes podemos dançar e nos divertir".](/images/blog/3872c8_713cfa441bf641b8aa4e0f0b6735b486_mv2.jpg)
+![Foto de Icaro no palco, ao lado a frase entre aspas "começou com a vontade de mostrar para o mundo e para pessoas com deficiência que todes podemos dançar e nos divertir".](/images/blog/3872c8_713cfa441bf641b8aa4e0f0b6735b486_mv2.webp)
 
 Ele sempre gostou de dançar; assistia à videos musicais de divas pop, boysbands/girlbands na MTV, arriscando coreografias no quarto, por conta da timidez. Aos 23 anos, se dedicou a fazer teatro e dança vocacional, se encantou pela arte, e aos 24 anos começou a dançar profissionalmente em algumas companhias.
 

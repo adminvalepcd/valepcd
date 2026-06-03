@@ -4,10 +4,10 @@ date: 2020-10-26T12:11:02.286Z
 description: "Foto de Amiel sentado e sorrindo. Ele é um homem branco de cabelos curtos e camisa cinza. Ao fundo, uma janela e cortinas. Amiel é homem trans, intersexo, PCD, pesquisador da área de gênero e sexualidade, está cursando doutorado em bioética na UFRJ, é um dos co-fundadores da ABRAI e fundador do observatório intersexo. Se entender como homem trans intersexo foi um processo longo, depende muito da necessidade de viver em relação ao que a sociedade prega e ele não se encaixava nisso. A descoberta c"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_0b8f694b503c4c5aad592d096d236b9e_mv2.jpg"
+image: "/images/blog/3872c8_0b8f694b503c4c5aad592d096d236b9e_mv2.webp"
 ---
 
-![Foto de Amiel sentado e sorrindo. Ele é um homem branco de cabelos curtos e camisa cinza. Ao fundo, uma janela e cortinas.](/images/blog/3872c8_0b8f694b503c4c5aad592d096d236b9e_mv2.jpg)
+![Foto de Amiel sentado e sorrindo. Ele é um homem branco de cabelos curtos e camisa cinza. Ao fundo, uma janela e cortinas.](/images/blog/3872c8_0b8f694b503c4c5aad592d096d236b9e_mv2.webp)
 
 Amiel é homem trans, intersexo, PCD, pesquisador da área de gênero e sexualidade, está cursando doutorado em bioética na UFRJ, é um dos co-fundadores da ABRAI e fundador do observatório intersexo.
 

@@ -4,12 +4,12 @@ date: 2020-07-01T21:15:03.327Z
 description: "Descubra seus direitos no transporte aéreo! Conheça as garantias da ANAC para pessoas com deficiência. Uma viagem acessível e sem barreiras te espera."
 category: "Direito PCD"
 author: "Vale PCD"
-image: "/images/blog/3872c8_410cd84e72014475bb14f51a52115955_mv2.jpg"
+image: "/images/blog/3872c8_410cd84e72014475bb14f51a52115955_mv2.webp"
 ---
 
 Descubra seus direitos no transporte aéreo! Conheça as garantias da ANAC para pessoas com deficiência. Uma viagem acessível e sem barreiras te espera.
 
-![Foto com fundo branco, à esquerda a frase "saiba mais sobre seus direitos no transporte aéreo" e à direita a foto do corredor de um avião.](/images/blog/3872c8_410cd84e72014475bb14f51a52115955_mv2.jpg)
+![Foto com fundo branco, à esquerda a frase "saiba mais sobre seus direitos no transporte aéreo" e à direita a foto do corredor de um avião.](/images/blog/3872c8_410cd84e72014475bb14f51a52115955_mv2.webp)
 
 Segundo a resolução da ANAC (n° 280 de 11/07/2013), funcionários dos aeroportos e companhias aéreas passam por um treinamento para prover meios da pessoa com deficiência ser assistida e ter acessibilidade até o final do desembarque.
 

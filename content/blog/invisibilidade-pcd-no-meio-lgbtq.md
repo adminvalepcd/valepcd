@@ -4,10 +4,10 @@ date: 2020-07-31T10:00:47.840Z
 description: "Foto de Victor sem camisa, usando uma bandeira LGBT na cabeça como uma capa, e fazendo um gesto com 3 dedos levantados.Sou Victor Di Marco, ator e cineasta. Atualmente trabalho no lançamento do meu curta documental \"O que Pode um Corpo?\".- Pessoas com deficiência são inferiorizadas no meio LGBT? Existe uma segregação? Por que isso acontece?PCDS são invisibilizados no meio LGBTQIA+, pois ele se difere dos outros campos da sociedade que prezam e cultuam apenas corpos e modos dentro de um padrão.-"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_83816b24aa334bf6ba3da0743a60a5a0_mv2.jpg"
+image: "/images/blog/3872c8_83816b24aa334bf6ba3da0743a60a5a0_mv2.webp"
 ---
 
-![Foto de Victor sem camisa, usando uma bandeira LGBT na cabeça como uma capa, e fazendo um gesto com 3 dedos levantados.](/images/blog/3872c8_83816b24aa334bf6ba3da0743a60a5a0_mv2.jpg)
+![Foto de Victor sem camisa, usando uma bandeira LGBT na cabeça como uma capa, e fazendo um gesto com 3 dedos levantados.](/images/blog/3872c8_83816b24aa334bf6ba3da0743a60a5a0_mv2.webp)
 
 Sou Victor Di Marco, ator e cineasta. Atualmente trabalho no lançamento do meu curta documental "O que Pode um Corpo?".
 

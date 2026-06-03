@@ -4,10 +4,10 @@ date: 2020-07-08T09:29:18.531Z
 description: "Ilustração de uma multidão de pessoas, entre elas alguns cadeirantes. A logo do projeto no canto inferior esquerdo. No post do nosso Instagram, explicamos o conceito de acessibilidade, mas você sabia que ele é muito amplo e existem 7 tipos diferentes? Se liga:1. Acessibilidade atitudinalDiz respeito ao comportamento das pessoas sem preconceitos, estereótipos, estigmas e discriminações. Por exemplo: usar o termo “pessoa com deficiência”, e não “deficiente”; ao falar com uma pessoa com deficiência"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_a946f400cfff4ad5be072a04c4e98800_mv2.jpg"
+image: "/images/blog/3872c8_a946f400cfff4ad5be072a04c4e98800_mv2.webp"
 ---
 
-![Ilustração de uma multidão de pessoas, entre elas alguns cadeirantes. A logo do projeto no canto inferior esquerdo.](/images/blog/3872c8_a946f400cfff4ad5be072a04c4e98800_mv2.jpg)
+![Ilustração de uma multidão de pessoas, entre elas alguns cadeirantes. A logo do projeto no canto inferior esquerdo.](/images/blog/3872c8_a946f400cfff4ad5be072a04c4e98800_mv2.webp)
 
 No post do nosso [Instagram](https://www.instagram.com/p/CCTAtMzH7su/), explicamos o conceito de acessibilidade, mas você sabia que ele é muito amplo e existem 7 tipos diferentes? Se liga:
 

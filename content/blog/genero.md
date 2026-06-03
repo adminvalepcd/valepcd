@@ -4,10 +4,10 @@ date: 2020-07-01T21:37:09.969Z
 description: "Foto com fundo branco e os símbolos de Vênus e de Marte nas cores azul e roxo.Ao se apresentar os conceitos de transgeneralidade e homossexualidade a leigos, e mesmo a pessoas que estão dentro da comunidade, é muito comum as pessoas confundirem “gay” com “trans”, ou não conseguirem sequer diferenciar tais conceitos.É importante salientar que a orientação sexual e a identidade de gênero são conceitos completamente diferentes. Os principais tipos de modalidades e/ou identidades de gênero são: cisg"
 category: "Assuntos gerais"
 author: "Vale PCD"
-image: "/images/blog/3872c8_84c5f73e24f04293b6c2d44baa03f82e_mv2.jpg"
+image: "/images/blog/3872c8_84c5f73e24f04293b6c2d44baa03f82e_mv2.webp"
 ---
 
-![Foto com fundo branco e os símbolos de Vênus e de Marte nas cores azul e roxo.](/images/blog/3872c8_84c5f73e24f04293b6c2d44baa03f82e_mv2.jpg)
+![Foto com fundo branco e os símbolos de Vênus e de Marte nas cores azul e roxo.](/images/blog/3872c8_84c5f73e24f04293b6c2d44baa03f82e_mv2.webp)
 
 Ao se apresentar os conceitos de transgeneralidade e homossexualidade a leigos, e mesmo a pessoas que estão dentro da comunidade, é muito comum as pessoas confundirem “gay” com “trans”, ou não conseguirem sequer diferenciar tais conceitos.
 
