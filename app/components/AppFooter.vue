@@ -66,7 +66,7 @@
 import { computed } from 'vue'
 
 const localePath = useLocalePath()
-const currentTheme = useState('theme', () => 'light')
+const currentTheme = useState('theme', () => useCookie('theme').value || 'light')
 const currentYear = computed(() => new Date().getFullYear())
 </script>
 
