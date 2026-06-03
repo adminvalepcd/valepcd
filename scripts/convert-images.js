@@ -137,6 +137,69 @@ function compileBlogPosts() {
   console.log(`Compiled ${posts.length} blog posts into ${path.relative(PROJECT_ROOT, outputFilePath)}`);
 }
 
+// Helper to parse institutional documents and compile into static JSON file
+function compileInstitutionalDocs() {
+  console.log('\n--- Compiling Institutional Documents to JSON ---');
+  const contentDir = path.join(PROJECT_ROOT, 'content', 'institucional');
+  const outputFilePath = path.join(PROJECT_ROOT, 'server', 'institucional-data.json');
+
+  if (!fs.existsSync(contentDir)) {
+    console.warn(`Content directory does not exist: ${contentDir}`);
+    // Write empty array to ensure compilation doesn't fail
+    fs.writeFileSync(outputFilePath, JSON.stringify([]), 'utf8');
+    return;
+  }
+
+  const files = fs.readdirSync(contentDir);
+  const documents = [];
+
+  for (const file of files) {
+    if (file.endsWith('.md')) {
+      const filePath = path.join(contentDir, file);
+      const fileContent = fs.readFileSync(filePath, 'utf-8');
+      
+      const match = fileContent.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+      if (match) {
+        const frontmatterRaw = match[1];
+        const content = match[2].trim();
+        
+        const metadata = {};
+        frontmatterRaw.split('\n').forEach((line) => {
+          const parts = line.split(':');
+          if (parts.length >= 2) {
+            const key = parts[0].trim();
+            const value = parts.slice(1).join(':').trim().replace(/^["']|["']$/g, '');
+            metadata[key] = value;
+          }
+        });
+        
+        const slug = file.replace(/\.md$/, '');
+        
+        documents.push({
+          slug,
+          title: metadata.title || 'Sem título',
+          date: metadata.date || new Date().toISOString(),
+          description: metadata.description || '',
+          file: metadata.file || undefined,
+          content: content
+        });
+      }
+    }
+  }
+
+  // Sort by date (newest first)
+  documents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Ensure output directory exists
+  const outputDir = path.dirname(outputFilePath);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  fs.writeFileSync(outputFilePath, JSON.stringify(documents, null, 2), 'utf8');
+  console.log(`Compiled ${documents.length} institutional documents into ${path.relative(PROJECT_ROOT, outputFilePath)}`);
+}
+
 async function main() {
   console.log('--- Starting WebP Image Conversion & Reference Replacement ---');
 
@@ -195,6 +258,9 @@ async function main() {
 
   // Compile blog posts to static JSON so they bundle inside production server build
   compileBlogPosts();
+
+  // Compile institutional documents to static JSON so they bundle inside production server build
+  compileInstitutionalDocs();
 }
 
 main().catch(error => {
