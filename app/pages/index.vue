@@ -48,16 +48,7 @@
             <p>{{ $t('home.cardMapsDesc') }}</p>
             <a href="https://www.appsheet.com/start/e01fe821-1339-4e92-8efd-0dd8a1785084" target="_blank" rel="noopener noreferrer" class="link-more">{{ $t('home.cardMapsLink') }}<span class="sr-only">{{ $t('home.opensInNewWindow') }}</span> &rarr;</a>
           </div>
-          
-          <!-- Project 3: Biblioteca -->
-          <div class="pillar-card glass pulse-hover">
-            <div class="pillar-img-container">
-              <img src="/images/conscientizacao.webp" :alt="$t('home.cardConscientizacaoTitle')" class="pillar-img" />
-            </div>
-            <h3>{{ $t('home.cardConscientizacaoTitle') }}</h3>
-            <p>{{ $t('home.cardConscientizacaoDesc') }}</p>
-            <NuxtLink :to="localePath('/blog')" class="link-more">{{ $t('home.cardConscientizacaoLink') }} &rarr;</NuxtLink>
-          </div>
+
         </div>
       </div>
     </section>
