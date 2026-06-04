@@ -351,5 +351,14 @@
         "bio": "30 anos, LGBTI+, PCD, amo meus pets, artes, livros e natureza."
       }
     }
+  },
+  "error": {
+    "title404": "Página não encontrada",
+    "message404": "O endereço digitado pode estar incorreto ou a página foi movida.",
+    "title500": "Erro interno do servidor",
+    "message500": "Ocorreu um problema inesperado em nossos servidores. Por favor, tente novamente mais tarde.",
+    "titleGeneric": "Ops! Ocorreu um erro",
+    "messageGeneric": "Não foi possível carregar a página solicitada.",
+    "backHome": "Voltar para o Início"
   }
 }

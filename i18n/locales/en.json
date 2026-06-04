@@ -351,5 +351,14 @@
         "bio": "30 years old, LGBTI+, PCD (person with disabilities), love my pets, arts, books and nature."
       }
     }
+  },
+  "error": {
+    "title404": "Page Not Found",
+    "message404": "The link you followed may be broken or the page may have been removed.",
+    "title500": "Internal Server Error",
+    "message500": "An unexpected error occurred on our servers. Please try again later.",
+    "titleGeneric": "Oops! An error occurred",
+    "messageGeneric": "We were unable to load the requested page.",
+    "backHome": "Back to Home"
   }
 }
