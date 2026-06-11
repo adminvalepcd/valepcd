@@ -325,15 +325,15 @@
     "teamMembers": {
       "camila": {
         "role": "Psychologist & Neuropsychologist",
-        "bio": "Born in Recife, psychologist and neuropsychologist. Curious by nature, passionate about travel, fan of Lana Del Rey and guardian of 12 cats."
+        "bio": "Born in Recife, curious by nature, passionate about travel, fan of Lana Del Rey and guardian of 12 cats."
       },
       "wendy": {
         "role": "Clinical Psychologist",
         "bio": "31 years old, LGBTI+ woman, person with disabilities (PCD) and from Northeast Brazil, autistic and gifted/talented (AHSD) with a hyperfocus on psychology and animals, radical leftist and fashion graduate."
       },
       "deyvison": {
-        "role": "Neurodivergent Psychologist",
-        "bio": "28 years old, neurodivergent psychologist who loves hiking, listening to music, and reading."
+        "role": "Psychologist and neuropsychologist",
+        "bio": "Deyvison Ferreira, 28 years old, autistic, who loves animals, contact with nature, listening to music, and reading."
       },
       "lucas": {
         "role": "Clinical Psychologist",
@@ -341,7 +341,7 @@
       },
       "jackson": {
         "role": "Clinical Psychologist",
-        "bio": "Psychologist passionate about human behavior, crazy about games, beginner crocheter, series and good conversations. Between sessions: science, humanization and many spoilers (without context)."
+        "bio": "Psychologist passionate about human behavior, crazy about games, beginner at crochet, fan of series and good conversations. Between sessions: science, humanization and many spoilers."
       },
       "benoit": {
         "role": "Clinical Psychologist",

@@ -325,15 +325,15 @@
     "teamMembers": {
       "camila": {
         "role": "Psicóloga e Neuropsicóloga",
-        "bio": "Recifense, psicóloga e neuropsicóloga. Curiosa por natureza, apaixonada por viagens, fã de Lana Del Rey e tutora de 12 gatinhos."
+        "bio": "Recifense, curiosa por natureza, apaixonada por viagens, fã de Lana Del Rey e tutora de 12 gatinhos."
       },
       "wendy": {
         "role": "Psicóloga Clínica",
         "bio": "31 anos, mulher LGBTI+ PcD e nordestina, autista e AHSD com hiperfoco em psicologia e em bichos, esquerdista radical e laureada em moda."
       },
       "deyvison": {
-        "role": "Psicólogo Neurodivergente",
-        "bio": "28 anos, psi neurodivergente, que ama fazer trilhas, ouvir música e ler."
+        "role": "Psicólogo e neuropsicólogo",
+        "bio": "Deyvison Ferreira, 28 anos, autista, que ama bichos, contato com a natureza, ouvir música e ler."
       },
       "lucas": {
         "role": "Psicólogo Clínico",
@@ -341,7 +341,7 @@
       },
       "jackson": {
         "role": "Psicólogo Clínico",
-        "bio": "Psicólogo apaixonado por comportamento humano, louco por jogos, iniciante a crochê, séries e boas conversas. Entre sessões, ciência, humanização e muitos spoilers (sem contexto)."
+        "bio": "Psicólogo apaixonado pelo comportamento humano, louco por jogos, iniciante no crochê, fã de séries e de boas conversas. Entre sessões, ciência, humanização e muitos spoilers."
       },
       "benoit": {
         "role": "Psicólogo Clínico",

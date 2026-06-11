@@ -27,6 +27,26 @@
       </div>
     </section>
 
+    <!-- Action Section / CTA -->
+    <section class="section action-section mt-6 mb-6" aria-labelledby="action-title">
+      <div class="action-card cta-card glass p-5 text-center">
+        <h2 id="action-title" class="section-title mb-3">{{ $t('psychotherapy.ctaTitle') }}</h2>
+        <p class="text-muted mb-4 max-w-xl mx-auto">
+          {{ $t('psychotherapy.ctaDesc') }}
+        </p>
+        <div class="cta-actions flex-center gap-3 flex-wrap">
+          <a id="btn-register-psycho"
+            href="https://docs.google.com/forms/d/e/1FAIpQLSfxBMKBY0qycEHDWJSEQ1-mhtQVPb3g7GWwpd5mgrXkWUDpLA/viewform"
+            target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+            {{ $t('psychotherapy.btnRegister') }} &rarr;
+          </a>
+          <NuxtLink id="btn-donate-psycho" :to="localePath('/contato')" class="btn btn-secondary">
+            {{ $t('psychotherapy.btnDonate') }}
+          </NuxtLink>
+        </div>
+      </div>
+    </section>
+
     <!-- Stats Section -->
     <section class="section stats-section mt-6" aria-labelledby="stats-title">
       <div class="text-center">
@@ -67,34 +87,6 @@
               "{{ $t('psychotherapy.howHighlight') }}"
             </p>
           </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Action Section / CTA -->
-    <section class="section action-section mt-6 mb-6" aria-labelledby="action-title">
-      <div class="action-card cta-card glass p-5 text-center">
-        <h2 id="action-title" class="section-title mb-3">{{ $t('psychotherapy.ctaTitle') }}</h2>
-        <p class="text-muted mb-4 max-w-xl mx-auto">
-          {{ $t('psychotherapy.ctaDesc') }}
-        </p>
-        <div class="cta-actions flex-center gap-3 flex-wrap">
-          <a 
-            id="btn-register-psycho"
-            href="https://docs.google.com/forms/d/e/1FAIpQLSfxBMKBY0qycEHDWJSEQ1-mhtQVPb3g7GWwpd5mgrXkWUDpLA/viewform" 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            class="btn btn-primary"
-          >
-            {{ $t('psychotherapy.btnRegister') }} &rarr;
-          </a>
-          <NuxtLink 
-            id="btn-donate-psycho"
-            :to="localePath('/contato')" 
-            class="btn btn-secondary"
-          >
-            {{ $t('psychotherapy.btnDonate') }}
-          </NuxtLink>
         </div>
       </div>
     </section>
