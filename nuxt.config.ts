@@ -67,6 +67,7 @@ export default defineNuxtConfig({
   },
 
   i18n: {
+    baseUrl: 'https://www.valepcd.com.br',
     locales: [
       { code: 'pt', iso: 'pt-BR', name: 'Português', file: 'pt.json' },
       { code: 'en', iso: 'en-US', name: 'English', file: 'en.json' },
