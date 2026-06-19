@@ -7,12 +7,20 @@ const getPostRoutes = () => {
     const postsPath = path.resolve(process.cwd(), 'server/posts-data.json')
     if (fs.existsSync(postsPath)) {
       const posts = JSON.parse(fs.readFileSync(postsPath, 'utf-8'))
-      const routes = posts.map(post => `/blog/${post.slug}`)
-      return ['/blog', ...routes]
+      const routes: string[] = []
+      posts.forEach(post => {
+        routes.push(`/blog/${post.slug}`)
+        routes.push(`/en/blog/${post.slug}`)
+        routes.push(`/es/blog/${post.slug}`)
+      })
+      return [
+        '/blog', '/en/blog', '/es/blog',
+        ...routes
+      ]
     }
   } catch (e) {
   }
-  return ['/blog']
+  return ['/blog', '/en/blog', '/es/blog']
 }
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
@@ -41,11 +49,19 @@ export default defineNuxtConfig({
     sitemaps: {
       pages: {
         includeAppSources: true,
-        exclude: ['/blog', '/blog/**']
+        exclude: [
+          '/blog', '/blog/**',
+          '/en/blog', '/en/blog/**',
+          '/es/blog', '/es/blog/**'
+        ]
       },
       blog: {
         includeAppSources: true,
-        include: ['/blog', '/blog/**']
+        include: [
+          '/blog', '/blog/**',
+          '/en/blog', '/en/blog/**',
+          '/es/blog', '/es/blog/**'
+        ]
       }
     }
   },
@@ -69,9 +85,6 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      htmlAttrs: {
-        lang: 'pt-BR'
-      },
       title: 'Vale PCD | Acessibilidade para Empresas e Comunidade',
       meta: [
         { charset: 'utf-8' },
