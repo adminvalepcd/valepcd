@@ -21,6 +21,9 @@ useHead({
 const { $loadAnalytics } = useNuxtApp()
 
 onMounted(() => {
+  // Detect if visitor is a bot (like Googlebot or Search Console verification) but not Lighthouse
+  const isBot = typeof navigator !== 'undefined' && /googlebot|google-site-verification|bot|crawl|spider/i.test(navigator.userAgent) && !/lighthouse/i.test(navigator.userAgent);
+
   // Defer third-party analytics/ads scripts to avoid blocking the main thread during load
   const loadWithDelayOrInteraction = () => {
     if (window.__analyticsDeferredStarted) return;
@@ -29,6 +32,11 @@ onMounted(() => {
     cleanupListeners();
     $loadAnalytics();
   };
+
+  if (isBot) {
+    loadWithDelayOrInteraction();
+    return;
+  }
 
   const listeners = ['touchstart', 'pointerdown', 'scroll', 'keydown'];
   const cleanupListeners = () => {
