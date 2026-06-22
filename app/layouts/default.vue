@@ -16,6 +16,9 @@
 
     <!-- VLibras Widget de Acessibilidade -->
     <AppVLibras />
+
+    <!-- Aviso de Consentimento de Cookies -->
+    <CookieConsent />
   </div>
 </template>
 

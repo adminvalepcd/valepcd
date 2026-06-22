@@ -357,5 +357,10 @@
     "titleGeneric": "¡Ops! Ocurrió un error",
     "messageGeneric": "No pudimos cargar la página solicitada.",
     "backHome": "Volver al Inicio"
+  },
+  "cookieConsent": {
+    "message": "Utilizamos cookies para mejorar su experiencia. Al continuar navegando, acepta nuestra ",
+    "linkText": "política de privacidad y cookies",
+    "accept": "Aceptar y cerrar"
   }
 }

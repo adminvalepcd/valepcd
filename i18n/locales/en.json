@@ -357,5 +357,10 @@
     "titleGeneric": "Oops! An error occurred",
     "messageGeneric": "We were unable to load the requested page.",
     "backHome": "Back to Home"
+  },
+  "cookieConsent": {
+    "message": "We use cookies to improve your experience. By continuing to browse, you agree to our ",
+    "linkText": "privacy and cookie policy",
+    "accept": "Accept & close"
   }
 }
