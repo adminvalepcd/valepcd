@@ -131,7 +131,7 @@ export default defineNuxtConfig({
             });
             
             gtag('js', new Date());
-            gtag('config', 'G-ZT2YLE88PF');
+            gtag('config', 'G-ZT2YLE88PF', { send_page_view: false });
           `
         }
       ]
