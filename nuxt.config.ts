@@ -115,7 +115,7 @@ export default defineNuxtConfig({
       ],
       script: [
         {
-          src: 'https://www.googletagmanager.com/gtag/js?id=G-ZT2YLE88PF',
+          src: 'https://www.googletagmanager.com/gtag/js?id=G-4QRMKWNJ8S',
           async: true
         },
         {
@@ -131,7 +131,7 @@ export default defineNuxtConfig({
             });
             
             gtag('js', new Date());
-            gtag('config', 'G-ZT2YLE88PF', { send_page_view: false });
+            gtag('config', 'G-4QRMKWNJ8S', { send_page_view: false });
           `
         }
       ]
