@@ -119,7 +119,7 @@ export default defineNuxtConfig({
           async: true
         },
         {
-          children: `
+          innerHTML: `
             window.dataLayer = window.dataLayer || [];
             window.gtag = window.gtag || function(){dataLayer.push(arguments);};
             
