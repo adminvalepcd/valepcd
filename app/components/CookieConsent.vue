@@ -66,6 +66,7 @@ const grantConsent = (type) => {
   window.dataLayer = window.dataLayer || []
   window.dataLayer.push({
     event: 'cookie_consent_granted',
+    consent_granted: true,
     consent_type: type, // 'explicit' or 'implicit'
     timestamp: new Date().toISOString()
   })
