@@ -117,7 +117,17 @@ onMounted(() => {
       timestamp: new Date().toISOString()
     })
 
-    if (!consented) {
+    if (consented) {
+      // If already consented, ensure Google Consent Mode v2 is updated to granted
+      if (window.gtag) {
+        window.gtag('consent', 'update', {
+          'ad_storage': 'granted',
+          'ad_user_data': 'granted',
+          'ad_personalization': 'granted',
+          'analytics_storage': 'granted'
+        })
+      }
+    } else {
       isVisible.value = true
       addEventListeners()
     }

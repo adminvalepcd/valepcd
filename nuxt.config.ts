@@ -121,17 +121,17 @@ export default defineNuxtConfig({
         {
           children: `
             window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
+            window.gtag = window.gtag || function(){dataLayer.push(arguments);};
             
-            gtag('consent', 'granted', {
+            window.gtag('consent', 'granted', {
               'ad_storage': 'granted',
               'ad_user_data': 'granted',
               'ad_personalization': 'granted',
               'analytics_storage': 'granted'
             });
             
-            gtag('js', new Date());
-            gtag('config', 'G-4QRMKWNJ8S', { send_page_view: false });
+            window.gtag('js', new Date());
+            window.gtag('config', 'G-4QRMKWNJ8S', { send_page_view: false });
           `
         }
       ]
