@@ -1,5 +1,5 @@
 <template>
-  <div class="leke-minimal-page" @click="toggleFan">
+  <div class="leke-minimal-page" :class="{ 'is-cooldown': isCooldown }" @click="toggleFan">
     <AppSeo 
       title="Leke Virtual - Vale PCD"
       description="Faz barulho você também com nosso leque virtual!"
@@ -65,6 +65,7 @@ useHead({
 
 const isOpen = ref(false)
 const isSnapping = ref(false)
+              const isCooldown = ref(false)
 const showPermissionModal = ref(false)
 
 // Pride / ValePCD Rib Colors
@@ -85,6 +86,7 @@ const ribs = [
 // Audio Player for Leke Sound (leke.mp4)
 let lekeAudio: HTMLAudioElement | null = null
 let audioTimeout: ReturnType<typeof setTimeout> | null = null
+            let lastSoundPlayTime = 0
 
 function initAudio() {
   if (!lekeAudio && typeof window !== 'undefined') {
@@ -94,6 +96,12 @@ function initAudio() {
 }
 
 function playClackSound() {
+  const now = Date.now()
+  if (now - lastSoundPlayTime < COOLDOWN_MS) {
+    return
+  }
+  lastSoundPlayTime = now
+
   if (!lekeAudio) {
     initAudio()
   }
@@ -108,7 +116,7 @@ function playClackSound() {
       console.warn('Playback error:', err)
     })
 
-    // Stop audio after exactly 0.8 seconds
+    // Stop audio after 0.6 seconds
     audioTimeout = setTimeout(() => {
       if (lekeAudio) {
         lekeAudio.pause()
@@ -122,7 +130,19 @@ function playClackSound() {
   }
 }
 
+  // Cooldown throttle to prevent rapid repeat triggers (5 seconds for testing)
+  let lastTriggerTime = 0
+  const COOLDOWN_MS = 500
+
 function toggleFan() {
+  const now = Date.now()
+  if (isCooldown.value || (now - lastTriggerTime < COOLDOWN_MS)) {
+    return
+  }
+
+  isCooldown.value = true
+  lastTriggerTime = now
+
   isOpen.value = !isOpen.value
   isSnapping.value = true
 
@@ -131,6 +151,10 @@ function toggleFan() {
   setTimeout(() => {
     isSnapping.value = false
   }, 300)
+
+  setTimeout(() => {
+    isCooldown.value = false
+  }, COOLDOWN_MS)
 }
 
 function getRibStyle(index: number) {
@@ -148,13 +172,17 @@ function getRibStyle(index: number) {
 // Gyroscope Shake Listener
 let lastX = 0, lastY = 0, lastZ = 0
 let lastTime = 0
-const SHAKE_THRESHOLD = 14
+            const SHAKE_THRESHOLD = 25 // Higher threshold for deliberate shake gesture
 
 function handleMotion(event: DeviceMotionEvent) {
-  const current = event.accelerationIncludingGravity
+  const currentTime = Date.now()
+  if (isCooldown.value || (currentTime - lastTriggerTime < COOLDOWN_MS)) {
+    return
+  }
+
+  const current = event.accelerationIncludingGravity || event.acceleration
   if (!current) return
 
-  const currentTime = Date.now()
   if ((currentTime - lastTime) > 150) {
     const diffTime = currentTime - lastTime
     lastTime = currentTime
@@ -225,6 +253,12 @@ onBeforeUnmount(() => {
   cursor: pointer;
   user-select: none;
   touch-action: manipulation;
+}
+
+.leke-minimal-page.is-cooldown,
+.leke-minimal-page.is-cooldown * {
+  pointer-events: none !important;
+  cursor: not-allowed;
 }
 
 /* Fan Center Visual */
