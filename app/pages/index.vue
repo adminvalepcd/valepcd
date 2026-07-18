@@ -46,7 +46,7 @@
             </div>
             <h3>{{ $t('home.cardBandeiraTitle') }}</h3>
             <p>{{ $t('home.cardBandeiraDesc') }}</p>
-            <a href="/images/bandeira.jpg" download="bandeira.jpg" class="link-more" id="downloadBandeira">
+            <a href="/downloads/bandeira.jpg" download="bandeira.jpg" class="link-more" id="downloadBandeira" @click="trackDownloadBandeira">
               {{ $t('home.cardBandeiraLink') }}<span class="sr-only">: {{ $t('home.cardBandeiraSrText') }}</span> &rarr;
             </a>
           </div>
@@ -104,6 +104,18 @@
 <script setup>
 const { t } = useI18n()
 const localePath = useLocalePath()
+
+function trackDownloadBandeira() {
+  if (typeof window !== 'undefined') {
+    window.dataLayer = window.dataLayer || []
+    window.dataLayer.push({
+      event: 'downloadBandeira'
+    })
+    if (window.gtag) {
+      window.gtag('event', 'downloadBandeira')
+    }
+  }
+}
 </script>
 
 <style scoped>
