@@ -2,7 +2,7 @@
   <div class="leke-minimal-page" @click="toggleFan">
     <AppSeo 
       title="Leke Virtual - Vale PCD"
-      description="Leke Virtual interativo."
+      description="Faz barulho você também com nosso leque virtual!"
     />
 
     <!-- Gyroscope Permission Modal (Automatic on Enter) -->
@@ -58,7 +58,7 @@ definePageMeta({
 useHead({
   title: 'Leke Virtual - Vale PCD',
   meta: [
-    { name: 'description', content: 'Leke Virtual interativo.' },
+    { name: 'description', content: 'Faz barulho você também com nosso leque virtual!' },
     { name: 'robots', content: 'index, follow' }
   ]
 })
