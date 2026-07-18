@@ -169,10 +169,10 @@ function getRibStyle(index: number) {
   }
 }
 
-// Gyroscope Shake Listener
-let lastX = 0, lastY = 0, lastZ = 0
+// Gyroscope Motion Listener (Focado no movimento da ponta do celular frente/trás)
+let lastY = 0, lastZ = 0
 let lastTime = 0
-            const SHAKE_THRESHOLD = 25 // Higher threshold for deliberate shake gesture
+const SHAKE_THRESHOLD = 25
 
 function handleMotion(event: DeviceMotionEvent) {
   const currentTime = Date.now()
@@ -180,24 +180,32 @@ function handleMotion(event: DeviceMotionEvent) {
     return
   }
 
-  const current = event.accelerationIncludingGravity || event.acceleration
+  // 1. Tenta usar rotationRate.beta (rotação da ponta do celular para frente e para trás em graus/segundo)
+  const rotation = event.rotationRate
+  if (rotation && typeof rotation.beta === 'number' && Math.abs(rotation.beta) > 180) {
+    toggleFan()
+    return
+  }
+
+  // 2. Fallback por aceleração: isola a aceleração nos eixos Y (comprimento) e Z (profundidade), ignorando X lateral puro e subidas/descidas
+  const current = event.acceleration || event.accelerationIncludingGravity
   if (!current) return
 
-  if ((currentTime - lastTime) > 150) {
+  if ((currentTime - lastTime) > 100) {
     const diffTime = currentTime - lastTime
     lastTime = currentTime
 
-    const x = current.x || 0
     const y = current.y || 0
     const z = current.z || 0
 
-    const speed = Math.abs(x + y + z - lastX - lastY - lastZ) / diffTime * 10000
+    const deltaY = Math.abs(y - lastY)
+    const deltaZ = Math.abs(z - lastZ)
+    const speed = ((deltaY + deltaZ) / diffTime) * 10000
 
     if (speed > SHAKE_THRESHOLD * 10) {
       toggleFan()
     }
 
-    lastX = x
     lastY = y
     lastZ = z
   }
