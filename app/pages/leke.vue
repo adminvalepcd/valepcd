@@ -3,6 +3,7 @@
     <AppSeo 
       title="Leke Virtual - Vale PCD"
       description="Faz barulho você também com nosso leque virtual!"
+      image="/images/logo-leke.webp"
     />
 
     <!-- Gyroscope Permission Modal (Automatic on Enter) -->
@@ -45,6 +46,21 @@
         </div>
       </div>
     </div>
+<!-- Auto Fan Speed Control Panel -->
+<div class="controls-panel" @click.stop>
+  <div class="speed-buttons-row">
+    <button v-for="mode in speedModes" :key="mode.id" class="speed-btn"
+      :class="{ 'is-active': activeSpeed === mode.id }" @click.stop="startAutoFan(mode)"
+      :aria-label="`Bater leque na velocidade ${mode.label}`">
+      {{ mode.label }}
+    </button>
+  </div>
+
+  <button class="stop-btn" :class="{ 'is-disabled': !activeSpeed }" @click.stop="stopAutoFan" :disabled="!activeSpeed"
+    aria-label="Parar leque automático">
+    <span class="stop-icon">⏹</span> Parar
+  </button>
+</div>
   </div>
 </template>
 
@@ -59,14 +75,35 @@ useHead({
   title: 'Leke Virtual - Vale PCD',
   meta: [
     { name: 'description', content: 'Faz barulho você também com nosso leque virtual!' },
-    { name: 'robots', content: 'index, follow' }
+    { name: 'robots', content: 'index, follow' },
+    { property: 'og:image', content: '/images/logo-leke.webp' }
+  ],
+  link: [
+    { rel: 'icon', type: 'image/svg+xml', href: '/favicon-leke.svg' },
+    { rel: 'shortcut icon', href: '/favicon-leke.svg' }
   ]
 })
 
 const isOpen = ref(false)
 const isSnapping = ref(false)
-              const isCooldown = ref(false)
+  const isCooldown = ref(false)
 const showPermissionModal = ref(false)
+
+  // Auto Fan Speed Modes Configuration
+  interface SpeedMode {
+    id: string
+    label: string
+    intervalMs: number
+  }
+
+  const speedModes: SpeedMode[] = [
+    { id: '1x', label: '1x', intervalMs: 900 },
+    { id: '2x', label: '2x', intervalMs: 700 },
+    { id: '3x', label: '3x', intervalMs: 500 }
+  ]
+
+  const activeSpeed = ref < string | null > (null)
+  let autoInterval: ReturnType<typeof setInterval> | null = null
 
 // Pride / ValePCD Rib Colors
 const ribs = [
@@ -86,7 +123,7 @@ const ribs = [
 // Audio Player for Leke Sound (leke.mp4)
 let lekeAudio: HTMLAudioElement | null = null
 let audioTimeout: ReturnType<typeof setTimeout> | null = null
-            let lastSoundPlayTime = 0
+  let lastSoundPlayTime = 0
 
 function initAudio() {
   if (!lekeAudio && typeof window !== 'undefined') {
@@ -95,9 +132,9 @@ function initAudio() {
   }
 }
 
-function playClackSound() {
+  function playClackSound(maxDurationMs = 600, force = false) {
   const now = Date.now()
-  if (now - lastSoundPlayTime < COOLDOWN_MS) {
+  if (!force && (now - lastSoundPlayTime < COOLDOWN_MS)) {
     return
   }
   lastSoundPlayTime = now
@@ -116,19 +153,59 @@ function playClackSound() {
       console.warn('Playback error:', err)
     })
 
-    // Stop audio after 0.6 seconds
+    // Stop audio after specified duration
     audioTimeout = setTimeout(() => {
       if (lekeAudio) {
         lekeAudio.pause()
         lekeAudio.currentTime = 0
       }
-    }, 600)
+    }, Math.min(maxDurationMs, 500))
   }
 
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     navigator.vibrate([25, 35, 25])
   }
 }
+
+  // Auto Flap Action
+  function triggerAutoFlap(intervalMs: number) {
+    isOpen.value = !isOpen.value
+    isSnapping.value = true
+    playClackSound(intervalMs * 0.75, true)
+
+    setTimeout(() => {
+      isSnapping.value = false
+    }, Math.min(250, intervalMs * 0.4))
+  }
+
+  function startAutoFan(mode: SpeedMode) {
+    initAudio()
+
+    // If clicking the already active mode, stop it
+    if (activeSpeed.value === mode.id) {
+      stopAutoFan()
+      return
+    }
+
+    stopAutoFan()
+    activeSpeed.value = mode.id
+
+    // Trigger immediate first flap
+    triggerAutoFlap(mode.intervalMs)
+
+    // Start continuous interval
+    autoInterval = setInterval(() => {
+      triggerAutoFlap(mode.intervalMs)
+    }, mode.intervalMs)
+  }
+
+  function stopAutoFan() {
+    if (autoInterval) {
+      clearInterval(autoInterval)
+      autoInterval = null
+    }
+    activeSpeed.value = null
+  }
 
   // Cooldown throttle to prevent rapid repeat triggers (5 seconds for testing)
   let lastTriggerTime = 0
@@ -239,6 +316,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  stopAutoFan()
   if (typeof window !== 'undefined') {
     window.removeEventListener('devicemotion', handleMotion, true)
   }
@@ -423,6 +501,122 @@ onBeforeUnmount(() => {
   .fan-rib {
     height: 200px;
     width: 32px;
+  }
+}
+
+/* Auto Fan Speed Control Panel */
+.controls-panel {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  z-index: 500;
+  user-select: none;
+}
+
+.speed-buttons-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.speed-btn {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  font-size: 1.15rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.speed-btn:hover {
+  transform: scale(1.08);
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.speed-btn:active {
+  transform: scale(0.95);
+}
+
+.speed-btn.is-active {
+  background: linear-gradient(135deg, #86007D, #BF4848);
+  border-color: #ffd700;
+  color: #ffffff;
+  transform: scale(1.12);
+  animation: pulseGlow 1.5s infinite alternate ease-in-out;
+}
+
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 16px rgba(216, 0, 125, 0.6), 0 4px 14px rgba(0, 0, 0, 0.5); }
+  100% { box-shadow: 0 0 28px rgba(255, 215, 0, 0.8), 0 4px 20px rgba(0, 0, 0, 0.6); }
+}
+
+.stop-btn {
+  padding: 9px 24px;
+  border-radius: 999px;
+  background: rgba(220, 53, 69, 0.25);
+  border: 1.5px solid rgba(220, 53, 69, 0.5);
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.stop-icon {
+  font-size: 0.8rem;
+}
+
+.stop-btn:hover:not(.is-disabled) {
+  background: rgba(220, 53, 69, 0.45);
+  color: #ffffff;
+  border-color: rgba(220, 53, 69, 0.8);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(220, 53, 69, 0.4);
+}
+
+.stop-btn.is-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+@media (max-width: 600px) {
+  .controls-panel {
+    bottom: 24px;
+    gap: 10px;
+  }
+
+  .speed-btn {
+    width: 50px;
+    height: 50px;
+    font-size: 1rem;
+  }
+
+  .stop-btn {
+    padding: 8px 18px;
+    font-size: 0.85rem;
   }
 }
 </style>
