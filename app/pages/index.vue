@@ -38,6 +38,18 @@
             <p>{{ $t('home.cardSaudeDesc') }}</p>
             <a href="https://docs.google.com/forms/d/e/1FAIpQLSfxBMKBY0qycEHDWJSEQ1-mhtQVPb3g7GWwpd5mgrXkWUDpLA/viewform" target="_blank" rel="noopener noreferrer" class="link-more">{{ $t('home.cardSaudeLink') }}<span class="sr-only">{{ $t('home.opensInAnotherWindow') }}</span> &rarr;</a>
           </div>
+
+          <!-- Project 2: Bandeira do Orgulho -->
+          <div class="pillar-card glass pulse-hover">
+            <div class="pillar-img-container">
+              <img src="/images/bandeira.webp" :alt="$t('home.cardBandeiraTitle')" class="pillar-img" />
+            </div>
+            <h3>{{ $t('home.cardBandeiraTitle') }}</h3>
+            <p>{{ $t('home.cardBandeiraDesc') }}</p>
+            <a href="/images/bandeira.jpg" download="bandeira.jpg" class="link-more" id="downloadBandeira">
+              {{ $t('home.cardBandeiraLink') }}<span class="sr-only">: {{ $t('home.cardBandeiraSrText') }}</span> &rarr;
+            </a>
+          </div>
           
           <!-- Project 2: Vale Maps -->
           <div class="pillar-card glass pulse-hover">
