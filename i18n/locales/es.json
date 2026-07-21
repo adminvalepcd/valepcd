@@ -41,6 +41,9 @@
     "cardBandeiraLink": "descarga aquí",
     "cardBandeiraSrText": "descarga la bandera progresista del orgullo",
     "opensInAnotherWindow": " (Abre en otra ventana)",
+    "cardLekeTitle": "Leke Virtual",
+    "cardLekeDesc": "¡Abanica, haz ruido y brilla! Agita tu teléfono o usa los botones de velocidad para unirte a la fiesta con nosotros. 🪭✨",
+    "cardLekeLink": "¡Ven a jugar!",
     "cardMapsTitle": "Vale Maps",
     "cardMapsDesc": "El primer mapa nacional con información colaborativa y detallada sobre recursos de accesibilidad física y de actitud en establecimientos de todo el país.",
     "cardMapsLink": "Acceda aquí",
@@ -297,6 +300,10 @@
     "psychotherapy": {
       "title": "Psicoterapia Accesible | Vale PCD",
       "description": "Proyecto de psicoterapia online accesible para personas con discapacidad (PCD) y/o LGBTI+. Cuidado, acogida y accesibilidad."
+    },
+    "leke": {
+      "title": "Leke Virtual - Vale PCD",
+      "description": "¡Haz ruido tú también con nuestro abano virtual!"
     }
   },
   "psychotherapy": {
@@ -366,5 +373,15 @@
     "message": "Utilizamos cookies para mejorar su experiencia. Al continuar navegando, acepta nuestra ",
     "linkText": "política de privacidad y cookies",
     "accept": "Aceptar y cerrar"
+  },
+  "leke": {
+    "modalTitle": "Activar Giroscopio",
+    "modalDesc": "Autoriza el acceso al sensor de movimiento para abrir y fechar el abano agitando el teléfono.",
+    "btnGrant": "Permitir y Comenzar 💥",
+    "btnStop": "Detener",
+    "btnHome": "Volver a Vale",
+    "ariaSpeed": "Abanicar a velocidad {label}",
+    "ariaStop": "Detener abano automático",
+    "ariaHome": "Volver a Vale"
   }
 }

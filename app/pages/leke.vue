@@ -1,8 +1,8 @@
 <template>
   <div class="leke-minimal-page" :class="{ 'is-cooldown': isCooldown }" @click="toggleFan">
     <AppSeo 
-      title="Leke Virtual - Vale PCD"
-      description="Faz barulho você também com nosso leque virtual!"
+      :title="$t('seo.leke.title')"
+      :description="$t('seo.leke.description')"
       image="/images/logo-leke.webp"
     />
 
@@ -17,10 +17,10 @@
       >
         <div class="permission-modal-card">
           <div class="modal-emoji">📱🪭</div>
-          <h2>Ativar Giroscópio</h2>
-          <p>Autorize o sensor de movimento para abrir e fechar o leke balançando o celular.</p>
+          <h2>{{ $t('leke.modalTitle') }}</h2>
+          <p>{{ $t('leke.modalDesc') }}</p>
           <button @click="grantGyroscopePermission" class="btn-grant">
-            Permitir e Começar 💥
+            {{ $t('leke.btnGrant') }}
           </button>
         </div>
       </div>
@@ -51,15 +51,19 @@
   <div class="speed-buttons-row">
     <button v-for="mode in speedModes" :key="mode.id" class="speed-btn"
       :class="{ 'is-active': activeSpeed === mode.id }" @click.stop="startAutoFan(mode)"
-      :aria-label="`Bater leque na velocidade ${mode.label}`">
+      :aria-label="$t('leke.ariaSpeed', { label: mode.label })">
       {{ mode.label }}
     </button>
   </div>
 
   <button class="stop-btn" :class="{ 'is-disabled': !activeSpeed }" @click.stop="stopAutoFan" :disabled="!activeSpeed"
-    aria-label="Parar leque automático">
-    <span class="stop-icon">⏹</span> Parar
+    :aria-label="$t('leke.ariaStop')">
+    <span class="stop-icon">⏹</span> {{ $t('leke.btnStop') }}
   </button>
+
+  <NuxtLink :to="localePath('/')" class="home-btn" :aria-label="$t('leke.ariaHome')">
+    <span class="home-icon">🏠</span> {{ $t('leke.btnHome') }}
+  </NuxtLink>
 </div>
   </div>
 </template>
@@ -67,14 +71,20 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 
+const { t } = useI18n()
+const localePath = useLocalePath()
+
 definePageMeta({
   layout: false
 })
 
 useHead({
-  title: 'Leke Virtual - Vale PCD',
+  title: t('seo.leke.title'),
+  htmlAttrs: {
+    lang: 'pt-br'
+  },
   meta: [
-    { name: 'description', content: 'Faz barulho você também com nosso leque virtual!' },
+    { name: 'description', content: t('seo.leke.description') },
     { name: 'robots', content: 'index, follow' },
     { property: 'og:image', content: '/images/logo-leke.webp' }
   ],
@@ -602,10 +612,37 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.home-btn {
+  padding: 8px 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.home-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.home-icon {
+  font-size: 0.9rem;
+}
+
 @media (max-width: 600px) {
   .controls-panel {
-    bottom: 24px;
-    gap: 10px;
+    bottom: 20px;
+    gap: 8px;
   }
 
   .speed-btn {
@@ -617,6 +654,11 @@ onBeforeUnmount(() => {
   .stop-btn {
     padding: 8px 18px;
     font-size: 0.85rem;
+  }
+
+  .home-btn {
+    padding: 7px 16px;
+    font-size: 0.8rem;
   }
 }
 </style>

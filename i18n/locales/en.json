@@ -41,6 +41,9 @@
     "cardBandeiraLink": "download here",
     "cardBandeiraSrText": "download the progressive pride flag",
     "opensInAnotherWindow": " (Opens in another window)",
+    "cardLekeTitle": "Virtual Leke Fan",
+    "cardLekeDesc": "Snap your fan, make some noise, and show off! Shake your phone or use the speed controls to get into the groove and play with us. 🪭✨",
+    "cardLekeLink": "Come play!",
     "cardMapsTitle": "Vale Maps",
     "cardMapsDesc": "The first nationwide collaborative map providing detailed information about physical and attitudinal accessibility features in venues and establishments across the country.",
     "cardMapsLink": "Access here",
@@ -297,6 +300,10 @@
     "psychotherapy": {
       "title": "Accessible Psychotherapy | Vale PCD",
       "description": "Affordable online psychotherapy project for people with disabilities (PCD) and/or LGBTI+. Care, welcoming, and accessibility."
+    },
+    "leke": {
+      "title": "Virtual Leke Fan | Vale PCD",
+      "description": "Make some noise with our virtual fan!"
     }
   },
   "psychotherapy": {
@@ -366,5 +373,15 @@
     "message": "We use cookies to improve your experience. By continuing to browse, you agree to our ",
     "linkText": "privacy and cookie policy",
     "accept": "Accept & close"
+  },
+  "leke": {
+    "modalTitle": "Enable Gyroscope",
+    "modalDesc": "Allow motion sensor access to open and close the fan by shaking your phone.",
+    "btnGrant": "Allow and Start 💥",
+    "btnStop": "Stop",
+    "btnHome": "Back to Vale",
+    "ariaSpeed": "Snap fan at speed {label}",
+    "ariaStop": "Stop automatic fan",
+    "ariaHome": "Back to Vale"
   }
 }

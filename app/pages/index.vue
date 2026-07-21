@@ -51,14 +51,16 @@
             </a>
           </div>
           
-          <!-- Project 2: Vale Maps -->
+          <!-- Project 3: Leke Virtual -->
           <div class="pillar-card glass pulse-hover">
             <div class="pillar-img-container">
-              <img src="/images/valemaps.webp" :alt="$t('home.cardMapsTitle')" class="pillar-img" />
+              <img src="/images/logo-leke.webp" :alt="$t('home.cardLekeTitle')" class="pillar-img" />
             </div>
-            <h3>{{ $t('home.cardMapsTitle') }}</h3>
-            <p>{{ $t('home.cardMapsDesc') }}</p>
-            <a href="https://www.appsheet.com/start/e01fe821-1339-4e92-8efd-0dd8a1785084" target="_blank" rel="noopener noreferrer" class="link-more">{{ $t('home.cardMapsLink') }}<span class="sr-only">{{ $t('home.opensInNewWindow') }}</span> &rarr;</a>
+            <h3>{{ $t('home.cardLekeTitle') }}</h3>
+            <p>{{ $t('home.cardLekeDesc') }}</p>
+            <NuxtLink :to="localePath('/leke')" class="link-more">
+              {{ $t('home.cardLekeLink') }} &rarr;
+            </NuxtLink>
           </div>
 
         </div>

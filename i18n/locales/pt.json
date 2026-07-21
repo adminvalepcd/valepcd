@@ -41,6 +41,9 @@
     "cardBandeiraLink": "baixe aqui",
     "cardBandeiraSrText": "baixe a bandeira progressista do orgulho",
     "opensInAnotherWindow": " (Abre em outra janela)",
+    "cardLekeTitle": "Leke Virtual",
+    "cardLekeDesc": "Bata o leque, faça barulho e arrase! Balance o celular ou use os botões de velocidade para entrar no ritmo e brincar com a gente. 🪭✨",
+    "cardLekeLink": "Vem brincar!",
     "cardMapsTitle": "Vale Maps",
     "cardMapsDesc": "O primeiro mapa nacional com informações colaborativas detalhadas sobre recursos de acessibilidade física e atitudinal em estabelecimentos de todo o País.",
     "cardMapsLink": "Acesse aqui",
@@ -297,6 +300,10 @@
     "psychotherapy": {
       "title": "Psicoterapia Acessível | Vale PCD",
       "description": "Projeto de psicoterapia online acessível para pessoas com deficiência (PCD) e/ou LGBTI+. Cuidado, acolhimento e acessibilidade."
+    },
+    "leke": {
+      "title": "Leke Virtual - Vale PCD",
+      "description": "Faz barulho você também com nosso leque virtual!"
     }
   },
   "psychotherapy": {
@@ -366,5 +373,15 @@
     "message": "Nós usamos cookies para melhorar sua experiência. Ao continuar navegando, você concorda com a nossa ",
     "linkText": "política de privacidade e cookies",
     "accept": "Aceitar e fechar"
+  },
+  "leke": {
+    "modalTitle": "Ativar Giroscópio",
+    "modalDesc": "Autorize o sensor de movimento para abrir e fechar o leke balançando o celular.",
+    "btnGrant": "Permitir e Começar 💥",
+    "btnStop": "Parar",
+    "btnHome": "Voltar ao Vale",
+    "ariaSpeed": "Bater leque na velocidade {label}",
+    "ariaStop": "Parar leque automático",
+    "ariaHome": "Voltar ao Vale"
   }
 }
