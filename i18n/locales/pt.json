@@ -380,6 +380,7 @@
     "btnGrant": "Permitir e Começar 💥",
     "btnStop": "Parar",
     "btnHome": "Voltar ao Vale",
+    "ariaSnap": "Bater leque",
     "ariaSpeed": "Bater leque na velocidade {label}",
     "ariaStop": "Parar leque automático",
     "ariaHome": "Voltar ao Vale"

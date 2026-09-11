@@ -133,8 +133,18 @@ export default defineNuxtConfig({
             window.gtag('js', new Date());
             window.gtag('config', 'G-4QRMKWNJ8S', { send_page_view: false });
           `
+        },
+        { 
+          src: 'https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js' 
         }
       ]
+    }
+  },
+  runtimeConfig: {
+    public: {
+      googleMapsApiKey: process.env.VITE_GOOGLE_MAPS_API_KEY || '',
+      geminiApiKey: process.env.GEMINI_API_KEY || '',
+      appsScriptUrl: process.env.VITE_APPS_SCRIPT_URL || ''
     }
   }
 })

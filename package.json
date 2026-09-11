@@ -10,6 +10,7 @@
     "postinstall": "node scripts/convert-images.js && nuxt prepare"
   },
   "dependencies": {
+    "@google/genai": "^2.22.0",
     "@nuxtjs/i18n": "^10.4.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@nuxtjs/sitemap": "^8.0.15",
-    "sharp": "^0.34.5"
+    "@types/google.maps": "^3.66.2",
+    "sharp": "^0.35.4"
   }
 }

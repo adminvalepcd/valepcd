@@ -380,6 +380,7 @@
     "btnGrant": "Allow and Start 💥",
     "btnStop": "Stop",
     "btnHome": "Back to Vale",
+    "ariaSnap": "Snap fan",
     "ariaSpeed": "Snap fan at speed {label}",
     "ariaStop": "Stop automatic fan",
     "ariaHome": "Back to Vale"

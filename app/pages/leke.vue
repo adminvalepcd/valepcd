@@ -16,7 +16,7 @@
         aria-modal="true"
       >
         <div class="permission-modal-card">
-          <div class="modal-emoji">📱🪭</div>
+          <div class="modal-emoji" aria-hidden="true">📱🪭</div>
           <h2>{{ $t('leke.modalTitle') }}</h2>
           <p>{{ $t('leke.modalDesc') }}</p>
           <button @click="grantGyroscopePermission" class="btn-grant">
@@ -26,9 +26,15 @@
       </div>
     </Transition>
 
-    <!-- Fan Display (Only element on the page) -->
-    <div class="fan-center-container" :class="{ 'is-open': isOpen, 'is-snapping': isSnapping }">
-      <div class="fan-assembly">
+    <!-- Fan Display (Interactive Fan Button) -->
+    <button 
+      type="button"
+      class="fan-center-container" 
+      :class="{ 'is-open': isOpen, 'is-snapping': isSnapping }"
+      :aria-label="$t('leke.ariaSnap')"
+      @click.stop="toggleFan"
+    >
+      <div class="fan-assembly" aria-hidden="true">
         <div 
           v-for="(rib, index) in ribs" 
           :key="index" 
@@ -45,26 +51,39 @@
           <div class="pivot-inner">🪭</div>
         </div>
       </div>
-    </div>
-<!-- Auto Fan Speed Control Panel -->
-<div class="controls-panel" @click.stop>
-  <div class="speed-buttons-row">
-    <button v-for="mode in speedModes" :key="mode.id" class="speed-btn"
-      :class="{ 'is-active': activeSpeed === mode.id }" @click.stop="startAutoFan(mode)"
-      :aria-label="$t('leke.ariaSpeed', { label: mode.label })">
-      {{ mode.label }}
     </button>
-  </div>
 
-  <button class="stop-btn" :class="{ 'is-disabled': !activeSpeed }" @click.stop="stopAutoFan" :disabled="!activeSpeed"
-    :aria-label="$t('leke.ariaStop')">
-    <span class="stop-icon">⏹</span> {{ $t('leke.btnStop') }}
-  </button>
+    <!-- Auto Fan Speed Control Panel -->
+    <div class="controls-panel" @click.stop>
+      <div class="speed-buttons-row">
+        <button 
+          v-for="mode in speedModes" 
+          :key="mode.id" 
+          type="button"
+          class="speed-btn"
+          :class="{ 'is-active': activeSpeed === mode.id }" 
+          @click.stop="startAutoFan(mode)"
+          :aria-label="$t('leke.ariaSpeed', { label: mode.label })"
+        >
+          {{ mode.label }}
+        </button>
+      </div>
 
-  <NuxtLink :to="localePath('/')" class="home-btn" :aria-label="$t('leke.ariaHome')">
-    <span class="home-icon">🏠</span> {{ $t('leke.btnHome') }}
-  </NuxtLink>
-</div>
+      <button 
+        type="button"
+        class="stop-btn" 
+        :class="{ 'is-disabled': !activeSpeed }" 
+        @click.stop="stopAutoFan" 
+        :disabled="!activeSpeed"
+        :aria-label="$t('leke.ariaStop')"
+      >
+        <span class="stop-icon" aria-hidden="true">⏹</span> {{ $t('leke.btnStop') }}
+      </button>
+
+      <NuxtLink :to="localePath('/')" class="home-btn" :aria-label="$t('leke.ariaHome')">
+        <span class="home-icon" aria-hidden="true">🏠</span> {{ $t('leke.btnHome') }}
+      </NuxtLink>
+    </div>
   </div>
 </template>
 
@@ -366,6 +385,19 @@ onBeforeUnmount(() => {
   justify-content: center;
   align-items: flex-end;
   transition: transform 0.2s ease;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  outline: none;
+  font: inherit;
+  color: inherit;
+}
+
+.fan-center-container:focus-visible {
+  outline: 2px dashed #ffd700;
+  outline-offset: 8px;
+  border-radius: 16px;
 }
 
 .fan-center-container.is-snapping {
