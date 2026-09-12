@@ -60,6 +60,10 @@ const props = defineProps({
     type: Object,
     default: () => ({ latitude: -23.55052, longitude: -46.633308 })
   },
+  initialZoom: {
+    type: Number,
+    default: 15
+  },
   isMapApiLoaded: {
     type: Boolean,
     default: false
@@ -174,7 +178,7 @@ const initMap = () => {
 
     map.value = new googleMaps.Map(mapContainer.value, {
       center,
-      zoom: props.pinLocation ? 17 : 14,
+      zoom: props.pinLocation ? 17 : props.initialZoom,
       disableDefaultUI: false,
       zoomControl: true,
       streetViewControl: false,
@@ -272,6 +276,9 @@ watch(() => props.isMapApiLoaded, (loaded) => {
 watch(() => props.initialCenter, (newCenter) => {
   if (map.value && newCenter && !props.pinLocation) {
     map.value.panTo({ lat: newCenter.latitude, lng: newCenter.longitude });
+    if ((map.value.getZoom() || 0) < props.initialZoom) {
+      map.value.setZoom(props.initialZoom);
+    }
   }
 }, { deep: true });
 

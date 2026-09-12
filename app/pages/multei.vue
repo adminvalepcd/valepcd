@@ -15,9 +15,9 @@
             class="scope-btn" 
             :class="{ 'is-active': filterScope === 'nearby' }" 
             @click="setFilterScope('nearby')"
-            title="Ver ocorrências próximas ao seu GPS (raio de 60 km)"
+            title="Ver ocorrências próximas ao seu GPS (raio de 30 km)"
           >
-            📍 Região (60 km)
+            📍 Região (30 km)
           </button>
           <button 
             type="button" 
@@ -68,6 +68,7 @@
       <MulteiMapDisplay
         :incidents="incidents"
         :initial-center="initialCenter"
+        :initial-zoom="15"
         height="600px"
         @marker-click="handleMarkerClick"
       />
@@ -153,7 +154,7 @@ const loadIncidents = async (scope = filterScope.value) => {
     const options = isNearby ? {
       latitude: initialCenter.value.latitude,
       longitude: initialCenter.value.longitude,
-      radiusKm: 60,
+      radiusKm: 30,
       includePhoto: true
     } : {
       includePhoto: false // Modo leve: carrega pontos sem baixar megabytes de base64
