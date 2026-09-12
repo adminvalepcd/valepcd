@@ -90,12 +90,40 @@ const mapError = ref(null);
 const isApiLoaded = ref(false);
 let listenerRef = null;
 let clickListenerRef = null;
+let zoomListenerRef = null;
 let isInitialPanDone = false;
 let activeMarkers = [];
+let activeSpiderLines = [];
+let activeSpiderDots = [];
 
 const isReady = computed(() => {
   return (props.isMapApiLoaded || isApiLoaded.value) && !!map.value;
 });
+
+const loadClustererScript = () => {
+  if (typeof window === 'undefined') return Promise.resolve();
+  if (window.markerClusterer?.MarkerClusterer) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const existing = document.querySelector('script[src*="markerclusterer"]');
+    if (existing) {
+      if (window.markerClusterer?.MarkerClusterer) {
+        resolve();
+      } else {
+        existing.addEventListener('load', () => resolve());
+        existing.addEventListener('error', () => resolve());
+      }
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js';
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => resolve();
+    document.head.appendChild(script);
+  });
+};
 
 const loadGoogleMapsScript = () => {
   if (typeof window === 'undefined') return Promise.resolve();
@@ -165,6 +193,21 @@ const setupPinListeners = () => {
   }
 };
 
+const clearSpiderGraphics = () => {
+  activeSpiderLines.forEach(line => line.setMap(null));
+  activeSpiderLines = [];
+  activeSpiderDots.forEach(dot => dot.setMap(null));
+  activeSpiderDots = [];
+};
+
+const updateSpiderGraphicsVisibility = () => {
+  if (!map.value) return;
+  const currentZoom = map.value.getZoom() || 15;
+  const showSpider = currentZoom >= 15;
+  activeSpiderLines.forEach(line => line.setMap(showSpider ? map.value : null));
+  activeSpiderDots.forEach(dot => dot.setMap(showSpider ? map.value : null));
+};
+
 const initMap = () => {
   if (!mapContainer.value || map.value || !window.google?.maps) {
     return;
@@ -193,35 +236,49 @@ const initMap = () => {
         markers: [],
         onClusterClick: (event, cluster, mapInstance) => {
           if (!cluster || !mapInstance) return;
-          const currentZoom = mapInstance.getZoom() || 15;
+          const currentZoom = mapInstance.getZoom() || 14;
+          const clusterMarkers = cluster.markers || [];
+
+          // Se já estamos em zoom de bairro (13+) ou se é um grupo de até 8 ocorrências,
+          // aproxima direto para o nível de rua (zoom 16+) onde todos os pins se desdobram individualmente
+          if (currentZoom >= 13 || clusterMarkers.length <= 8) {
+            mapInstance.setCenter(cluster.position);
+            mapInstance.setZoom(Math.max(currentZoom + 2, 16));
+            return;
+          }
+
           const bounds = cluster.bounds;
-
           if (bounds) {
-            const ne = bounds.getNorthEast();
-            const sw = bounds.getSouthWest();
-            const latSpan = Math.abs(ne.lat() - sw.lat());
-            const lngSpan = Math.abs(ne.lng() - sw.lng());
-
-            // Se os marcadores estiverem muito juntos ou se o mapa já estiver no zoom 16+
-            if ((latSpan < 0.0001 && lngSpan < 0.0001) || currentZoom >= 16) {
-              mapInstance.setCenter(cluster.position);
-              mapInstance.setZoom(Math.min(currentZoom + 2, 20));
-              return;
-            }
             mapInstance.fitBounds(bounds);
+            setTimeout(() => {
+              if (mapInstance.getZoom() <= currentZoom) {
+                mapInstance.setZoom(currentZoom + 2);
+              }
+            }, 150);
+          } else {
+            mapInstance.setCenter(cluster.position);
+            mapInstance.setZoom(currentZoom + 2);
           }
         }
       };
 
       if (window.markerClusterer.SuperClusterAlgorithm) {
         clusterOptions.algorithm = new window.markerClusterer.SuperClusterAlgorithm({
-          maxZoom: 16, // A partir do zoom 17, desmembra os clusters obrigatoriamente
-          radius: 50
+          maxZoom: 14, // A partir do zoom 15 desativa totalmente agrupamentos para mostrar pins individuais
+          radius: 35
         });
       }
 
       clusterer.value = new window.markerClusterer.MarkerClusterer(clusterOptions);
     }
+
+    if (zoomListenerRef) {
+      zoomListenerRef.remove();
+      zoomListenerRef = null;
+    }
+    zoomListenerRef = map.value.addListener('zoom_changed', () => {
+      updateSpiderGraphicsVisibility();
+    });
 
     setupPinListeners();
 
@@ -250,11 +307,11 @@ const initMap = () => {
 };
 
 /**
- * Dispersa em círculo minúsculo (raio de 8 metros) marcadores que possuem coordenadas idênticas ou muito próximas (< 4 metros)
- * para que no zoom aproximado eles não fiquem exatamente um em cima do outro.
+ * Desdobra marcadores (efeito spiderfy) que possuem coordenadas idênticas ou muito próximas (< 15 metros).
+ * A partir do zoom 15, os marcadores se separam em círculo com linhas visuais conectando ao ponto original.
  */
 const getCoordsWithSpiderOffset = (incidents) => {
-  if (!incidents || incidents.length === 0) return [];
+  if (!incidents || incidents.length === 0) return { positions: [], multiGroups: [] };
 
   const groups = [];
   const processed = new Set();
@@ -268,7 +325,8 @@ const getCoordsWithSpiderOffset = (incidents) => {
       const dLat = (incidents[j].latitude - incidents[i].latitude) * 111320;
       const dLng = (incidents[j].longitude - incidents[i].longitude) * (111320 * Math.cos(incidents[i].latitude * Math.PI / 180));
       const distMeters = Math.sqrt(dLat * dLat + dLng * dLng);
-      if (distMeters < 4) {
+      // Qualquer ponto dentro de 15 metros é agrupado para desdobramento
+      if (distMeters < 15) {
         group.push(j);
         processed.add(j);
       }
@@ -277,26 +335,53 @@ const getCoordsWithSpiderOffset = (incidents) => {
   }
 
   const positions = new Array(incidents.length);
+  const multiGroups = [];
+
   for (const group of groups) {
     if (group.length === 1) {
       const idx = group[0];
-      positions[idx] = { lat: incidents[idx].latitude, lng: incidents[idx].longitude };
+      positions[idx] = {
+        lat: incidents[idx].latitude,
+        lng: incidents[idx].longitude,
+        isDispersed: false
+      };
     } else {
+      let centerLat = 0;
+      let centerLng = 0;
+      for (const idx of group) {
+        centerLat += incidents[idx].latitude;
+        centerLng += incidents[idx].longitude;
+      }
+      centerLat /= group.length;
+      centerLng /= group.length;
+
       const count = group.length;
-      const radiusMeters = 8; // 8 metros de dispersão
+      // Raio em metros: garante separação visual nítida (~40px) no zoom de rua sem afastar do local real
+      const radiusMeters = Math.min(18 + count * 2.5, 36);
+
+      multiGroups.push({
+        center: { lat: centerLat, lng: centerLng },
+        indices: group
+      });
+
       for (let k = 0; k < count; k++) {
         const idx = group[k];
-        const angle = (2 * Math.PI * k) / count;
-        const latOffset = (radiusMeters * Math.sin(angle)) / 111320;
-        const lngOffset = (radiusMeters * Math.cos(angle)) / (111320 * Math.cos(incidents[idx].latitude * Math.PI / 180));
+        // Distribuição simétrica em leque circular começando pelo topo (-PI/2)
+        const angle = (2 * Math.PI * k) / count - (Math.PI / 2);
+        const latOffset = (radiusMeters * Math.cos(angle)) / 111320;
+        const lngOffset = (radiusMeters * Math.sin(angle)) / (111320 * Math.cos(centerLat * Math.PI / 180));
         positions[idx] = {
-          lat: Number((incidents[idx].latitude + latOffset).toFixed(6)),
-          lng: Number((incidents[idx].longitude + lngOffset).toFixed(6))
+          lat: Number((centerLat + latOffset).toFixed(6)),
+          lng: Number((centerLng + lngOffset).toFixed(6)),
+          originLat: centerLat,
+          originLng: centerLng,
+          isDispersed: true
         };
       }
     }
   }
-  return positions;
+
+  return { positions, multiGroups };
 };
 
 const updateMarkers = () => {
@@ -314,18 +399,56 @@ const updateMarkers = () => {
     activeMarkers = [];
   }
 
+  clearSpiderGraphics();
+
   if (clusterer.value) {
     clusterer.value.clearMarkers();
   }
 
   const incidents = props.incidents || [];
-  const offsetPositions = getCoordsWithSpiderOffset(incidents);
+  const { positions, multiGroups } = getCoordsWithSpiderOffset(incidents);
+
+  const currentZoom = map.value?.getZoom() || 15;
+  const showSpider = currentZoom >= 15;
+
+  // Desenha os pontos de ancoragem e linhas conectoras de desdobramento (spiderfy)
+  multiGroups.forEach(group => {
+    const anchorDot = new googleMaps.Circle({
+      center: group.center,
+      radius: 2,
+      fillColor: '#6366f1',
+      fillOpacity: 0.85,
+      strokeColor: '#ffffff',
+      strokeWeight: 2,
+      map: showSpider ? map.value : null,
+      zIndex: 10
+    });
+    activeSpiderDots.push(anchorDot);
+
+    group.indices.forEach(idx => {
+      const pos = positions[idx];
+      if (pos) {
+        const line = new googleMaps.Polyline({
+          path: [
+            group.center,
+            { lat: pos.lat, lng: pos.lng }
+          ],
+          strokeColor: '#6366f1',
+          strokeOpacity: 0.8,
+          strokeWeight: 2,
+          map: showSpider ? map.value : null,
+          zIndex: 9
+        });
+        activeSpiderLines.push(line);
+      }
+    });
+  });
 
   const newMarkers = incidents.map((incident, index) => {
-    const pos = offsetPositions[index] || { lat: incident.latitude, lng: incident.longitude };
+    const pos = positions[index] || { lat: incident.latitude, lng: incident.longitude };
     const marker = new googleMaps.Marker({
-      position: pos,
-      title: incident.description || `Infração registrada em ${new Date(incident.timestamp).toLocaleTimeString()}`,
+      position: { lat: pos.lat, lng: pos.lng },
+      title: incident.description || (incident.cidade ? `${incident.cidade} - ${incident.estado}` : `Infração registrada em ${new Date(incident.timestamp).toLocaleTimeString()}`),
       map: clusterer.value ? null : map.value
     });
 
@@ -389,7 +512,7 @@ onMounted(async () => {
   window.addEventListener('gmp-auth-failure', handleAuthFailure);
 
   try {
-    await loadGoogleMapsScript();
+    await Promise.all([loadGoogleMapsScript(), loadClustererScript()]);
     initMap();
   } catch (e) {
     console.error("Falha ao inicializar mapa no onMounted:", e);
@@ -403,11 +526,18 @@ onBeforeUnmount(() => {
     });
     activeMarkers = [];
   }
+  clearSpiderGraphics();
   if (listenerRef) {
     listenerRef.remove();
+    listenerRef = null;
   }
   if (clickListenerRef) {
     clickListenerRef.remove();
+    clickListenerRef = null;
+  }
+  if (zoomListenerRef) {
+    zoomListenerRef.remove();
+    zoomListenerRef = null;
   }
 });
 </script>
