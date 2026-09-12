@@ -111,7 +111,7 @@ const config = useRuntimeConfig();
 const appsScriptUrl = ref(
   (config.public.appsScriptUrl) || 
   (process.env.VITE_APPS_SCRIPT_URL) || 
-  'https://script.google.com/macros/s/AKfycbxoVMfJV8aW57SNZncgRSa-I5grXCd0U8LBW2HlCurUs7xK0B65qgkyvi5ubwKXinr4/exec'
+  'https://script.google.com/macros/s/AKfycbzThIuCIZKjq1U4bvt1aB-PL02cLJYf2kX9pMo9CXz82rFgMdv3x90qyVBkfvhnlJcm/exec'
 );
 
 const isCreateModalOpen = ref(false);
