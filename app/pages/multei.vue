@@ -138,9 +138,32 @@ const handleIncidentCreated = (newIncident) => {
   };
 };
 
-const handleIncidentReported = (incidentId) => {
-  incidents.value = incidents.value.filter(inc => inc.id !== incidentId);
-  selectedIncident.value = null;
+const handleIncidentReported = (reportedData) => {
+  const targetId = typeof reportedData === 'object' && reportedData?.id 
+    ? String(reportedData.id) 
+    : (reportedData ? String(reportedData) : (selectedIncident.value?.id ? String(selectedIncident.value.id) : ''));
+
+  const targetObj = (typeof reportedData === 'object' && reportedData) ? reportedData : selectedIncident.value;
+
+  incidents.value = incidents.value.filter(inc => {
+    // 1. Comparação por ID
+    if (targetId && inc.id && String(inc.id) === targetId) {
+      return false;
+    }
+    // 2. Comparação por referência de objeto
+    if (targetObj && inc === targetObj) {
+      return false;
+    }
+    // 3. Comparação por coordenadas geográficas
+    if (targetObj &&
+        typeof inc.latitude === 'number' && typeof targetObj.latitude === 'number' &&
+        typeof inc.longitude === 'number' && typeof targetObj.longitude === 'number' &&
+        Math.abs(inc.latitude - targetObj.latitude) < 0.00005 &&
+        Math.abs(inc.longitude - targetObj.longitude) < 0.00005) {
+      return false;
+    }
+    return true;
+  });
 };
 
 const loadIncidents = async (scope = filterScope.value) => {

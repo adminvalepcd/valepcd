@@ -227,8 +227,9 @@ const handleSubmitReport = async () => {
     await reportIncidentInSheet(props.appsScriptUrl || '', id, reportReason.value.trim());
 
     reportSuccess.value = true;
+    // Emite imediatamente para que o mapa e o array reflitam a remoção em tempo real
+    emit('incidentReported', props.incident);
     setTimeout(() => {
-      emit('incidentReported', id);
       emit('close');
     }, 1500);
   } catch (err) {

@@ -91,6 +91,7 @@ const isApiLoaded = ref(false);
 let listenerRef = null;
 let clickListenerRef = null;
 let isInitialPanDone = false;
+let activeMarkers = [];
 
 const isReady = computed(() => {
   return (props.isMapApiLoaded || isApiLoaded.value) && !!map.value;
@@ -223,6 +224,17 @@ const updateMarkers = () => {
   if (!map.value || !window.google?.maps) return;
   const googleMaps = window.google.maps;
 
+  // Remove e desvincula todos os marcadores anteriores do mapa
+  if (activeMarkers.length > 0) {
+    activeMarkers.forEach((marker) => {
+      marker.setMap(null);
+      if (googleMaps.event) {
+        googleMaps.event.clearInstanceListeners(marker);
+      }
+    });
+    activeMarkers = [];
+  }
+
   if (clusterer.value) {
     clusterer.value.clearMarkers();
   }
@@ -241,6 +253,8 @@ const updateMarkers = () => {
 
     return marker;
   });
+
+  activeMarkers = newMarkers;
 
   if (clusterer.value) {
     clusterer.value.addMarkers(newMarkers);
@@ -301,6 +315,12 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  if (activeMarkers.length > 0) {
+    activeMarkers.forEach((marker) => {
+      marker.setMap(null);
+    });
+    activeMarkers = [];
+  }
   if (listenerRef) {
     listenerRef.remove();
   }
