@@ -102,6 +102,9 @@
                 <span v-if="isResolvingAddress" class="loc-loading">⏳ </span>
                 {{ addressText }}
               </p>
+              <div v-if="currentCidade || currentEstado" class="loc-city-pill">
+                📍 <span>{{ currentCidade }}</span><span v-if="currentEstado"> - {{ currentEstado }}</span>
+              </div>
               <p class="loc-coords">Lat: {{ selectedLocation.latitude.toFixed(5) }}, Lng: {{ selectedLocation.longitude.toFixed(5) }}</p>
             </div>
           </div>
@@ -224,6 +227,84 @@ const selectedLocation = reactive({
   longitude: props.currentLocation.longitude
 });
 
+const UF_MAP = {
+  'acre': 'AC', 'alagoas': 'AL', 'amapá': 'AP', 'amapa': 'AP',
+  'amazonas': 'AM', 'bahia': 'BA', 'ceará': 'CE', 'ceara': 'CE',
+  'distrito federal': 'DF', 'espírito santo': 'ES', 'espirito santo': 'ES',
+  'goiás': 'GO', 'goias': 'GO', 'maranhão': 'MA', 'maranhao': 'MA',
+  'mato grosso': 'MT', 'mato grosso do sul': 'MS', 'minas gerais': 'MG',
+  'pará': 'PA', 'para': 'PA', 'paraíba': 'PB', 'paraiba': 'PB',
+  'paraná': 'PR', 'parana': 'PR', 'pernambuco': 'PE', 'piauí': 'PI',
+  'piaui': 'PI', 'rio de janeiro': 'RJ', 'rio grande do norte': 'RN',
+  'rio grande do sul': 'RS', 'rondônia': 'RO', 'rondonia': 'RO',
+  'roraima': 'RR', 'santa catarina': 'SC', 'são paulo': 'SP',
+  'sao paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO'
+};
+
+const CITY_TO_UF = {
+  'belo horizonte': 'MG', 'contagem': 'MG', 'betim': 'MG', 'uberlândia': 'MG', 'juiz de fora': 'MG',
+  'são paulo': 'SP', 'campinas': 'SP', 'guarulhos': 'SP', 'santos': 'SP', 'são bernardo do campo': 'SP',
+  'rio de janeiro': 'RJ', 'niterói': 'RJ', 'duque de caxias': 'RJ', 'são gonçalo': 'RJ',
+  'brasília': 'DF', 'curitiba': 'PR', 'londrina': 'PR', 'maringá': 'PR',
+  'porto alegre': 'RS', 'caxias do sul': 'RS', 'salvador': 'BA', 'feira de santana': 'BA',
+  'fortaleza': 'CE', 'recife': 'PE', 'olinda': 'PE', 'goiânia': 'GO', 'manaus': 'AM',
+  'belém': 'PA', 'florianópolis': 'SC', 'joinville': 'SC', 'vitória': 'ES', 'vila velha': 'ES',
+  'natal': 'RN', 'joão pessoa': 'PB', 'maceió': 'AL', 'teresina': 'PI', 'aracaju': 'SE',
+  'campo grande': 'MS', 'cuiabá': 'MT', 'porto velho': 'RO', 'macapá': 'AP', 'palmas': 'TO',
+  'boa vista': 'RR', 'rio branco': 'AC'
+};
+
+const extractCityAndStateFromText = (text) => {
+  if (!text || typeof text !== 'string') return { cidade: '', estado: '' };
+  const clean = text.trim();
+  if (clean.startsWith('Lat:')) return { cidade: '', estado: '' };
+
+  let cidade = '';
+  let estado = '';
+
+  const allUFs = new Set(Object.values(UF_MAP));
+  const ufMatch = clean.match(/[\s,-]+([A-Z]{2})(?:[\s,-]|$)/);
+  if (ufMatch && allUFs.has(ufMatch[1])) {
+    estado = ufMatch[1];
+  }
+
+  if (!estado) {
+    const lower = clean.toLowerCase();
+    for (const [name, uf] of Object.entries(UF_MAP)) {
+      if (lower.includes(name)) {
+        estado = uf;
+        break;
+      }
+    }
+  }
+
+  const parts = clean.split(/\s*-\s*/).map(p => p.trim()).filter(Boolean);
+  if (parts.length > 0) {
+    const last = parts[parts.length - 1];
+    if (allUFs.has(last.toUpperCase())) {
+      estado = last.toUpperCase();
+      if (parts.length > 1) {
+        cidade = parts[parts.length - 2];
+      }
+    } else {
+      cidade = last;
+    }
+  }
+
+  if (cidade) {
+    cidade = cidade.split(',')[0].replace(/\d{5}-?\d{3}/g, '').trim();
+  }
+
+  if (cidade && !estado) {
+    const cityLower = cidade.toLowerCase();
+    if (CITY_TO_UF[cityLower]) {
+      estado = CITY_TO_UF[cityLower];
+    }
+  }
+
+  return { cidade, estado };
+};
+
 const config = useRuntimeConfig();
 const geminiApiKey = config.public.geminiApiKey;
 const geminiClient = initializeGeminiClient(geminiApiKey);
@@ -233,8 +314,16 @@ const updateAddress = async (lat, lng) => {
   try {
     const details = await getAddressDetailsFromCoords(lat, lng);
     addressText.value = details.formattedAddress;
-    currentCidade.value = details.cidade;
-    currentEstado.value = details.estado;
+    currentCidade.value = details.cidade || '';
+    currentEstado.value = details.estado || '';
+
+    // Se o serviço não tiver separado cidade/estado mas o texto os contém, puxa direto do texto
+    if (!currentCidade.value || !currentEstado.value) {
+      const fromText = extractCityAndStateFromText(details.formattedAddress);
+      if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
+      if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
+    }
+
     return details;
   } catch {
     addressText.value = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
@@ -245,6 +334,14 @@ const updateAddress = async (lat, lng) => {
     isResolvingAddress.value = false;
   }
 };
+
+watch(addressText, (newText) => {
+  if (newText && (!currentCidade.value || !currentEstado.value)) {
+    const fromText = extractCityAndStateFromText(newText);
+    if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
+    if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
+  }
+});
 
 const handleRefreshGps = async () => {
   isRefreshingGps.value = true;
@@ -467,27 +564,44 @@ const handleSaveIncident = async () => {
     } catch {}
   }
 
-  // 3. Se ainda faltar cidade ou estado, força uma tentativa direta
+  // 3. Puxar SEMPRE cidade e estado diretamente do texto exibido no modal (addressText)
+  if (addressText.value) {
+    const fromText = extractCityAndStateFromText(addressText.value);
+    if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
+    if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
+  }
+
+  // 4. Se ainda faltar cidade ou estado, força uma tentativa direta
   if (!currentCidade.value || !currentEstado.value) {
     try {
       const details = await getAddressDetailsFromCoords(selectedLocation.latitude, selectedLocation.longitude);
-      if (details.cidade) currentCidade.value = details.cidade;
-      if (details.estado) currentEstado.value = details.estado;
+      if (details.cidade && !currentCidade.value) currentCidade.value = details.cidade;
+      if (details.estado && !currentEstado.value) currentEstado.value = details.estado;
       if (details.formattedAddress && (!addressText.value || addressText.value.startsWith('Lat:'))) {
         addressText.value = details.formattedAddress;
       }
     } catch {}
   }
 
+  // 5. Garantia final via texto do modal
+  if (addressText.value && (!currentCidade.value || !currentEstado.value)) {
+    const fromText = extractCityAndStateFromText(addressText.value);
+    if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
+    if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
+  }
+
+  const finalCidade = currentCidade.value || (addressText.value ? extractCityAndStateFromText(addressText.value).cidade : '') || '';
+  const finalEstado = currentEstado.value || (addressText.value ? extractCityAndStateFromText(addressText.value).estado : '') || '';
+
   const newIncident = {
     id: `inc-${Date.now()}`,
     timestamp: new Date().toISOString(),
     latitude: selectedLocation.latitude,
     longitude: selectedLocation.longitude,
-    cidade: currentCidade.value,
-    estado: currentEstado.value,
+    cidade: finalCidade,
+    estado: finalEstado,
     maskedImageUrl: processedImageWebp.value,
-    description: addressText.value || (currentCidade.value ? `${currentCidade.value}${currentEstado.value ? ` - ${currentEstado.value}` : ''}` : 'Infração registrada via colaboração cidadã')
+    description: addressText.value || (finalCidade ? `${finalCidade}${finalEstado ? ` - ${finalEstado}` : ''}` : 'Infração registrada via colaboração cidadã')
   };
 
   try {
@@ -904,5 +1018,20 @@ const handleSaveIncident = async () => {
   color: var(--text, #334155);
   max-width: 420px;
   line-height: 1.6;
+}
+
+.loc-city-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  margin-top: 6px;
+  border: 1px solid #cbd5e1;
+  width: fit-content;
 }
 </style>

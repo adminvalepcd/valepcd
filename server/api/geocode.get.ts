@@ -67,7 +67,8 @@ export default defineEventHandler(async (event) => {
         const parts = [
           street ? `${street}${number}` : '',
           suburb,
-          city
+          city,
+          state
         ].filter(Boolean);
 
         const formatted = parts.length > 0 ? parts.join(' - ') : (data.display_name || '');
