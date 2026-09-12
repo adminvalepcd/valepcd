@@ -144,7 +144,7 @@ export default defineNuxtConfig({
     public: {
       googleMapsApiKey: process.env.NUXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyBE9MtDA7cziFHANDknpjvgP5jkAvXyguU',
       geminiApiKey: process.env.NUXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '',
-      appsScriptUrl: process.env.NUXT_PUBLIC_APPS_SCRIPT_URL || process.env.VITE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxO2pUAcnnZ4lnsWUBcSS7__SpkMo0s4aJGEB-uw_GgCI-luQu1WOroWl5A2XhW_Lww/exec'
+      appsScriptUrl: process.env.NUXT_PUBLIC_APPS_SCRIPT_URL || process.env.VITE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxviY_Dn5xvGiFEicWg0T-1mrkGlEBuBCoharmgS_BHMkNC188KpXBpAxKH58_UkfGs/exec'
     }
   }
 })
