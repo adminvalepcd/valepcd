@@ -13,11 +13,19 @@
       </div>
 
       <div class="modal-image-wrapper">
+        <div v-if="isLoadingPhoto" class="image-loading-placeholder">
+          <LoadingSpinner />
+          <span class="image-loading-text">Carregando foto anonimizada...</span>
+        </div>
         <img 
-          :src="incident.maskedImageUrl" 
+          v-else-if="currentPhoto"
+          :src="currentPhoto" 
           alt="Foto da infração com dados sensíveis ocultos" 
           class="incident-image" 
         />
+        <div v-else class="image-empty-placeholder">
+          <span>📷 Foto da infração indisponível</span>
+        </div>
         <p class="privacy-note">Áreas sensíveis (placas e rostos) foram ocultadas automaticamente por IA.</p>
       </div>
 
@@ -125,7 +133,8 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue';
 import { getAddressFromCoords } from '../../services/geoService';
-import { reportIncidentInSheet } from '../../services/sheetsService';
+import { reportIncidentInSheet, fetchIncidentPhoto } from '../../services/sheetsService';
+import LoadingSpinner from './LoadingSpinner.vue';
 
 const props = defineProps({
   incident: {
@@ -140,6 +149,8 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'incidentReported']);
 
+const currentPhoto = ref(props.incident?.maskedImageUrl || '');
+const isLoadingPhoto = ref(!currentPhoto.value);
 const addressText = ref('');
 const isResolving = ref(false);
 
@@ -148,6 +159,26 @@ const reportReason = ref('');
 const isSubmittingReport = ref(false);
 const reportError = ref('');
 const reportSuccess = ref(false);
+
+const loadPhotoIfNeeded = async () => {
+  currentPhoto.value = props.incident?.maskedImageUrl || '';
+  if (!currentPhoto.value && props.appsScriptUrl && props.incident?.id) {
+    isLoadingPhoto.value = true;
+    try {
+      const photo = await fetchIncidentPhoto(props.appsScriptUrl, props.incident.id);
+      if (photo) {
+        currentPhoto.value = photo;
+        props.incident.maskedImageUrl = photo;
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar foto sob demanda:', e);
+    } finally {
+      isLoadingPhoto.value = false;
+    }
+  } else {
+    isLoadingPhoto.value = false;
+  }
+};
 
 const resolveAddress = async () => {
   if (!props.incident) return;
@@ -210,10 +241,12 @@ const handleSubmitReport = async () => {
 
 onMounted(() => {
   resolveAddress();
+  loadPhotoIfNeeded();
 });
 
 watch(() => props.incident, () => {
   resolveAddress();
+  loadPhotoIfNeeded();
 });
 </script>
 
@@ -274,6 +307,35 @@ watch(() => props.incident, () => {
 .modal-image-wrapper {
   margin-bottom: 1.5rem;
   text-align: center;
+}
+
+.image-loading-placeholder {
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  border-radius: var(--radius-md, 12px);
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+}
+
+.image-loading-text {
+  font-size: 0.88rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.image-empty-placeholder {
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  border-radius: var(--radius-md, 12px);
+  color: #94a3b8;
+  font-size: 0.95rem;
 }
 
 .incident-image {

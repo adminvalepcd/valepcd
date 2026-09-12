@@ -10,14 +10,42 @@ export interface SheetRowPayload {
   motivo_denuncia?: string;
 }
 
-export async function fetchIncidentsFromSheet(appsScriptUrl?: string): Promise<ReportedIncident[]> {
+export interface FetchIncidentsOptions {
+  latitude?: number;
+  longitude?: number;
+  radiusKm?: number;
+  includePhoto?: boolean;
+}
+
+export async function fetchIncidentsFromSheet(
+  appsScriptUrl?: string,
+  options?: FetchIncidentsOptions
+): Promise<ReportedIncident[]> {
   if (!appsScriptUrl) {
     // Carrega do cache local se a URL do Apps Script ainda não estiver preenchida
     return loadIncidentsFromLocalCache();
   }
 
   try {
-    const response = await fetch(appsScriptUrl, {
+    let finalUrl = appsScriptUrl;
+    if (options) {
+      try {
+        const urlObj = new URL(appsScriptUrl);
+        if (options.latitude !== undefined && options.longitude !== undefined) {
+          urlObj.searchParams.set('lat', String(options.latitude));
+          urlObj.searchParams.set('lng', String(options.longitude));
+        }
+        if (options.radiusKm !== undefined) {
+          urlObj.searchParams.set('radius', String(options.radiusKm));
+        }
+        if (options.includePhoto !== undefined) {
+          urlObj.searchParams.set('include_photo', String(options.includePhoto));
+        }
+        finalUrl = urlObj.toString();
+      } catch {}
+    }
+
+    const response = await fetch(finalUrl, {
       method: 'GET'
     });
 
@@ -47,7 +75,7 @@ export async function fetchIncidentsFromSheet(appsScriptUrl?: string): Promise<R
           timestamp: row.data || row.timestamp || new Date().toISOString(),
           latitude: lat,
           longitude: lng,
-          maskedImageUrl: row.foto || row.image || '/images/logo-vale-pcd-seo.webp',
+          maskedImageUrl: row.foto || row.image || '',
           description: row.description || 'Infração registrada',
           ativo: true,
           motivo_denuncia: row.motivo_denuncia || ''
@@ -64,6 +92,27 @@ export async function fetchIncidentsFromSheet(appsScriptUrl?: string): Promise<R
   } catch (err) {
     console.warn('[sheetsService] Erro ao buscar dados da planilha, usando cache local:', err);
     return loadIncidentsFromLocalCache();
+  }
+}
+
+/**
+ * Busca a foto pesada de uma ocorrência específica sob demanda (Lazy Loading)
+ */
+export async function fetchIncidentPhoto(
+  appsScriptUrl: string,
+  incidentId: string
+): Promise<string> {
+  if (!appsScriptUrl || !incidentId) return '';
+  try {
+    const urlObj = new URL(appsScriptUrl);
+    urlObj.searchParams.set('id', incidentId);
+    const response = await fetch(urlObj.toString());
+    if (!response.ok) return '';
+    const data = await response.json();
+    return data.foto || '';
+  } catch (err) {
+    console.warn('[sheetsService] Erro ao buscar foto da ocorrência:', err);
+    return '';
   }
 }
 

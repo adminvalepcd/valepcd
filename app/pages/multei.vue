@@ -5,8 +5,31 @@
       <div class="header-top">
         <span class="badge">Multei</span>
         <span v-if="isLoadingSheet" class="badge-status">Sincronizando com a planilha...</span>
-        <span v-else class="badge-status is-active">{{ incidents.length }} ocorrências no mapa</span>
+        <span v-else class="badge-status is-active">
+          {{ incidents.length }} {{ filterScope === 'nearby' ? 'na sua região' : 'no mapa' }}
+        </span>
         
+        <div class="scope-toggle">
+          <button 
+            type="button" 
+            class="scope-btn" 
+            :class="{ 'is-active': filterScope === 'nearby' }" 
+            @click="setFilterScope('nearby')"
+            title="Ver ocorrências próximas ao seu GPS (raio de 60 km)"
+          >
+            📍 Região (60 km)
+          </button>
+          <button 
+            type="button" 
+            class="scope-btn" 
+            :class="{ 'is-active': filterScope === 'all' }" 
+            @click="setFilterScope('all')"
+            title="Ver todas as ocorrências do Brasil (modo ultra-leve)"
+          >
+            🇧🇷 Brasil Todo
+          </button>
+        </div>
+
         <button 
           v-if="locationState !== 'granted'" 
           type="button" 
@@ -17,7 +40,7 @@
           <span>📍</span>
           <span>{{ locationState === 'denied' ? 'Ativar Localização' : 'Obter Localização' }}</span>
         </button>
-        <span v-else class="badge-status is-gps">📍 Localização Ativa</span>
+        <span v-else class="badge-status is-gps">📍 GPS Ativo</span>
       </div>
       <h1 class="title">
         Fiscalização Cidadã <span class="gradient-text">Vale PCD</span>
@@ -94,6 +117,7 @@ const isCreateModalOpen = ref(false);
 const selectedIncident = ref(null);
 const isLoadingSheet = ref(false);
 const locationState = ref('idle');
+const filterScope = ref('nearby'); // 'nearby' ou 'all'
 
 const initialCenter = ref({
   latitude: -23.55052,
@@ -119,36 +143,55 @@ const handleIncidentReported = (incidentId) => {
   selectedIncident.value = null;
 };
 
+const loadIncidents = async (scope = filterScope.value) => {
+  if (!appsScriptUrl.value) return;
+  isLoadingSheet.value = true;
+  filterScope.value = scope;
+
+  try {
+    const isNearby = scope === 'nearby' && locationState.value === 'granted';
+    const options = isNearby ? {
+      latitude: initialCenter.value.latitude,
+      longitude: initialCenter.value.longitude,
+      radiusKm: 60,
+      includePhoto: true
+    } : {
+      includePhoto: false // Modo leve: carrega pontos sem baixar megabytes de base64
+    };
+
+    const sheetIncidents = await fetchIncidentsFromSheet(appsScriptUrl.value, options);
+    incidents.value = sheetIncidents;
+  } catch (e) {
+    console.warn('Não foi possível sincronizar com a planilha no momento:', e);
+  } finally {
+    isLoadingSheet.value = false;
+  }
+};
+
+const setFilterScope = (scope) => {
+  if (filterScope.value === scope) return;
+  loadIncidents(scope);
+};
+
 const requestLocation = async () => {
   locationState.value = 'requesting';
   try {
     const coords = await requestUserLocation();
     initialCenter.value = coords;
     locationState.value = 'granted';
+    if (filterScope.value === 'nearby') {
+      loadIncidents('nearby');
+    }
   } catch (err) {
     console.warn('[multei] Permissão de geolocalização recusada ou indisponível:', err);
     locationState.value = 'denied';
+    loadIncidents('all');
   }
 };
 
 onMounted(async () => {
-  // 1. Forçar a solicitação de geolocalização do navegador logo ao carregar a página
   requestLocation();
-
-  // 2. Carregar ocorrências da planilha Google
-  if (appsScriptUrl.value) {
-    isLoadingSheet.value = true;
-    try {
-      const sheetIncidents = await fetchIncidentsFromSheet(appsScriptUrl.value);
-      if (sheetIncidents.length > 0) {
-        incidents.value = sheetIncidents;
-      }
-    } catch (e) {
-      console.warn('Não foi possível sincronizar com a planilha no momento:', e);
-    } finally {
-      isLoadingSheet.value = false;
-    }
-  }
+  loadIncidents();
 });
 </script>
 
@@ -172,6 +215,38 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.scope-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 9999px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.scope-btn {
+  background: transparent;
+  border: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.25rem 0.65rem;
+  border-radius: 9999px;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.scope-btn:hover {
+  color: var(--text, #1e293b);
+}
+
+.scope-btn.is-active {
+  background: #ffffff;
+  color: var(--primary, #86007D);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .badge-status {

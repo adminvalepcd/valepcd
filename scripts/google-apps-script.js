@@ -13,21 +13,45 @@
  * 7. Clique em "Implantar" (Deploy)
  */
 
+/**
+ * Calcula a distância em quilômetros entre duas coordenadas geográficas (Fórmula de Haversine)
+ */
+function getDistanceKm(lat1, lon1, lat2, lon2) {
+  var R = 6371; // Raio da Terra em km
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLon = (lon2 - lon1) * Math.PI / 180;
+  var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 function doGet(e) {
   try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    const data = sheet.getDataRange().getValues();
+    var params = (e && e.parameter) ? e.parameter : {};
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var data = sheet.getDataRange().getValues();
     
     // Se a planilha estiver vazia ou tiver apenas cabeçalho
     if (data.length <= 1) {
       return jsonResponse([]);
     }
 
-    const headers = data[0].map(function(h) {
+    var headers = data[0].map(function(h) {
       return String(h).trim().toLowerCase();
     });
 
-    const rows = [];
+    // Parâmetros de consulta
+    var filterId = params.id ? String(params.id).trim() : null;
+    var userLat = params.lat ? parseFloat(params.lat) : null;
+    var userLng = params.lng ? parseFloat(params.lng) : null;
+    var radiusKm = params.radius ? parseFloat(params.radius) : null;
+    var includePhoto = params.include_photo !== undefined 
+      ? (String(params.include_photo).toLowerCase() === 'true') 
+      : true;
+
+    var rows = [];
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
       // Pular linhas vazias
@@ -42,16 +66,45 @@ function doGet(e) {
         obj[headers[j]] = val;
       }
 
-      // Se a coluna "ativo" estiver preenchida e for false, não envia para o mapa
-      // Se não estiver preenchida (linhas anteriores), assume true por padrão
+      // Se foi solicitado um ID específico (ex: clique no pino para baixar a foto pesada)
+      if (filterId) {
+        if (String(obj.id).trim() === filterId) {
+          return jsonResponse(obj);
+        }
+        continue;
+      }
+
+      // Se a coluna "ativo" for false, não exibe no mapa
       var isAtivo = true;
       if (obj.ativo !== undefined && obj.ativo !== '') {
         isAtivo = (obj.ativo === true || String(obj.ativo).toLowerCase() === 'true');
       }
+      if (!isAtivo) continue;
 
-      if (isAtivo) {
-        rows.push(obj);
+      // Filtragem por raio geográfico ao redor do GPS do usuário
+      var rowLat = parseFloat(obj.latitude);
+      var rowLng = parseFloat(obj.longitude);
+
+      if (userLat !== null && !isNaN(userLat) && userLng !== null && !isNaN(userLng) &&
+          !isNaN(rowLat) && !isNaN(rowLng) && radiusKm !== null && !isNaN(radiusKm)) {
+        var dist = getDistanceKm(userLat, userLng, rowLat, rowLng);
+        if (dist > radiusKm) {
+          continue; // Pula ocorrência fora do raio solicitado
+        }
+        obj.distancia_km = Math.round(dist * 10) / 10;
       }
+
+      // Otimização de dados (Lazy Loading): omite foto em base64 se solicitado para carregamento ultra-rápido
+      if (!includePhoto) {
+        obj.foto = '';
+        obj.tem_foto = Boolean(row[4]);
+      }
+
+      rows.push(obj);
+    }
+
+    if (filterId) {
+      return jsonResponse({ status: 'not_found', message: 'Ocorrência não encontrada' });
     }
 
     return jsonResponse(rows);
