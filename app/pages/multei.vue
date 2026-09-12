@@ -59,7 +59,6 @@
           class="btn btn-primary btn-floating-report" 
           @click="isCreateModalOpen = true"
         >
-          <span class="btn-icon">📷</span>
           <span>Incluir Ocorrência</span>
         </button>
       </div>
@@ -309,8 +308,8 @@ onMounted(async () => {
 
 .map-floating-actions {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  bottom: 24px;
+  left: 16px;
   z-index: 25;
 }
 

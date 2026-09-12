@@ -36,7 +36,7 @@
         </div>
 
         <p class="privacy-note">
-          🔒 Suas fotos são analisadas por IA. Placas e rostos serão desfocados (blur 12px) automaticamente antes de qualquer gravação.
+          🔒 Suas fotos são analisadas por IA. Placas e rostos serão desfocados antes de qualquer gravação. Nenhum dado seu é armazenado
         </p>
       </div>
 
@@ -76,7 +76,7 @@
       <div v-if="step === 'preview'" class="step-preview">
         <div class="preview-container">
           <img :src="processedImageWebp" alt="Pré-visualização com desfoque de privacidade" class="preview-img" />
-          <span class="badge-blur">Desfoque 12px aplicado</span>
+          <span class="badge-blur">Filtro privacidade aplicado</span>
         </div>
 
         <div class="location-box glass">
@@ -155,7 +155,7 @@
             Trocar Foto
           </button>
           <button class="btn btn-primary" @click="handleSaveIncident" :disabled="isSaving">
-            <span v-if="isSaving">Salvando na planilha...</span>
+            <span v-if="isSaving">Processando</span>
             <span v-else>Salvar Ocorrência</span>
           </button>
         </div>
@@ -166,7 +166,7 @@
         <div class="success-icon">✅</div>
         <h3 class="success-title">Ocorrência Registrada!</h3>
         <p class="success-desc">
-          A infração foi salva na planilha com placas e rostos anonimizados e já está visível no mapa comunitário.
+          A infração foi salva e já está visível no mapa.
         </p>
         <button class="btn btn-primary mt-4" @click="emit('close')">
           Fechar
