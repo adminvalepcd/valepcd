@@ -211,6 +211,7 @@ const currentCidade = ref('');
 const currentEstado = ref('');
 const isResolvingAddress = ref(false);
 let geocodeDebounceTimer = null;
+let currentAddressPromise = null;
 
 const locationSource = ref('fallback');
 const isRefreshingGps = ref(false);
@@ -234,10 +235,12 @@ const updateAddress = async (lat, lng) => {
     addressText.value = details.formattedAddress;
     currentCidade.value = details.cidade;
     currentEstado.value = details.estado;
+    return details;
   } catch {
     addressText.value = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
     currentCidade.value = '';
     currentEstado.value = '';
+    return null;
   } finally {
     isResolvingAddress.value = false;
   }
@@ -373,7 +376,7 @@ const processSelectedImage = async (file) => {
     }
 
     // Iniciar busca pelo nome da rua imediatamente
-    updateAddress(selectedLocation.latitude, selectedLocation.longitude);
+    currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
 
     // 2. Redimensionar previamente a imagem para envio rápido e leve à IA (~250KB)
     analyzingStatusText.value = 'Otimizando e analisando veículo com IA...';
@@ -435,23 +438,44 @@ const handlePinChange = (newLoc) => {
   selectedLocation.longitude = newLoc.longitude;
   locationSource.value = 'manual';
 
+  // Limpa valores para não salvar com a cidade anterior em caso de clique rápido
+  currentCidade.value = '';
+  currentEstado.value = '';
+  addressText.value = 'Buscando endereço...';
+
   if (geocodeDebounceTimer) clearTimeout(geocodeDebounceTimer);
   geocodeDebounceTimer = setTimeout(() => {
-    updateAddress(newLoc.latitude, newLoc.longitude);
-  }, 400);
+    currentAddressPromise = updateAddress(newLoc.latitude, newLoc.longitude);
+  }, 300);
 };
 
 const handleSaveIncident = async () => {
   isSaving.value = true;
   saveError.value = '';
 
-  // Garantir cidade e estado resolvidos
+  // 1. Se ainda houver debounce ativo do pino, cancela e roda imediatamente
+  if (geocodeDebounceTimer) {
+    clearTimeout(geocodeDebounceTimer);
+    geocodeDebounceTimer = null;
+    currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
+  }
+
+  // 2. Se a busca de endereço estiver em andamento, aguarda finalizar
+  if (currentAddressPromise) {
+    try {
+      await currentAddressPromise;
+    } catch {}
+  }
+
+  // 3. Se ainda faltar cidade ou estado, força uma tentativa direta
   if (!currentCidade.value || !currentEstado.value) {
     try {
       const details = await getAddressDetailsFromCoords(selectedLocation.latitude, selectedLocation.longitude);
       if (details.cidade) currentCidade.value = details.cidade;
       if (details.estado) currentEstado.value = details.estado;
-      if (!addressText.value) addressText.value = details.formattedAddress;
+      if (details.formattedAddress && (!addressText.value || addressText.value.startsWith('Lat:'))) {
+        addressText.value = details.formattedAddress;
+      }
     } catch {}
   }
 
@@ -468,7 +492,7 @@ const handleSaveIncident = async () => {
 
   try {
     // Gravar na planilha através do serviço
-    await saveIncidentToSheet(props.appsScriptUrl || '', {
+    const saveResult = await saveIncidentToSheet(props.appsScriptUrl || '', {
       id: newIncident.id,
       data: String(newIncident.timestamp),
       latitude: newIncident.latitude,
@@ -477,6 +501,15 @@ const handleSaveIncident = async () => {
       estado: newIncident.estado,
       foto: newIncident.maskedImageUrl
     });
+
+    if (saveResult && saveResult.cidade) {
+      newIncident.cidade = saveResult.cidade;
+      currentCidade.value = saveResult.cidade;
+    }
+    if (saveResult && saveResult.estado) {
+      newIncident.estado = saveResult.estado;
+      currentEstado.value = saveResult.estado;
+    }
 
     emit('incidentCreated', newIncident);
     step.value = 'success';

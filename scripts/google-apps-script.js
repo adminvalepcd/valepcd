@@ -205,28 +205,15 @@ function doPost(e) {
     const ativo = payload.ativo !== undefined ? Boolean(payload.ativo) : true;
     const motivo = payload.motivo_denuncia || '';
 
-    // Se cidade ou estado vierem vazios, tenta resolver automaticamente no próprio Google Apps Script via Maps nativo
+    // Se cidade ou estado vierem vazios, tenta resolver com busca multi-nível e fallbacks
     if ((!cidade || !estado) && latitude && longitude) {
-      try {
-        var geo = Maps.newGeocoder().setLanguage('pt-BR').reverseGeocode(latitude, longitude);
-        if (geo && geo.status === 'OK' && geo.results && geo.results.length > 0) {
-          var comps = geo.results[0].address_components || [];
-          for (var c = 0; c < comps.length; c++) {
-            var types = comps[c].types || [];
-            if (!estado && types.indexOf('administrative_area_level_1') !== -1) {
-              estado = comps[c].short_name || comps[c].long_name || '';
-            }
-            if (!cidade && types.indexOf('administrative_area_level_2') !== -1) {
-              cidade = comps[c].long_name || comps[c].short_name || '';
-            }
-            if (!cidade && types.indexOf('locality') !== -1) {
-              cidade = comps[c].long_name || comps[c].short_name || '';
-            }
-          }
-        }
-      } catch (geoErr) {
-        // Fallback silencioso caso o serviço Maps não esteja disponível
-      }
+      var resolved = resolveLocationCityAndState(latitude, longitude);
+      if (!cidade && resolved.cidade) cidade = resolved.cidade;
+      if (!estado && resolved.estado) estado = resolved.estado;
+    }
+
+    if (estado) {
+      estado = normalizeStateUF(estado);
     }
 
     // Monta a linha conforme a ordem exata das colunas no cabeçalho
@@ -262,6 +249,107 @@ function doPost(e) {
       message: error.toString()
     });
   }
+}
+
+/**
+ * Normaliza o estado para sigla UF padrão (2 letras maiúsculas)
+ */
+function normalizeStateUF(stateStr) {
+  if (!stateStr) return '';
+  var s = String(stateStr).trim();
+  if (s.length === 2) return s.toUpperCase();
+
+  var map = {
+    'acre': 'AC', 'alagoas': 'AL', 'amapá': 'AP', 'amapa': 'AP',
+    'amazonas': 'AM', 'bahia': 'BA', 'ceará': 'CE', 'ceara': 'CE',
+    'distrito federal': 'DF', 'espírito santo': 'ES', 'espirito santo': 'ES',
+    'goiás': 'GO', 'goias': 'GO', 'maranhão': 'MA', 'maranhao': 'MA',
+    'mato grosso': 'MT', 'mato grosso do sul': 'MS', 'minas gerais': 'MG',
+    'pará': 'PA', 'para': 'PA', 'paraíba': 'PB', 'paraiba': 'PB',
+    'paraná': 'PR', 'parana': 'PR', 'pernambuco': 'PE', 'piauí': 'PI',
+    'piaui': 'PI', 'rio de janeiro': 'RJ', 'rio grande do norte': 'RN',
+    'rio grande do sul': 'RS', 'rondônia': 'RO', 'rondonia': 'RO',
+    'roraima': 'RR', 'santa catarina': 'SC', 'são paulo': 'SP',
+    'sao paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO'
+  };
+
+  var lower = s.toLowerCase();
+  return map[lower] || s;
+}
+
+/**
+ * Resolve cidade e estado a partir de coordenadas geográficas
+ * 1. Varre TODOS os resultados do Maps.newGeocoder() do Google Apps Script
+ * 2. Fallback resiliente via OpenStreetMap Nominatim usando UrlFetchApp
+ */
+function resolveLocationCityAndState(lat, lng) {
+  var result = { cidade: '', estado: '' };
+  if (!lat || !lng) return result;
+
+  // 1. Google Maps Geocoder Nativo do Google Apps Script
+  try {
+    var geo = Maps.newGeocoder().setLanguage('pt-BR').reverseGeocode(lat, lng);
+    if (geo && geo.status === 'OK' && geo.results && geo.results.length > 0) {
+      // Varre TODOS os resultados (rua, bairro, localidade, município)
+      for (var r = 0; r < geo.results.length; r++) {
+        var comps = geo.results[r].address_components || [];
+        for (var c = 0; c < comps.length; c++) {
+          var types = comps[c].types || [];
+          if (!result.estado && types.indexOf('administrative_area_level_1') !== -1) {
+            result.estado = comps[c].short_name || comps[c].long_name || '';
+          }
+          if (!result.cidade && types.indexOf('administrative_area_level_2') !== -1) {
+            result.cidade = comps[c].long_name || comps[c].short_name || '';
+          }
+          if (!result.cidade && types.indexOf('locality') !== -1) {
+            result.cidade = comps[c].long_name || comps[c].short_name || '';
+          }
+        }
+        if (result.cidade && result.estado) break;
+      }
+    }
+  } catch (geoErr) {
+    // Maps nativo indisponível ou cota atingida
+  }
+
+  // 2. Fallback OpenStreetMap Nominatim via UrlFetchApp caso ainda falte cidade ou estado
+  if (!result.cidade || !result.estado) {
+    try {
+      var osmUrl = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lng) + '&zoom=18&addressdetails=1&email=contato@valepcd.com.br';
+      var response = UrlFetchApp.fetch(osmUrl, {
+        headers: {
+          'User-Agent': 'ValePCD-AppsScript/1.0 (contato@valepcd.com.br)',
+          'Accept-Language': 'pt-BR,pt;q=0.9'
+        },
+        muteHttpExceptions: true
+      });
+      if (response.getResponseCode() === 200) {
+        var osmData = JSON.parse(response.getContentText());
+        if (osmData && osmData.address) {
+          var addr = osmData.address;
+          if (!result.cidade) {
+            result.cidade = addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || addr.hamlet || '';
+          }
+          if (!result.estado) {
+            if (addr['ISO3166-2-lvl4']) {
+              result.estado = String(addr['ISO3166-2-lvl4']).replace(/^BR-/, '');
+            } else {
+              result.estado = addr.state || '';
+            }
+          }
+        }
+      }
+    } catch (osmErr) {
+      // Fallback silencioso
+    }
+  }
+
+  result.estado = normalizeStateUF(result.estado);
+  if (result.estado === 'DF' && (!result.cidade || result.cidade.toLowerCase().indexOf('plano piloto') !== -1)) {
+    result.cidade = 'Brasília';
+  }
+
+  return result;
 }
 
 function jsonResponse(data) {

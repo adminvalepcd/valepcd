@@ -59,6 +59,28 @@ export interface GeoAddressDetails {
   estado: string;
 }
 
+const UF_MAP: Record<string, string> = {
+  'acre': 'AC', 'alagoas': 'AL', 'amapá': 'AP', 'amapa': 'AP',
+  'amazonas': 'AM', 'bahia': 'BA', 'ceará': 'CE', 'ceara': 'CE',
+  'distrito federal': 'DF', 'espírito santo': 'ES', 'espirito santo': 'ES',
+  'goiás': 'GO', 'goias': 'GO', 'maranhão': 'MA', 'maranhao': 'MA',
+  'mato grosso': 'MT', 'mato grosso do sul': 'MS', 'minas gerais': 'MG',
+  'pará': 'PA', 'para': 'PA', 'paraíba': 'PB', 'paraiba': 'PB',
+  'paraná': 'PR', 'parana': 'PR', 'pernambuco': 'PE', 'piauí': 'PI',
+  'piaui': 'PI', 'rio de janeiro': 'RJ', 'rio grande do norte': 'RN',
+  'rio grande do sul': 'RS', 'rondônia': 'RO', 'rondonia': 'RO',
+  'roraima': 'RR', 'santa catarina': 'SC', 'são paulo': 'SP',
+  'sao paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO'
+};
+
+function normalizeState(stateStr: string): string {
+  if (!stateStr) return '';
+  const s = String(stateStr).trim();
+  if (s.length === 2) return s.toUpperCase();
+  const lower = s.toLowerCase();
+  return UF_MAP[lower] || s;
+}
+
 const detailsCache = new Map<string, GeoAddressDetails>();
 
 /**
@@ -87,7 +109,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         const details: GeoAddressDetails = {
           formattedAddress: data.formattedAddress,
           cidade: data.cidade || '',
-          estado: data.estado || ''
+          estado: normalizeState(data.estado || '')
         };
         detailsCache.set(cacheKey, details);
         addressCache.set(cacheKey, details.formattedAddress);
@@ -98,16 +120,16 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     console.warn('[geoService] /api/geocode falhou, tentando alternativas:', apiErr);
   }
 
-  // 2. Tentar Google Maps Geocoder se a API estiver carregada
+  // 2. Tentar Google Maps Geocoder se a API estiver carregada no navegador
   if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
     try {
       const geocoder = new (window as any).google.maps.Geocoder();
-      const response = await new Promise<any>((resolve, reject) => {
+      const results = await new Promise<any[]>((resolve, reject) => {
         geocoder.geocode(
           { location: { lat: latitude, lng: longitude } },
-          (results: any[], status: string) => {
-            if (status === 'OK' && results && results.length > 0) {
-              resolve(results[0]);
+          (res: any[], status: string) => {
+            if (status === 'OK' && res && res.length > 0) {
+              resolve(res);
             } else {
               reject(new Error(`Google Geocoder status: ${status}`));
             }
@@ -115,40 +137,52 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         );
       });
 
-      if (response && response.formatted_address) {
+      if (results && results.length > 0) {
         let cidade = '';
         let estado = '';
+        const formattedAddress = results[0]?.formatted_address || '';
 
-        if (Array.isArray(response.address_components)) {
-          for (const comp of response.address_components) {
-            const types: string[] = comp.types || [];
-            if (types.includes('administrative_area_level_1')) {
-              estado = comp.short_name || comp.long_name || '';
-            }
-            if (types.includes('administrative_area_level_2')) {
-              cidade = comp.long_name || comp.short_name || '';
-            }
-            if (!cidade && (types.includes('locality') || types.includes('sublocality_level_1'))) {
-              cidade = comp.long_name || comp.short_name || '';
+        // Varre TODOS os resultados para encontrar cidade e estado mesmo se o primeiro for apenas a rua
+        for (const res of results) {
+          if (Array.isArray(res.address_components)) {
+            for (const comp of res.address_components) {
+              const types: string[] = comp.types || [];
+              if (!estado && types.includes('administrative_area_level_1')) {
+                estado = comp.short_name || comp.long_name || '';
+              }
+              if (!cidade && types.includes('administrative_area_level_2')) {
+                cidade = comp.long_name || comp.short_name || '';
+              }
+              if (!cidade && (types.includes('locality') || types.includes('sublocality_level_1'))) {
+                cidade = comp.long_name || comp.short_name || '';
+              }
             }
           }
+          if (cidade && estado) break;
         }
 
-        const details: GeoAddressDetails = {
-          formattedAddress: response.formatted_address,
-          cidade,
-          estado
-        };
-        detailsCache.set(cacheKey, details);
-        addressCache.set(cacheKey, details.formattedAddress);
-        return details;
+        estado = normalizeState(estado);
+        if (estado === 'DF' && (!cidade || cidade.toLowerCase().includes('plano piloto'))) {
+          cidade = 'Brasília';
+        }
+
+        if (cidade || estado) {
+          const details: GeoAddressDetails = {
+            formattedAddress: formattedAddress || `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
+            cidade,
+            estado
+          };
+          detailsCache.set(cacheKey, details);
+          addressCache.set(cacheKey, details.formattedAddress);
+          return details;
+        }
       }
     } catch (googleErr) {
       console.warn('[geoService] Google Geocoder falhou, tentando fallback:', googleErr);
     }
   }
 
-  // 2. Fallback: OpenStreetMap Nominatim (suporta português sem necessidade de chave)
+  // 3. Fallback: OpenStreetMap Nominatim
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&zoom=18&addressdetails=1&email=contato@valepcd.com.br`;
     const res = await fetch(url, {
@@ -164,12 +198,17 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         const street = addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || '';
         const number = addr.house_number ? `, ${addr.house_number}` : '';
         const suburb = addr.suburb || addr.neighbourhood || addr.city_district || '';
-        const city = addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || '';
+        let city = addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || addr.hamlet || '';
         let state = '';
         if (addr['ISO3166-2-lvl4']) {
           state = String(addr['ISO3166-2-lvl4']).replace(/^BR-/, '');
         } else {
           state = addr.state || '';
+        }
+        state = normalizeState(state);
+
+        if (state === 'DF' && (!city || city.toLowerCase().includes('plano piloto'))) {
+          city = 'Brasília';
         }
 
         const parts = [
@@ -185,8 +224,10 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
           estado: state
         };
 
-        detailsCache.set(cacheKey, details);
-        addressCache.set(cacheKey, details.formattedAddress);
+        if (details.cidade || details.estado) {
+          detailsCache.set(cacheKey, details);
+          addressCache.set(cacheKey, details.formattedAddress);
+        }
         return details;
       }
     }
@@ -194,14 +235,12 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     console.warn('[geoService] Fallback Nominatim falhou:', osmErr);
   }
 
-  // 3. Caso ambos não consigam resolver, exibe as coordenadas
+  // 4. Caso nenhum consiga resolver, exibe as coordenadas (NÃO armazena falha vazia no cache)
   const fallbackDetails: GeoAddressDetails = {
     formattedAddress: `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
     cidade: '',
     estado: ''
   };
-  detailsCache.set(cacheKey, fallbackDetails);
-  addressCache.set(cacheKey, fallbackDetails.formattedAddress);
   return fallbackDetails;
 }
 

@@ -123,7 +123,7 @@ export async function fetchIncidentPhoto(
 export async function saveIncidentToSheet(
   appsScriptUrl: string,
   incident: SheetRowPayload
-): Promise<boolean> {
+): Promise<{ success: boolean; cidade?: string; estado?: string }> {
   const fullIncident = {
     ...incident,
     cidade: incident.cidade || '',
@@ -148,7 +148,7 @@ export async function saveIncidentToSheet(
 
   if (!appsScriptUrl) {
     // Se a URL do script ainda não foi configurada, considera gravado no cache local do MVP
-    return true;
+    return { success: true, cidade: fullIncident.cidade, estado: fullIncident.estado };
   }
 
   try {
@@ -165,7 +165,32 @@ export async function saveIncidentToSheet(
     }
 
     const result = await response.json();
-    return Boolean(result && (result.success || result.status === 'ok'));
+    const finalCidade = result?.cidade || fullIncident.cidade || '';
+    const finalEstado = result?.estado || fullIncident.estado || '';
+
+    if (result && (result.success || result.status === 'ok')) {
+      if (finalCidade || finalEstado) {
+        saveIncidentToLocalCache({
+          id: fullIncident.id,
+          timestamp: fullIncident.data,
+          latitude: fullIncident.latitude,
+          longitude: fullIncident.longitude,
+          cidade: finalCidade,
+          estado: finalEstado,
+          maskedImageUrl: fullIncident.foto,
+          description: 'Infração registrada',
+          ativo: fullIncident.ativo,
+          motivo_denuncia: fullIncident.motivo_denuncia
+        });
+      }
+      return {
+        success: true,
+        cidade: finalCidade,
+        estado: finalEstado
+      };
+    }
+
+    return { success: false };
   } catch (error) {
     console.error('[sheetsService] Erro ao gravar na planilha Google:', error);
     throw error;
