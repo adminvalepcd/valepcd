@@ -58,7 +58,7 @@ const props = defineProps({
 const emit = defineEmits(['markerClick', 'pinLocationChange']);
 
 const config = useRuntimeConfig();
-const mapsApiKey = config.public.googleMapsApiKey;
+const mapsApiKey = config.public.googleMapsApiKey || 'AIzaSyBE9MtDA7cziFHANDknpjvgP5jkAvXyguU';
 
 const mapContainer = ref(null);
 const map = ref(null);
