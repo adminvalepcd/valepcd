@@ -70,13 +70,13 @@ export async function analyzeIncidentImage(
   }
 
   const prompt = `
-Você é um auditor de trânsito em vagas reservadas para pessoas com deficiência (PCD) e idosos.
+Você é um auditor de trânsito especializado em privacidade e conformidade da LGPD em imagens de trânsito e vagas reservadas (PCD e idosos).
 Analise a imagem enviada com atenção aos seguintes critérios:
-1. "hasVehicle": Defina como true se houver QUALQUER veículo automotor (carro, automóvel, caminhonete, SUV, van, caminhão, moto, micro-ônibus ou ônibus) visível na foto, mesmo que parcialmente enquadrado, em ângulo aberto ou fechado, estacionado ou em movimento. Apenas defina como false se comprovadamente não houver nenhum veículo na imagem (por exemplo, foto apenas do chão/asfalto vazio, parede, pessoa isolada, texto ou objeto não veicular).
+1. "hasVehicle": Defina como true se houver QUALQUER veículo automotor (carro, automóvel, caminhonete, SUV, van, caminhão, moto, micro-ônibus ou ônibus) visível na foto, mesmo que parcialmente enquadrado, em ângulo aberto ou fechado, estacionado ou em movimento. Apenas defina como false se comprovadamente não houver nenhum veículo na imagem.
 2. "isAppropriate": Defina como true se a imagem for segura para exibição pública em um aplicativo cívico (sem pornografia, nudez, violência extrema/sangue ou armas de fogo). Fotos cotidianas de vias públicas, estacionamentos, ruas e veículos automotores DEVEM ser sempre consideradas apropriadas (true).
 3. "rejectionReason": Se hasVehicle for false ou isAppropriate for false, retorne uma explicação concisa em português do motivo da rejeição. Se a foto for aprovada, retorne uma string vazia "".
-4. "plates": Caixas delimitadoras de TODAS as placas de veículos visíveis para aplicação de desfoque de privacidade (coordenadas x, y, width, height normalizadas entre 0.0 e 1.0).
-5. "faces": Caixas delimitadoras de TODOS os rostos humanos visíveis para aplicação de desfoque de privacidade (coordenadas x, y, width, height normalizadas entre 0.0 e 1.0).
+4. "plates": IMPORTANTE: Localize com precisão as caixas delimitadoras (bounding boxes) de TODAS as placas de veículos visíveis (dianteiras e traseiras de qualquer veículo na cena) para aplicação de desfoque de privacidade.
+5. "faces": IMPORTANTE: Localize com precisão as caixas delimitadoras de TODOS os rostos humanos visíveis para aplicação de desfoque de privacidade.
 `;
 
   const { data, mimeType } = parseBase64Image(imageBase64);
@@ -108,10 +108,10 @@ Analise a imagem enviada com atenção aos seguintes critérios:
         items: {
           type: Type.OBJECT,
           properties: {
-            x: { type: Type.NUMBER, description: 'Coordenada x normalizada (0 a 1).' },
-            y: { type: Type.NUMBER, description: 'Coordenada y normalizada (0 a 1).' },
-            width: { type: Type.NUMBER, description: 'Largura normalizada (0 a 1).' },
-            height: { type: Type.NUMBER, description: 'Altura normalizada (0 a 1).' }
+            x: { type: Type.NUMBER, description: 'Coordenada horizontal x (0 a 1000 ou 0 a 1).' },
+            y: { type: Type.NUMBER, description: 'Coordenada vertical y (0 a 1000 ou 0 a 1).' },
+            width: { type: Type.NUMBER, description: 'Largura da caixa (0 a 1000 ou 0 a 1).' },
+            height: { type: Type.NUMBER, description: 'Altura da caixa (0 a 1000 ou 0 a 1).' }
           },
           propertyOrdering: ['x', 'y', 'width', 'height']
         }
@@ -122,10 +122,10 @@ Analise a imagem enviada com atenção aos seguintes critérios:
         items: {
           type: Type.OBJECT,
           properties: {
-            x: { type: Type.NUMBER, description: 'Coordenada x normalizada (0 a 1).' },
-            y: { type: Type.NUMBER, description: 'Coordenada y normalizada (0 a 1).' },
-            width: { type: Type.NUMBER, description: 'Largura normalizada (0 a 1).' },
-            height: { type: Type.NUMBER, description: 'Altura normalizada (0 a 1).' }
+            x: { type: Type.NUMBER, description: 'Coordenada horizontal x (0 a 1000 ou 0 a 1).' },
+            y: { type: Type.NUMBER, description: 'Coordenada vertical y (0 a 1000 ou 0 a 1).' },
+            width: { type: Type.NUMBER, description: 'Largura da caixa (0 a 1000 ou 0 a 1).' },
+            height: { type: Type.NUMBER, description: 'Altura da caixa (0 a 1000 ou 0 a 1).' }
           },
           propertyOrdering: ['x', 'y', 'width', 'height']
         }
@@ -155,16 +155,77 @@ Analise a imagem enviada com atenção aos seguintes critérios:
 
       const parsed = JSON.parse(jsonMatch[0]);
 
-      // Validação e sanitização das coordenadas normalizadas
-      const sanitizeBoxes = (boxes: any[]): BoundingBox[] => {
+      // Validação, sanitização e conversão inteligente de coordenadas (aceita 0..1, 0..1000, [ymin, xmin, ymax, xmax])
+      const sanitizeAndNormalizeBoxes = (boxes: any[]): BoundingBox[] => {
         if (!Array.isArray(boxes)) return [];
-        return boxes.filter(b => 
-          typeof b.x === 'number' && b.x >= 0 && b.x <= 1 &&
-          typeof b.y === 'number' && b.y >= 0 && b.y <= 1 &&
-          typeof b.width === 'number' && b.width > 0 && b.width <= 1 &&
-          typeof b.height === 'number' && b.height > 0 && b.height <= 1
-        );
+        const result: BoundingBox[] = [];
+
+        for (const item of boxes) {
+          if (!item) continue;
+          let x = 0;
+          let y = 0;
+          let width = 0;
+          let height = 0;
+
+          if (typeof item === 'object' && !Array.isArray(item)) {
+            if (Array.isArray(item.box_2d) && item.box_2d.length === 4) {
+              const [ymin, xmin, ymax, xmax] = item.box_2d;
+              x = xmin;
+              y = ymin;
+              width = xmax - xmin;
+              height = ymax - ymin;
+            } else if ('xmin' in item && 'ymin' in item && 'xmax' in item && 'ymax' in item) {
+              x = item.xmin;
+              y = item.ymin;
+              width = item.xmax - item.xmin;
+              height = item.ymax - item.ymin;
+            } else if ('x' in item && 'y' in item && 'width' in item && 'height' in item) {
+              x = item.x;
+              y = item.y;
+              width = item.width;
+              height = item.height;
+            } else if ('x' in item && 'y' in item && 'w' in item && 'h' in item) {
+              x = item.x;
+              y = item.y;
+              width = item.w;
+              height = item.h;
+            }
+          } else if (Array.isArray(item) && item.length === 4) {
+            const [ymin, xmin, ymax, xmax] = item;
+            x = xmin;
+            y = ymin;
+            width = xmax - xmin;
+            height = ymax - ymin;
+          }
+
+          if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
+            continue;
+          }
+
+          // Se as coordenadas estiverem na escala 0-1000 (padrão de visão do Gemini)
+          if (x > 1 || y > 1 || width > 1 || height > 1) {
+            x = x / 1000;
+            y = y / 1000;
+            width = width / 1000;
+            height = height / 1000;
+          }
+
+          x = Math.max(0, Math.min(1, x));
+          y = Math.max(0, Math.min(1, y));
+          width = Math.max(0.005, Math.min(1 - x, width));
+          height = Math.max(0.005, Math.min(1 - y, height));
+
+          if (width > 0.005 && height > 0.005) {
+            result.push({ x, y, width, height });
+          }
+        }
+        return result;
       };
+
+      const plates = sanitizeAndNormalizeBoxes(parsed.plates);
+      const faces = sanitizeAndNormalizeBoxes(parsed.faces);
+
+      console.log(`[geminiService] Sucesso com ${model}. Placas encontradas: ${plates.length}, Rostos encontrados: ${faces.length}`);
 
       return {
         hasVehicle: Boolean(parsed.hasVehicle),
@@ -173,8 +234,8 @@ Analise a imagem enviada com atenção aos seguintes critérios:
           !parsed.hasVehicle ? 'Nenhum veículo identificado na imagem.' : 
           (!parsed.isAppropriate ? 'A imagem enviada não atende às diretrizes de uso.' : '')
         ),
-        plates: sanitizeBoxes(parsed.plates),
-        faces: sanitizeBoxes(parsed.faces),
+        plates,
+        faces,
         apiError: false
       };
     } catch (err) {

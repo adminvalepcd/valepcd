@@ -187,43 +187,84 @@ export function blurSensitiveContentAndCompress(
 
       // Juntar todas as caixas a serem anonimizadas
       const targets = [...plates, ...faces];
-      const paddingRatio = 0.12; // 12% de margem de segurança para cobrir bem os limites
 
-      targets.forEach(box => {
-        // Coordenadas normalizadas (0 a 1) para pixels
-        const padW = box.width * paddingRatio;
-        const padH = box.height * paddingRatio;
-        const rawX = (box.x - padW / 2) * targetW;
-        const rawY = (box.y - padH / 2) * targetH;
-        const rawW = (box.width + padW) * targetW;
-        const rawH = (box.height + padH) * targetH;
+      targets.forEach(rawBox => {
+        let bx = typeof rawBox.x === 'number' ? rawBox.x : 0;
+        let by = typeof rawBox.y === 'number' ? rawBox.y : 0;
+        let bw = typeof rawBox.width === 'number' ? rawBox.width : 0;
+        let bh = typeof rawBox.height === 'number' ? rawBox.height : 0;
 
-        const x = Math.max(0, rawX);
-        const y = Math.max(0, rawY);
-        const w = Math.min(targetW - x, rawW);
-        const h = Math.min(targetH - y, rawH);
-
-        if (w <= 0 || h <= 0) return;
-
-        // Salvar contexto e criar região de recorte
-        ctx.save();
-        ctx.beginPath();
-        if (typeof ctx.roundRect === 'function') {
-          ctx.roundRect(x, y, w, h, 6);
-        } else {
-          ctx.rect(x, y, w, h);
+        // Se coordenadas estiverem na escala 0-1000, normaliza para 0..1
+        if (bx > 1 || by > 1 || bw > 1 || bh > 1) {
+          bx /= 1000;
+          by /= 1000;
+          bw /= 1000;
+          bh /= 1000;
         }
-        ctx.clip();
 
-        // Aplicar o blur de 12px queimado nos pixels
-        ctx.filter = 'blur(12px)';
-        ctx.drawImage(image, 0, 0, targetW, targetH);
-        ctx.restore();
+        const paddingRatio = 0.18; // 18% de margem de segurança para cobrir bordas de placas e rostos
+        const padW = bw * paddingRatio;
+        const padH = bh * paddingRatio;
+        const rawX = (bx - padW / 2) * targetW;
+        const rawY = (by - padH / 2) * targetH;
+        const rawW = (bw + padW) * targetW;
+        const rawH = (bh + padH) * targetH;
 
-        // Contorno estético sutil para indicar área anonimizada
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(x, y, w, h);
+        const x = Math.max(0, Math.floor(rawX));
+        const y = Math.max(0, Math.floor(rawY));
+        const w = Math.min(targetW - x, Math.ceil(rawW));
+        const h = Math.min(targetH - y, Math.ceil(rawH));
+
+        if (w <= 2 || h <= 2) return;
+
+        // Desfoque híbrido universal (compatível com Safari, Chrome, Firefox e WebViews móveis):
+        // 1. Reduz a resolução da região em 10x para destruir caracteres de placas e traços faciais
+        const scale = 10;
+        const miniW = Math.max(2, Math.round(w / scale));
+        const miniH = Math.max(2, Math.round(h / scale));
+
+        const miniCanvas = document.createElement('canvas');
+        miniCanvas.width = miniW;
+        miniCanvas.height = miniH;
+        const miniCtx = miniCanvas.getContext('2d');
+
+        if (miniCtx) {
+          miniCtx.drawImage(canvas, x, y, w, h, 0, 0, miniW, miniH);
+
+          ctx.save();
+          ctx.beginPath();
+          if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(x, y, w, h, 6);
+          } else {
+            ctx.rect(x, y, w, h);
+          }
+          ctx.clip();
+
+          // Aplica filtro blur nativo de 12px se suportado pelo navegador
+          try {
+            ctx.filter = 'blur(12px)';
+          } catch {}
+
+          // Redesenha com interpolação suave de alta qualidade
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(miniCanvas, 0, 0, miniW, miniH, x, y, w, h);
+          ctx.drawImage(miniCanvas, 0, 0, miniW, miniH, x, y, w, h);
+          ctx.restore();
+
+          // Contorno estético sutil para visualização da área protegida
+          ctx.save();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+          ctx.lineWidth = 1.5;
+          if (typeof ctx.roundRect === 'function') {
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, h, 6);
+            ctx.stroke();
+          } else {
+            ctx.strokeRect(x, y, w, h);
+          }
+          ctx.restore();
+        }
       });
 
       // 2. Exportar como WebP com qualidade aumentada em ~30% (iniciando em 0.80)
