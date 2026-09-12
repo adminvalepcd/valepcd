@@ -78,7 +78,27 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     return detailsCache.get(cacheKey)!;
   }
 
-  // 1. Tentar Google Maps Geocoder se a API estiver carregada
+  // 1. Tentar endpoint interno do servidor Nuxt /api/geocode (sem problemas de CORS ou bloqueio 403)
+  try {
+    const res = await fetch(`/api/geocode?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.formattedAddress && (data.cidade || data.estado)) {
+        const details: GeoAddressDetails = {
+          formattedAddress: data.formattedAddress,
+          cidade: data.cidade || '',
+          estado: data.estado || ''
+        };
+        detailsCache.set(cacheKey, details);
+        addressCache.set(cacheKey, details.formattedAddress);
+        return details;
+      }
+    }
+  } catch (apiErr) {
+    console.warn('[geoService] /api/geocode falhou, tentando alternativas:', apiErr);
+  }
+
+  // 2. Tentar Google Maps Geocoder se a API estiver carregada
   if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
     try {
       const geocoder = new (window as any).google.maps.Geocoder();

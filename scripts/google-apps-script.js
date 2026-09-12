@@ -199,11 +199,35 @@ function doPost(e) {
     const dataIso = payload.data || new Date().toISOString();
     const latitude = Number(payload.latitude) || 0;
     const longitude = Number(payload.longitude) || 0;
-    const cidade = String(payload.cidade || '').trim();
-    const estado = String(payload.estado || '').trim();
+    var cidade = String(payload.cidade || '').trim();
+    var estado = String(payload.estado || '').trim();
     const foto = payload.foto || '';
     const ativo = payload.ativo !== undefined ? Boolean(payload.ativo) : true;
     const motivo = payload.motivo_denuncia || '';
+
+    // Se cidade ou estado vierem vazios, tenta resolver automaticamente no próprio Google Apps Script via Maps nativo
+    if ((!cidade || !estado) && latitude && longitude) {
+      try {
+        var geo = Maps.newGeocoder().setLanguage('pt-BR').reverseGeocode(latitude, longitude);
+        if (geo && geo.status === 'OK' && geo.results && geo.results.length > 0) {
+          var comps = geo.results[0].address_components || [];
+          for (var c = 0; c < comps.length; c++) {
+            var types = comps[c].types || [];
+            if (!estado && types.indexOf('administrative_area_level_1') !== -1) {
+              estado = comps[c].short_name || comps[c].long_name || '';
+            }
+            if (!cidade && types.indexOf('administrative_area_level_2') !== -1) {
+              cidade = comps[c].long_name || comps[c].short_name || '';
+            }
+            if (!cidade && types.indexOf('locality') !== -1) {
+              cidade = comps[c].long_name || comps[c].short_name || '';
+            }
+          }
+        }
+      } catch (geoErr) {
+        // Fallback silencioso caso o serviço Maps não esteja disponível
+      }
+    }
 
     // Monta a linha conforme a ordem exata das colunas no cabeçalho
     var newRow = [];
