@@ -188,10 +188,39 @@ const initMap = () => {
     });
 
     if (window.markerClusterer?.MarkerClusterer && !props.pinLocation) {
-      clusterer.value = new window.markerClusterer.MarkerClusterer({
+      const clusterOptions = {
         map: map.value,
-        markers: []
-      });
+        markers: [],
+        onClusterClick: (event, cluster, mapInstance) => {
+          if (!cluster || !mapInstance) return;
+          const currentZoom = mapInstance.getZoom() || 15;
+          const bounds = cluster.bounds;
+
+          if (bounds) {
+            const ne = bounds.getNorthEast();
+            const sw = bounds.getSouthWest();
+            const latSpan = Math.abs(ne.lat() - sw.lat());
+            const lngSpan = Math.abs(ne.lng() - sw.lng());
+
+            // Se os marcadores estiverem muito juntos ou se o mapa já estiver no zoom 16+
+            if ((latSpan < 0.0001 && lngSpan < 0.0001) || currentZoom >= 16) {
+              mapInstance.setCenter(cluster.position);
+              mapInstance.setZoom(Math.min(currentZoom + 2, 20));
+              return;
+            }
+            mapInstance.fitBounds(bounds);
+          }
+        }
+      };
+
+      if (window.markerClusterer.SuperClusterAlgorithm) {
+        clusterOptions.algorithm = new window.markerClusterer.SuperClusterAlgorithm({
+          maxZoom: 16, // A partir do zoom 17, desmembra os clusters obrigatoriamente
+          radius: 50
+        });
+      }
+
+      clusterer.value = new window.markerClusterer.MarkerClusterer(clusterOptions);
     }
 
     setupPinListeners();
@@ -220,6 +249,56 @@ const initMap = () => {
   }
 };
 
+/**
+ * Dispersa em círculo minúsculo (raio de 8 metros) marcadores que possuem coordenadas idênticas ou muito próximas (< 4 metros)
+ * para que no zoom aproximado eles não fiquem exatamente um em cima do outro.
+ */
+const getCoordsWithSpiderOffset = (incidents) => {
+  if (!incidents || incidents.length === 0) return [];
+
+  const groups = [];
+  const processed = new Set();
+
+  for (let i = 0; i < incidents.length; i++) {
+    if (processed.has(i)) continue;
+    const group = [i];
+    processed.add(i);
+    for (let j = i + 1; j < incidents.length; j++) {
+      if (processed.has(j)) continue;
+      const dLat = (incidents[j].latitude - incidents[i].latitude) * 111320;
+      const dLng = (incidents[j].longitude - incidents[i].longitude) * (111320 * Math.cos(incidents[i].latitude * Math.PI / 180));
+      const distMeters = Math.sqrt(dLat * dLat + dLng * dLng);
+      if (distMeters < 4) {
+        group.push(j);
+        processed.add(j);
+      }
+    }
+    groups.push(group);
+  }
+
+  const positions = new Array(incidents.length);
+  for (const group of groups) {
+    if (group.length === 1) {
+      const idx = group[0];
+      positions[idx] = { lat: incidents[idx].latitude, lng: incidents[idx].longitude };
+    } else {
+      const count = group.length;
+      const radiusMeters = 8; // 8 metros de dispersão
+      for (let k = 0; k < count; k++) {
+        const idx = group[k];
+        const angle = (2 * Math.PI * k) / count;
+        const latOffset = (radiusMeters * Math.sin(angle)) / 111320;
+        const lngOffset = (radiusMeters * Math.cos(angle)) / (111320 * Math.cos(incidents[idx].latitude * Math.PI / 180));
+        positions[idx] = {
+          lat: Number((incidents[idx].latitude + latOffset).toFixed(6)),
+          lng: Number((incidents[idx].longitude + lngOffset).toFixed(6))
+        };
+      }
+    }
+  }
+  return positions;
+};
+
 const updateMarkers = () => {
   if (!map.value || !window.google?.maps) return;
   const googleMaps = window.google.maps;
@@ -240,10 +319,13 @@ const updateMarkers = () => {
   }
 
   const incidents = props.incidents || [];
-  const newMarkers = incidents.map((incident) => {
+  const offsetPositions = getCoordsWithSpiderOffset(incidents);
+
+  const newMarkers = incidents.map((incident, index) => {
+    const pos = offsetPositions[index] || { lat: incident.latitude, lng: incident.longitude };
     const marker = new googleMaps.Marker({
-      position: { lat: incident.latitude, lng: incident.longitude },
-      title: `Infração registrada em ${new Date(incident.timestamp).toLocaleTimeString()}`,
+      position: pos,
+      title: incident.description || `Infração registrada em ${new Date(incident.timestamp).toLocaleTimeString()}`,
       map: clusterer.value ? null : map.value
     });
 
