@@ -47,6 +47,7 @@
           </svg>
           <div>
             <p class="info-label">Localização:</p>
+            <p v-if="incident.cidade" class="info-city">📍 {{ incident.cidade }}{{ incident.estado ? ` - ${incident.estado}` : '' }}</p>
             <p v-if="addressText" class="info-address">{{ addressText }}</p>
             <p class="info-coords">{{ `Lat: ${Number(incident.latitude).toFixed(5)}, Lng: ${Number(incident.longitude).toFixed(5)}` }}</p>
           </div>
@@ -384,6 +385,14 @@ watch(() => props.incident, () => {
   font-size: 1rem;
   color: var(--text, #1e293b);
   margin-top: 0.1rem;
+}
+
+.info-city {
+  font-weight: 700;
+  color: var(--primary, #86007D);
+  font-size: 0.95rem;
+  margin-top: 0.1rem;
+  margin-bottom: 0.15rem;
 }
 
 .info-address {

@@ -5,6 +5,8 @@ export interface SheetRowPayload {
   data: string;
   latitude: number;
   longitude: number;
+  cidade?: string;
+  estado?: string;
   foto: string;
   ativo?: boolean;
   motivo_denuncia?: string;
@@ -75,8 +77,10 @@ export async function fetchIncidentsFromSheet(
           timestamp: row.data || row.timestamp || new Date().toISOString(),
           latitude: lat,
           longitude: lng,
+          cidade: row.cidade || '',
+          estado: row.estado || '',
           maskedImageUrl: row.foto || row.image || '',
-          description: row.description || 'Infração registrada',
+          description: row.description || (row.cidade ? `${row.cidade}${row.estado ? ` - ${row.estado}` : ''}` : 'Infração registrada'),
           ativo: true,
           motivo_denuncia: row.motivo_denuncia || ''
         };
@@ -122,6 +126,8 @@ export async function saveIncidentToSheet(
 ): Promise<boolean> {
   const fullIncident = {
     ...incident,
+    cidade: incident.cidade || '',
+    estado: incident.estado || '',
     ativo: incident.ativo !== undefined ? incident.ativo : true,
     motivo_denuncia: incident.motivo_denuncia || ''
   };
@@ -132,6 +138,8 @@ export async function saveIncidentToSheet(
     timestamp: fullIncident.data,
     latitude: fullIncident.latitude,
     longitude: fullIncident.longitude,
+    cidade: fullIncident.cidade,
+    estado: fullIncident.estado,
     maskedImageUrl: fullIncident.foto,
     description: 'Infração registrada',
     ativo: fullIncident.ativo,

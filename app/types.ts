@@ -31,6 +31,8 @@ export interface ReportedIncident {
   timestamp: number | string | Date;
   latitude: number;
   longitude: number;
+  cidade?: string;
+  estado?: string;
   description?: string;
   ativo?: boolean;
   motivo_denuncia?: string;

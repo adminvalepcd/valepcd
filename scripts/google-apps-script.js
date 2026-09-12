@@ -96,8 +96,10 @@ function doGet(e) {
 
       // Otimização de dados (Lazy Loading): omite foto em base64 se solicitado para carregamento ultra-rápido
       if (!includePhoto) {
+        var photoCol = headers.indexOf('foto');
+        if (photoCol === -1) photoCol = headers.indexOf('image');
         obj.foto = '';
-        obj.tem_foto = Boolean(row[4]);
+        obj.tem_foto = (photoCol >= 0 && Boolean(row[photoCol]));
       }
 
       rows.push(obj);
@@ -121,18 +123,26 @@ function doPost(e) {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
 
     // 1. Garantir que os cabeçalhos existam
+    var headers = [];
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(['id', 'data', 'latitude', 'longitude', 'foto', 'ativo', 'motivo_denuncia']);
-      sheet.getRange(1, 1, 1, 7).setFontWeight('bold');
+      headers = ['id', 'data', 'latitude', 'longitude', 'cidade', 'estado', 'foto', 'ativo', 'motivo_denuncia'];
+      sheet.appendRow(headers);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
     } else {
-      // Se a planilha já tinha colunas antigas, adiciona colunas 6 e 7 se faltarem
       var lastCol = sheet.getLastColumn();
-      var headers = sheet.getRange(1, 1, 1, Math.max(lastCol, 7)).getValues()[0];
-      if (!headers[5] || headers[5] === '') {
-        sheet.getRange(1, 6).setValue('ativo').setFontWeight('bold');
-      }
-      if (!headers[6] || headers[6] === '') {
-        sheet.getRange(1, 7).setValue('motivo_denuncia').setFontWeight('bold');
+      headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
+        return String(h).trim().toLowerCase();
+      });
+
+      // Se a planilha já tinha colunas antigas, adiciona as novas colunas que faltarem dinamicamente
+      var requiredHeaders = ['cidade', 'estado', 'ativo', 'motivo_denuncia'];
+      for (var r = 0; r < requiredHeaders.length; r++) {
+        var req = requiredHeaders[r];
+        if (headers.indexOf(req) === -1) {
+          lastCol++;
+          sheet.getRange(1, lastCol).setValue(req).setFontWeight('bold');
+          headers.push(req);
+        }
       }
     }
 
@@ -153,19 +163,20 @@ function doPost(e) {
       const data = sheet.getDataRange().getValues();
       let foundRowIndex = -1;
 
-      // Procura a linha com o id correspondente (coluna 1)
+      // Procura a linha com o id correspondente (coluna 'id')
+      const idCol = headers.indexOf('id');
       for (let i = 1; i < data.length; i++) {
-        if (String(data[i][0]).trim() === incidentId) {
+        if (String(data[i][idCol >= 0 ? idCol : 0]).trim() === incidentId) {
           foundRowIndex = i + 1; // 1-based index no Sheets
           break;
         }
       }
 
       if (foundRowIndex > 0) {
-        // Coluna 6 = ativo (false)
-        sheet.getRange(foundRowIndex, 6).setValue(false);
-        // Coluna 7 = motivo_denuncia (texto)
-        sheet.getRange(foundRowIndex, 7).setValue(reason);
+        const colAtivo = headers.indexOf('ativo') + 1;
+        const colMotivo = headers.indexOf('motivo_denuncia') + 1;
+        if (colAtivo > 0) sheet.getRange(foundRowIndex, colAtivo).setValue(false);
+        if (colMotivo > 0) sheet.getRange(foundRowIndex, colMotivo).setValue(reason);
         SpreadsheetApp.flush();
 
         return jsonResponse({
@@ -188,17 +199,37 @@ function doPost(e) {
     const dataIso = payload.data || new Date().toISOString();
     const latitude = Number(payload.latitude) || 0;
     const longitude = Number(payload.longitude) || 0;
+    const cidade = String(payload.cidade || '').trim();
+    const estado = String(payload.estado || '').trim();
     const foto = payload.foto || '';
     const ativo = payload.ativo !== undefined ? Boolean(payload.ativo) : true;
     const motivo = payload.motivo_denuncia || '';
 
-    sheet.appendRow([id, dataIso, latitude, longitude, foto, ativo, motivo]);
+    // Monta a linha conforme a ordem exata das colunas no cabeçalho
+    var newRow = [];
+    for (var h = 0; h < headers.length; h++) {
+      var col = headers[h];
+      if (col === 'id') newRow.push(id);
+      else if (col === 'data' || col === 'timestamp') newRow.push(dataIso);
+      else if (col === 'latitude') newRow.push(latitude);
+      else if (col === 'longitude') newRow.push(longitude);
+      else if (col === 'cidade') newRow.push(cidade);
+      else if (col === 'estado') newRow.push(estado);
+      else if (col === 'foto' || col === 'image') newRow.push(foto);
+      else if (col === 'ativo') newRow.push(ativo);
+      else if (col === 'motivo_denuncia') newRow.push(motivo);
+      else newRow.push(payload[col] || '');
+    }
+
+    sheet.appendRow(newRow);
     SpreadsheetApp.flush();
 
     return jsonResponse({
       status: 'ok',
       success: true,
       id: id,
+      cidade: cidade,
+      estado: estado,
       ativo: ativo
     });
   } catch (error) {

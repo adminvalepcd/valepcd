@@ -181,7 +181,7 @@ import { ref, reactive, onMounted, watch } from 'vue';
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
 import { extractGpsData, blurSensitiveContentAndCompress, prepareImageForGemini } from '../../services/imageProcessor';
 import { saveIncidentToSheet } from '../../services/sheetsService';
-import { getAddressFromCoords, requestUserLocation } from '../../services/geoService';
+import { getAddressDetailsFromCoords, requestUserLocation } from '../../services/geoService';
 
 const props = defineProps({
   currentLocation: {
@@ -207,6 +207,8 @@ const lastSelectedFile = ref(null);
 const saveError = ref('');
 const isAdjustingLocation = ref(false);
 const addressText = ref('');
+const currentCidade = ref('');
+const currentEstado = ref('');
 const isResolvingAddress = ref(false);
 let geocodeDebounceTimer = null;
 
@@ -228,10 +230,14 @@ const geminiClient = initializeGeminiClient(geminiApiKey);
 const updateAddress = async (lat, lng) => {
   isResolvingAddress.value = true;
   try {
-    const addr = await getAddressFromCoords(lat, lng);
-    addressText.value = addr;
+    const details = await getAddressDetailsFromCoords(lat, lng);
+    addressText.value = details.formattedAddress;
+    currentCidade.value = details.cidade;
+    currentEstado.value = details.estado;
   } catch {
     addressText.value = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
+    currentCidade.value = '';
+    currentEstado.value = '';
   } finally {
     isResolvingAddress.value = false;
   }
@@ -439,13 +445,25 @@ const handleSaveIncident = async () => {
   isSaving.value = true;
   saveError.value = '';
 
+  // Garantir cidade e estado resolvidos
+  if (!currentCidade.value || !currentEstado.value) {
+    try {
+      const details = await getAddressDetailsFromCoords(selectedLocation.latitude, selectedLocation.longitude);
+      if (details.cidade) currentCidade.value = details.cidade;
+      if (details.estado) currentEstado.value = details.estado;
+      if (!addressText.value) addressText.value = details.formattedAddress;
+    } catch {}
+  }
+
   const newIncident = {
     id: `inc-${Date.now()}`,
     timestamp: new Date().toISOString(),
     latitude: selectedLocation.latitude,
     longitude: selectedLocation.longitude,
+    cidade: currentCidade.value,
+    estado: currentEstado.value,
     maskedImageUrl: processedImageWebp.value,
-    description: addressText.value || 'Infração registrada via colaboração cidadã'
+    description: addressText.value || (currentCidade.value ? `${currentCidade.value}${currentEstado.value ? ` - ${currentEstado.value}` : ''}` : 'Infração registrada via colaboração cidadã')
   };
 
   try {
@@ -455,6 +473,8 @@ const handleSaveIncident = async () => {
       data: String(newIncident.timestamp),
       latitude: newIncident.latitude,
       longitude: newIncident.longitude,
+      cidade: newIncident.cidade,
+      estado: newIncident.estado,
       foto: newIncident.maskedImageUrl
     });
 

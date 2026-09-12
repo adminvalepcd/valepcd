@@ -53,20 +53,29 @@ export function requestUserLocation(): Promise<Geolocation> {
   });
 }
 
+export interface GeoAddressDetails {
+  formattedAddress: string;
+  cidade: string;
+  estado: string;
+}
+
+const detailsCache = new Map<string, GeoAddressDetails>();
+
 /**
- * Converte coordenadas (latitude, longitude) no nome da rua / endereço formatado.
- * 1. Tenta usar o Geocoder oficial do Google Maps JavaScript API.
- * 2. Caso indisponível ou ocorra erro de cota/chave, usa fallback para OpenStreetMap Nominatim.
- * 3. Se ambos falharem, retorna as coordenadas formatadas.
+ * Converte coordenadas (latitude, longitude) em detalhes completos de localização (rua, cidade, estado).
  */
-export async function getAddressFromCoords(latitude: number, longitude: number): Promise<string> {
+export async function getAddressDetailsFromCoords(latitude: number, longitude: number): Promise<GeoAddressDetails> {
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return 'Localização inválida';
+    return {
+      formattedAddress: 'Localização inválida',
+      cidade: '',
+      estado: ''
+    };
   }
 
   const cacheKey = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
-  if (addressCache.has(cacheKey)) {
-    return addressCache.get(cacheKey)!;
+  if (detailsCache.has(cacheKey)) {
+    return detailsCache.get(cacheKey)!;
   }
 
   // 1. Tentar Google Maps Geocoder se a API estiver carregada
@@ -87,9 +96,32 @@ export async function getAddressFromCoords(latitude: number, longitude: number):
       });
 
       if (response && response.formatted_address) {
-        const formatted = response.formatted_address;
-        addressCache.set(cacheKey, formatted);
-        return formatted;
+        let cidade = '';
+        let estado = '';
+
+        if (Array.isArray(response.address_components)) {
+          for (const comp of response.address_components) {
+            const types: string[] = comp.types || [];
+            if (types.includes('administrative_area_level_1')) {
+              estado = comp.short_name || comp.long_name || '';
+            }
+            if (types.includes('administrative_area_level_2')) {
+              cidade = comp.long_name || comp.short_name || '';
+            }
+            if (!cidade && (types.includes('locality') || types.includes('sublocality_level_1'))) {
+              cidade = comp.long_name || comp.short_name || '';
+            }
+          }
+        }
+
+        const details: GeoAddressDetails = {
+          formattedAddress: response.formatted_address,
+          cidade,
+          estado
+        };
+        detailsCache.set(cacheKey, details);
+        addressCache.set(cacheKey, details.formattedAddress);
+        return details;
       }
     } catch (googleErr) {
       console.warn('[geoService] Google Geocoder falhou, tentando fallback:', googleErr);
@@ -112,7 +144,13 @@ export async function getAddressFromCoords(latitude: number, longitude: number):
         const street = addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || '';
         const number = addr.house_number ? `, ${addr.house_number}` : '';
         const suburb = addr.suburb || addr.neighbourhood || addr.city_district || '';
-        const city = addr.city || addr.town || addr.municipality || addr.village || '';
+        const city = addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || '';
+        let state = '';
+        if (addr['ISO3166-2-lvl4']) {
+          state = String(addr['ISO3166-2-lvl4']).replace(/^BR-/, '');
+        } else {
+          state = addr.state || '';
+        }
 
         const parts = [
           street ? `${street}${number}` : '',
@@ -120,11 +158,16 @@ export async function getAddressFromCoords(latitude: number, longitude: number):
           city
         ].filter(Boolean);
 
-        const result = parts.length > 0 ? parts.join(' - ') : (data.display_name || '');
-        if (result) {
-          addressCache.set(cacheKey, result);
-          return result;
-        }
+        const formatted = parts.length > 0 ? parts.join(' - ') : (data.display_name || '');
+        const details: GeoAddressDetails = {
+          formattedAddress: formatted || `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
+          cidade: city,
+          estado: state
+        };
+
+        detailsCache.set(cacheKey, details);
+        addressCache.set(cacheKey, details.formattedAddress);
+        return details;
       }
     }
   } catch (osmErr) {
@@ -132,7 +175,20 @@ export async function getAddressFromCoords(latitude: number, longitude: number):
   }
 
   // 3. Caso ambos não consigam resolver, exibe as coordenadas
-  const fallback = `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`;
-  addressCache.set(cacheKey, fallback);
-  return fallback;
+  const fallbackDetails: GeoAddressDetails = {
+    formattedAddress: `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
+    cidade: '',
+    estado: ''
+  };
+  detailsCache.set(cacheKey, fallbackDetails);
+  addressCache.set(cacheKey, fallbackDetails.formattedAddress);
+  return fallbackDetails;
+}
+
+/**
+ * Converte coordenadas (latitude, longitude) no nome da rua / endereço formatado.
+ */
+export async function getAddressFromCoords(latitude: number, longitude: number): Promise<string> {
+  const details = await getAddressDetailsFromCoords(latitude, longitude);
+  return details.formattedAddress;
 }
