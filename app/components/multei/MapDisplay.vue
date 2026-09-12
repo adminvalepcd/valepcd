@@ -1,29 +1,48 @@
 <template>
-  <div class="relative w-full overflow-hidden rounded-2xl border border-slate-200 shadow-md" :style="{ height: props.height, minHeight: props.height }">
-    <div v-if="!isReady && !mapError" class="w-full h-full flex flex-col items-center justify-center bg-slate-100 p-4">
+  <div class="map-display-wrapper" :style="{ height: props.height, minHeight: props.height }">
+    <!-- Estado de carregamento -->
+    <div v-if="!isReady && !mapError" class="map-loading-overlay">
       <LoadingSpinner />
-      <p class="text-slate-600 mt-4">Carregando mapa...</p>
+      <p class="map-loading-text">Carregando mapa...</p>
     </div>
 
-    <div v-else-if="mapError" class="w-full h-full flex flex-col items-center justify-center bg-slate-100 p-4 rounded-lg">
+    <!-- Estado de erro -->
+    <div v-else-if="mapError" class="map-error-overlay">
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
-        class="w-16 h-16 text-red-500 mb-4">
+        class="map-error-icon">
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
       </svg>
-      <h3 class="text-xl font-semibold text-red-700 mb-2">Erro no Mapa</h3>
-      <p class="text-slate-600 text-center">{{ mapError }}</p>
-      <p class="text-slate-500 text-xs mt-2 text-center">Verifique se a chave de API possui a Maps JavaScript API ativada.</p>
+      <h3 class="map-error-title">Erro no Mapa</h3>
+      <p class="map-error-desc">{{ mapError }}</p>
+      <p class="map-error-sub">Verifique se a chave de API possui a Maps JavaScript API ativada.</p>
     </div>
 
-    <div ref="mapContainer" class="w-full h-full" :style="{ height: props.height, minHeight: props.height }" />
+    <!-- Elemento do Canvas do Google Maps -->
+    <div ref="mapContainer" class="map-canvas-element" :style="{ height: props.height, minHeight: props.height }" />
 
-    <div v-if="pinLocation" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full pointer-events-none z-10">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
-        class="w-10 h-10 text-red-700 drop-shadow-lg fill-red-600">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-        <path stroke-linecap="round" stroke-linejoin="round"
-          d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-      </svg>
+    <!-- Pino centralizado de alta visibilidade para marcação e ajuste de local -->
+    <div v-if="pinLocation" class="map-center-pin" title="Local selecionado no mapa">
+      <div class="pin-marker">
+        <svg viewBox="0 0 32 44" width="36" height="48" class="pin-svg">
+          <defs>
+            <filter id="pin-drop-shadow" x="-25%" y="-20%" width="150%" height="150%">
+              <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.45" />
+            </filter>
+          </defs>
+          <!-- Corpo do pino em vermelho vibrante -->
+          <path
+            d="M16 0C7.16 0 0 7.16 0 16c0 11.8 16 28 16 28s16-16.2 16-28c0-8.84-7.16-16-16-16z"
+            fill="#dc2626"
+            stroke="#ffffff"
+            stroke-width="2"
+            filter="url(#pin-drop-shadow)"
+          />
+          <!-- Círculo interno branco com alvo central -->
+          <circle cx="16" cy="15" r="5.5" fill="#ffffff" />
+          <circle cx="16" cy="15" r="2.5" fill="#dc2626" />
+        </svg>
+      </div>
+      <div class="pin-ground-shadow"></div>
     </div>
   </div>
 </template>
@@ -66,6 +85,7 @@ const clusterer = ref(null);
 const mapError = ref(null);
 const isApiLoaded = ref(false);
 let listenerRef = null;
+let clickListenerRef = null;
 let isInitialPanDone = false;
 
 const isReady = computed(() => {
@@ -113,6 +133,33 @@ const loadGoogleMapsScript = () => {
   });
 };
 
+const setupPinListeners = () => {
+  if (listenerRef) {
+    listenerRef.remove();
+    listenerRef = null;
+  }
+  if (clickListenerRef) {
+    clickListenerRef.remove();
+    clickListenerRef = null;
+  }
+
+  if (map.value && props.pinLocation) {
+    listenerRef = map.value.addListener('idle', () => {
+      const currentCenter = map.value?.getCenter();
+      if (currentCenter) {
+        emit('pinLocationChange', { latitude: currentCenter.lat(), longitude: currentCenter.lng() });
+      }
+    });
+
+    clickListenerRef = map.value.addListener('click', (e) => {
+      if (e.latLng && map.value) {
+        map.value.panTo(e.latLng);
+        emit('pinLocationChange', { latitude: e.latLng.lat(), longitude: e.latLng.lng() });
+      }
+    });
+  }
+};
+
 const initMap = () => {
   if (!mapContainer.value || map.value || !window.google?.maps) {
     return;
@@ -142,17 +189,7 @@ const initMap = () => {
       });
     }
 
-    if (props.pinLocation) {
-      if (listenerRef) {
-        listenerRef.remove();
-      }
-      listenerRef = map.value.addListener('idle', () => {
-        const currentCenter = map.value?.getCenter();
-        if (currentCenter) {
-          emit('pinLocationChange', { latitude: currentCenter.lat(), longitude: currentCenter.lng() });
-        }
-      });
-    }
+    setupPinListeners();
 
     mapError.value = null;
     updateMarkers();
@@ -166,6 +203,12 @@ const initMap = () => {
         }
       }
     }, 150);
+
+    setTimeout(() => {
+      if (map.value && window.google?.maps) {
+        window.google.maps.event.trigger(map.value, 'resize');
+      }
+    }, 400);
   } catch (error) {
     console.error("Failed to initialize Google Map:", error);
     mapError.value = `Failed to load map: ${error instanceof Error ? error.message : 'Unknown error.'}`;
@@ -204,10 +247,7 @@ const updateMarkers = () => {
 watch(() => props.pinLocation, (newPin) => {
   if (!map.value) return;
 
-  if (listenerRef) {
-    listenerRef.remove();
-    listenerRef = null;
-  }
+  setupPinListeners();
 
   if (newPin) {
     if (!isInitialPanDone) {
@@ -217,17 +257,10 @@ watch(() => props.pinLocation, (newPin) => {
       }
       isInitialPanDone = true;
     }
-
-    listenerRef = map.value.addListener('idle', () => {
-      const center = map.value?.getCenter();
-      if (center) {
-        emit('pinLocationChange', { latitude: center.lat(), longitude: center.lng() });
-      }
-    });
   } else {
     isInitialPanDone = false;
   }
-}, { immediate: true });
+}, { deep: true, immediate: true });
 
 watch(() => props.isMapApiLoaded, (loaded) => {
   if (loaded) {
@@ -264,5 +297,133 @@ onBeforeUnmount(() => {
   if (listenerRef) {
     listenerRef.remove();
   }
+  if (clickListenerRef) {
+    clickListenerRef.remove();
+  }
 });
 </script>
+
+<style scoped>
+.map-display-wrapper {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  background: #f1f5f9;
+}
+
+.map-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  z-index: 50;
+}
+
+.map-loading-text {
+  margin-top: 1rem;
+  font-size: 0.95rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.map-error-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #fef2f2;
+  padding: 1.5rem;
+  text-align: center;
+  z-index: 50;
+}
+
+.map-error-icon {
+  width: 48px;
+  height: 48px;
+  color: #dc2626;
+  margin-bottom: 0.75rem;
+}
+
+.map-error-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #991b1b;
+  margin-bottom: 0.5rem;
+}
+
+.map-error-desc {
+  font-size: 0.88rem;
+  color: #475569;
+  max-width: 380px;
+  line-height: 1.5;
+}
+
+.map-error-sub {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-top: 0.5rem;
+}
+
+.map-canvas-element {
+  width: 100%;
+  height: 100%;
+}
+
+/* Pino Vermelho Centralizado */
+.map-center-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.pin-marker {
+  transform-origin: bottom center;
+  animation: pinDrop 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pin-svg {
+  display: block;
+}
+
+.pin-ground-shadow {
+  width: 14px;
+  height: 5px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 50%;
+  margin-top: -3px;
+  filter: blur(1.5px);
+}
+
+@keyframes pinDrop {
+  0% {
+    transform: translateY(-24px) scale(0.85);
+    opacity: 0;
+  }
+  70% {
+    transform: translateY(2px) scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+</style>
