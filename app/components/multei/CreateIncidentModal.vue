@@ -257,17 +257,31 @@ const CITY_TO_UF = {
 const extractCityAndStateFromText = (text) => {
   if (!text || typeof text !== 'string') return { cidade: '', estado: '' };
   const clean = text.trim();
-  if (clean.startsWith('Lat:')) return { cidade: '', estado: '' };
+  if (clean.startsWith('Lat:') || clean.startsWith('Buscando')) return { cidade: '', estado: '' };
 
   let cidade = '';
   let estado = '';
 
   const allUFs = new Set(Object.values(UF_MAP));
-  const ufMatch = clean.match(/[\s,-]+([A-Z]{2})(?:[\s,-]|$)/);
-  if (ufMatch && allUFs.has(ufMatch[1])) {
-    estado = ufMatch[1];
+
+  // 1. Procura ' - UF' ou ', UF' onde UF é uma das 27 siglas válidas do Brasil
+  // Ex: 'Belo Horizonte - MG', 'São Paulo - SP', 'Floramar, Belo Horizonte - MG, 31742-190'
+  const ufPattern = /[\s,-]+([A-Z]{2})(?:[\s,–-]|$)/g;
+  let match;
+  while ((match = ufPattern.exec(clean)) !== null) {
+    const candidate = match[1].toUpperCase();
+    if (allUFs.has(candidate)) {
+      estado = candidate;
+      const beforeUf = clean.substring(0, match.index).trim();
+      const beforeParts = beforeUf.split(/[,–-]/).map(s => s.trim()).filter(Boolean);
+      if (beforeParts.length > 0) {
+        cidade = beforeParts[beforeParts.length - 1];
+      }
+      break;
+    }
   }
 
+  // 2. Se não achou estado em sigla, procura por extenso
   if (!estado) {
     const lower = clean.toLowerCase();
     for (const [name, uf] of Object.entries(UF_MAP)) {
@@ -278,21 +292,30 @@ const extractCityAndStateFromText = (text) => {
     }
   }
 
-  const parts = clean.split(/\s*-\s*/).map(p => p.trim()).filter(Boolean);
-  if (parts.length > 0) {
-    const last = parts[parts.length - 1];
-    if (allUFs.has(last.toUpperCase())) {
-      estado = last.toUpperCase();
-      if (parts.length > 1) {
-        cidade = parts[parts.length - 2];
-      }
-    } else {
-      cidade = last;
+  // 3. Se ainda não tem cidade, pega o penúltimo ou último termo antes do CEP/país
+  if (!cidade) {
+    let s = clean.replace(/,\s*Brasil\s*$/i, '').replace(/,?\s*\d{5}-?\d{3}.*$/, '').trim();
+    const parts = s.split(/[,–-]/).map(p => p.trim()).filter(Boolean);
+    const nonStateParts = parts.filter(p => !allUFs.has(p.toUpperCase()) && !/^\d+$/.test(p));
+    if (nonStateParts.length > 0) {
+      cidade = nonStateParts[nonStateParts.length - 1];
     }
   }
 
+  // Se a cidade capturada for na verdade o nome de um estado por extenso (ex: 'Belo Horizonte - Minas Gerais')
+  if (cidade && UF_MAP[cidade.toLowerCase()]) {
+    const lower = clean.toLowerCase();
+    for (const city of Object.keys(CITY_TO_UF)) {
+      if (lower.includes(city)) {
+        cidade = city.replace(/(^\w|\s\w)/g, m => m.toUpperCase());
+        break;
+      }
+    }
+  }
+
+  // Limpeza de cidade
   if (cidade) {
-    cidade = cidade.split(',')[0].replace(/\d{5}-?\d{3}/g, '').trim();
+    cidade = cidade.replace(/\d{5}-?\d{3}/g, '').replace(/,\s*$/, '').trim();
   }
 
   if (cidade && !estado) {
@@ -374,6 +397,7 @@ onMounted(async () => {
                       Math.abs(props.currentLocation.longitude - (-46.633308)) < 0.0001;
   if (!isDefaultSP) {
     locationSource.value = 'device';
+    updateAddress(selectedLocation.latitude, selectedLocation.longitude);
   } else {
     // Tenta silenciosamente obter localização real do navegador caso ainda esteja no fallback
     try {
@@ -381,8 +405,10 @@ onMounted(async () => {
       selectedLocation.latitude = coords.latitude;
       selectedLocation.longitude = coords.longitude;
       locationSource.value = 'device';
+      updateAddress(coords.latitude, coords.longitude);
     } catch {
-      // Permissão ainda não concedida
+      // Permissão ainda não concedida, resolve endereço da posição inicial
+      updateAddress(selectedLocation.latitude, selectedLocation.longitude);
     }
   }
 });
@@ -396,9 +422,7 @@ watch(() => props.currentLocation, (newVal) => {
     selectedLocation.latitude = newVal.latitude;
     selectedLocation.longitude = newVal.longitude;
     locationSource.value = 'device';
-    if (step.value === 'preview') {
-      updateAddress(newVal.latitude, newVal.longitude);
-    }
+    updateAddress(newVal.latitude, newVal.longitude);
   }
 }, { deep: true });
 
