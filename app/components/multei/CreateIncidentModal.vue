@@ -54,15 +54,20 @@
         <span class="analyzing-sub">Avaliando veículos, segurança e dados sensíveis...</span>
       </div>
 
-      <!-- Erro de Validação (Sem carro ou imprópria) -->
+      <!-- Erro de Validação ou Instabilidade de IA -->
       <div v-if="step === 'error'" class="step-error">
-        <div class="error-badge">⚠️</div>
-        <h3 class="error-heading">Foto Não Aceita</h3>
+        <div class="error-badge">{{ isApiError ? '⚡' : '⚠️' }}</div>
+        <h3 class="error-heading" :class="{ 'is-api-error': isApiError }">
+          {{ isApiError ? 'Instabilidade no Serviço de IA' : 'Foto Não Aceita' }}
+        </h3>
         <p class="error-explanation">{{ errorMessage }}</p>
         
         <div class="modal-actions mt-4">
+          <button v-if="isApiError && lastSelectedFile" class="btn btn-primary" @click="handleRetry">
+            🔄 Tentar Novamente
+          </button>
           <button class="btn btn-secondary" @click="resetToUpload">
-            Tentar Outra Foto
+            {{ isApiError && lastSelectedFile ? 'Escolher Outra Foto' : 'Tentar Outra Foto' }}
           </button>
         </div>
       </div>
@@ -197,6 +202,8 @@ const isAnalyzing = ref(false);
 const isSaving = ref(false);
 const analyzingStatusText = ref('Iniciando análise...');
 const errorMessage = ref('');
+const isApiError = ref(false);
+const lastSelectedFile = ref(null);
 const saveError = ref('');
 const isAdjustingLocation = ref(false);
 const addressText = ref('');
@@ -291,18 +298,29 @@ watch(() => props.currentLocation, (newVal) => {
 
 const resetToUpload = () => {
   step.value = 'upload';
+  isApiError.value = false;
   errorMessage.value = '';
   saveError.value = '';
   isAdjustingLocation.value = false;
   processedImageWebp.value = '';
   addressText.value = '';
   gpsStatusMessage.value = '';
+  lastSelectedFile.value = null;
+};
+
+const handleRetry = async () => {
+  if (lastSelectedFile.value) {
+    await processSelectedImage(lastSelectedFile.value);
+  } else {
+    resetToUpload();
+  }
 };
 
 const handleFileSelected = async (e) => {
   const target = e.target;
   const file = target.files?.[0];
   if (file) {
+    lastSelectedFile.value = file;
     await processSelectedImage(file);
   }
   target.value = '';
@@ -310,12 +328,17 @@ const handleFileSelected = async (e) => {
 
 const handlePhotoTaken = async (file) => {
   showCamera.value = false;
-  await processSelectedImage(file);
+  if (file) {
+    lastSelectedFile.value = file;
+    await processSelectedImage(file);
+  }
 };
 
 const processSelectedImage = async (file) => {
   step.value = 'analyzing';
   isAnalyzing.value = true;
+  isApiError.value = false;
+  errorMessage.value = '';
   analyzingStatusText.value = 'Identificando localização...';
 
   try {
@@ -353,10 +376,18 @@ const processSelectedImage = async (file) => {
     // 3. Chamar Gemini para análise de veículo, moderação e caixas delimitadoras
     const analysis = await analyzeIncidentImage(geminiClient, optimizedBase64);
 
-    // Validação estrita solicitada:
-    if (!analysis.hasVehicle || !analysis.isAppropriate) {
+    if (analysis.apiError) {
+      isApiError.value = true;
       step.value = 'error';
-      errorMessage.value = analysis.rejectionReason || 'A foto precisa conter um carro e cumprir as regras de moderação.';
+      errorMessage.value = analysis.rejectionReason || 'Instabilidade temporária no serviço de IA (Google Gemini). Por favor, tente novamente.';
+      return;
+    }
+
+    // Validação de presença de veículo e adequação de conteúdo:
+    if (!analysis.hasVehicle || !analysis.isAppropriate) {
+      isApiError.value = false;
+      step.value = 'error';
+      errorMessage.value = analysis.rejectionReason || 'A foto precisa conter um veículo automotor e cumprir as regras comunitárias.';
       return;
     }
 
@@ -372,8 +403,9 @@ const processSelectedImage = async (file) => {
     step.value = 'preview';
   } catch (err) {
     console.error('Erro no processamento da imagem:', err);
+    isApiError.value = true;
     step.value = 'error';
-    errorMessage.value = err?.message || 'Falha ao processar e anonimizar a foto.';
+    errorMessage.value = err?.message || 'Falha ao processar e anonimizar a foto enviada.';
   } finally {
     isAnalyzing.value = false;
   }
@@ -583,6 +615,10 @@ const handleSaveIncident = async () => {
   font-weight: 800;
   color: #dc2626;
   margin-bottom: 0.75rem;
+}
+
+.error-heading.is-api-error {
+  color: #b45309;
 }
 
 .error-explanation {

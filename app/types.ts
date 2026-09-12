@@ -22,6 +22,7 @@ export interface IncidentAnalysisResult {
   rejectionReason: string;
   plates: BoundingBox[];
   faces: BoundingBox[];
+  apiError?: boolean;
 }
 
 export interface ReportedIncident {
