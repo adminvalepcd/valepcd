@@ -194,12 +194,13 @@
             </button>
           </div>
 
-          <!-- Alerta Destacado: Endereço não identificado automaticamente -->
-          <div v-if="!isLocationValid && !isResolvingAddress" class="loc-required-alert">
+          <!-- Alerta Destacado: Endereço não identificado automaticamente (oculto durante o ajuste no mapa para evitar piscadas na UX) -->
+          <div v-if="!isLocationValid && !isResolvingAddress && !isAdjustingLocation" class="loc-required-alert">
             <div class="loc-alert-header">
               <span class="loc-alert-badge">⚠️ Endereço Incompleto</span>
               <p class="loc-alert-msg">
-                A <strong>Cidade</strong> e o <strong>Estado</strong> precisam ser identificados para salvar na planilha. Escolha uma das opções abaixo para definir o local:
+                A <strong>Cidade</strong> e o <strong>Estado</strong> precisam ser identificados. Escolha uma das opções abaixo para
+                definir o local:
               </p>
             </div>
             
@@ -238,7 +239,16 @@
 
           <!-- Mini mapa para ajuste fino se acionado -->
           <div v-if="isAdjustingLocation" class="mini-map-container">
-            <p class="mini-map-hint">Arraste o mapa para posicionar o pino vermelho exatamente no local da vaga/infração.</p>
+            <div class="mini-map-header-row">
+              <p class="mini-map-hint">Arraste o mapa para posicionar o pino vermelho exatamente no local da vaga/infração.</p>
+              <button 
+                type="button" 
+                class="btn-finish-adjust" 
+                @click="toggleAdjustLocation"
+              >
+                ✓ Concluir Escolha
+              </button>
+            </div>
             <div class="mini-map-frame">
               <MulteiMapDisplay
                 :initial-center="selectedLocation"
@@ -267,7 +277,7 @@
           >
             <span v-if="isSaving">Processando...</span>
             <span v-else-if="isResolvingAddress">Obtendo endereço...</span>
-            <span v-else-if="!isLocationValid">🔒 Localização necessária para salvar</span>
+            <span v-else-if="!isLocationValid">Localização necessária para salvar</span>
             <span v-else>Salvar Ocorrência</span>
           </button>
         </div>
@@ -1563,10 +1573,38 @@ const handleSaveIncident = async () => {
   margin-top: 0.5rem;
 }
 
+.mini-map-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .mini-map-hint {
   font-size: 0.8rem;
   color: var(--text-muted, #64748b);
-  margin-bottom: 0.5rem;
+  margin: 0;
+  flex: 1;
+}
+
+.btn-finish-adjust {
+  background: var(--primary, #86007D);
+  color: #ffffff;
+  border: none;
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-finish-adjust:hover {
+  background: var(--primary-hover, #a10096);
+  transform: translateY(-1px);
 }
 
 .mini-map-frame {
