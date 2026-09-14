@@ -411,12 +411,39 @@ const updateMarkers = () => {
   const currentZoom = map.value?.getZoom() || 15;
   const showSpider = currentZoom >= 15;
 
+  // Pino personalizado com a identidade do Vale PCD (Púrpura + Símbolo Internacional de Acessibilidade PcD)
+  const pcdPinIcon = {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="32" height="42">
+        <defs>
+          <filter id="pcd-pin-shadow" x="-20%" y="-10%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+        <!-- Sombra no solo -->
+        <ellipse cx="16" cy="40" rx="4.5" ry="1.5" fill="#000000" opacity="0.25"/>
+        <!-- Corpo do pino no Púrpura Vale PCD -->
+        <path d="M16 1C8.82 1 3 6.82 3 14c0 9.5 11.8 23 12.3 23.6.4.4 1 .4 1.4 0C17.2 37 29 23.5 29 14 29 6.82 23.18 1 16 1z" fill="#86007D" stroke="#ffffff" stroke-width="1.8" filter="url(#pcd-pin-shadow)"/>
+        <!-- Círculo branco de alto contraste -->
+        <circle cx="16" cy="14" r="7.5" fill="#ffffff"/>
+        <!-- Símbolo Internacional de Acessibilidade (PcD) -->
+        <g transform="translate(10.5, 8.5) scale(0.46)" fill="#86007D">
+          <circle cx="12" cy="4" r="2.2"/>
+          <path d="M19 13v-2c-1.54.02-3.09-.75-4.07-1.83l-1.29-1.43c-.38-.42-.93-.68-1.53-.74H12c-.35-.04-.71.04-1.04.22-.64.35-1.06 1.01-1.06 1.78V15c0 .55.45 1 1 1s1-.45 1-1v-4.1l1.6 1.6c.33.33.75.52 1.2.55v4.95c0 1.1.9 2 2 2h3c.55 0 1-.45 1-1s-.45-1-1-1h-3v-4.9z"/>
+          <path d="M10.8 11.2c-.5.7-.8 1.5-.8 2.4 0 2.2 1.8 4 4 4 .9 0 1.7-.3 2.4-.8l1.5 1.5c-1.1.8-2.4 1.3-3.9 1.3-3.3 0-6-2.7-6-6 0-1.5.5-2.8 1.3-3.9l1.5 1.5z"/>
+        </g>
+      </svg>
+    `),
+    scaledSize: new googleMaps.Size(32, 42),
+    anchor: new googleMaps.Point(16, 40)
+  };
+
   // Desenha os pontos de ancoragem e linhas conectoras de desdobramento (spiderfy)
   multiGroups.forEach(group => {
     const anchorDot = new googleMaps.Circle({
       center: group.center,
       radius: 2,
-      fillColor: '#6366f1',
+      fillColor: '#86007D',
       fillOpacity: 0.85,
       strokeColor: '#ffffff',
       strokeWeight: 2,
@@ -433,7 +460,7 @@ const updateMarkers = () => {
             group.center,
             { lat: pos.lat, lng: pos.lng }
           ],
-          strokeColor: '#6366f1',
+          strokeColor: '#86007D',
           strokeOpacity: 0.8,
           strokeWeight: 2,
           map: showSpider ? map.value : null,
@@ -449,6 +476,7 @@ const updateMarkers = () => {
     const marker = new googleMaps.Marker({
       position: { lat: pos.lat, lng: pos.lng },
       title: incident.description || (incident.cidade ? `${incident.cidade} - ${incident.estado}` : `Infração registrada em ${new Date(incident.timestamp).toLocaleTimeString()}`),
+      icon: pcdPinIcon,
       map: clusterer.value ? null : map.value
     });
 
