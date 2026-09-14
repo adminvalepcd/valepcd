@@ -26,7 +26,9 @@
         <div v-else class="image-empty-placeholder">
           <span>📷 Foto da infração indisponível</span>
         </div>
-        <p class="privacy-note">Áreas sensíveis (placas e rostos) foram ocultadas automaticamente por IA.</p>
+        <p class="privacy-note">
+          Áreas sensíveis (placas e rostos) foram ocultadas automaticamente por IA. Se seu rosto apareceu, <button type="button" class="btn-link-report" @click="handleOpenReport">reporte a ocorrência</button>.
+        </p>
       </div>
 
       <div class="modal-info-list">
@@ -48,8 +50,7 @@
           <div>
             <p class="info-label">Localização:</p>
             <p v-if="incident.cidade" class="info-city">📍 {{ incident.cidade }}{{ incident.estado ? ` - ${incident.estado}` : '' }}</p>
-            <p v-if="addressText" class="info-address">{{ addressText }}</p>
-            <p class="info-coords">{{ `Lat: ${Number(incident.latitude).toFixed(5)}, Lng: ${Number(incident.longitude).toFixed(5)}` }}</p>
+            <p v-if="displayAddress" class="info-address">{{ displayAddress }}</p>
           </div>
         </div>
       </div>
@@ -132,7 +133,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { getAddressFromCoords } from '../../services/geoService';
 import { reportIncidentInSheet, fetchIncidentPhoto } from '../../services/sheetsService';
 import LoadingSpinner from './LoadingSpinner.vue';
@@ -154,6 +155,46 @@ const currentPhoto = ref(props.incident?.maskedImageUrl || '');
 const isLoadingPhoto = ref(!currentPhoto.value);
 const addressText = ref('');
 const isResolving = ref(false);
+
+const cleanStreetAndNeighborhood = (rawAddress, city, state) => {
+  if (!rawAddress || typeof rawAddress !== 'string') return '';
+  let addr = rawAddress.trim();
+  if (addr.startsWith('Lat:')) return '';
+
+  // Remove ', Brasil' no final
+  addr = addr.replace(/,\s*Brasil\s*$/i, '');
+  // Remove CEP (ex: 30140-071)
+  addr = addr.replace(/,?\s*\d{5}-?\d{3}\s*/g, '');
+
+  // Se tiver a cidade do incident, remove a cidade e tudo o que vier após ela
+  if (city) {
+    const escapedCity = city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const cityRegex = new RegExp(`[,–-]\\s*${escapedCity}.*$`, 'i');
+    if (cityRegex.test(addr)) {
+      addr = addr.replace(cityRegex, '');
+    }
+  }
+
+  // Se ainda tiver UF no final (ex: ' - MG' ou ', MG')
+  addr = addr.replace(/[,–-]\s*[A-Z]{2}\s*$/i, '');
+
+  // Limpeza final de vírgulas, hífens ou traços residuais no final
+  addr = addr.replace(/[,–-\s]+$/, '').trim();
+
+  // Se o resultado for idêntico à própria cidade, não repete
+  if (city && addr.toLowerCase() === city.toLowerCase()) {
+    return '';
+  }
+
+  return addr;
+};
+
+const displayAddress = computed(() => {
+  if (!addressText.value) return '';
+  const city = props.incident?.cidade || '';
+  const state = props.incident?.estado || '';
+  return cleanStreetAndNeighborhood(addressText.value, city, state);
+});
 
 const isReportModalOpen = ref(false);
 const reportReason = ref('');
@@ -352,6 +393,24 @@ watch(() => props.incident, () => {
   font-size: 0.8rem;
   color: var(--text-muted, #64748b);
   margin-top: 0.5rem;
+  line-height: 1.4;
+}
+
+.btn-link-report {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--primary, #86007D);
+  text-decoration: underline;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.btn-link-report:hover {
+  color: #50004b;
 }
 
 .modal-info-list {
