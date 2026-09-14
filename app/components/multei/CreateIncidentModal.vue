@@ -9,6 +9,17 @@
 
       <!-- Etapa 1: Captura / Upload da Foto -->
       <div v-if="step === 'upload'" class="step-upload">
+        <!-- Aviso de Cooldown se atingiu limite de uploads seguidos -->
+        <div v-if="cooldownSecondsLeft > 0" class="cooldown-banner">
+          <div class="cooldown-icon">⏳</div>
+          <div class="cooldown-content">
+            <strong class="cooldown-title">Limite de uploads atingido</strong>
+            <p class="cooldown-desc">
+              Você enviou 5 fotos em sequência. Aguarde <b>{{ cooldownSecondsLeft }} segundos</b> para poder enviar novamente.
+            </p>
+          </div>
+        </div>
+
         <p class="step-desc">
           Tire uma foto ou envie uma imagem da infração para análise automática por IA.
         </p>
@@ -17,19 +28,22 @@
           <button 
             type="button" 
             class="btn-upload btn-camera" 
-            @click="showCamera = true"
+            :disabled="cooldownSecondsLeft > 0"
+            :class="{ 'is-disabled': cooldownSecondsLeft > 0 }"
+            @click="cooldownSecondsLeft > 0 ? null : (showCamera = true)"
           >
             <span class="btn-icon">📷</span>
-            <span class="btn-label">Tirar Foto Agora</span>
+            <span class="btn-label">{{ cooldownSecondsLeft > 0 ? `Aguarde ${cooldownSecondsLeft}s` : 'Tirar Foto Agora' }}</span>
           </button>
 
-          <label class="btn-upload btn-gallery">
+          <label class="btn-upload btn-gallery" :class="{ 'is-disabled': cooldownSecondsLeft > 0 }">
             <span class="btn-icon">🖼️</span>
-            <span class="btn-label">Escolher da Galeria</span>
+            <span class="btn-label">{{ cooldownSecondsLeft > 0 ? `Aguarde ${cooldownSecondsLeft}s` : 'Escolher da Galeria' }}</span>
             <input 
               type="file" 
               accept="image/jpeg,image/png,image/webp" 
               class="hidden-file-input" 
+              :disabled="cooldownSecondsLeft > 0"
               @change="handleFileSelected" 
             />
           </label>
@@ -47,11 +61,59 @@
         @cancel="showCamera = false"
       />
 
-      <!-- Etapa 2: Análise da Imagem (Gemini) -->
+      <!-- Etapa 2: Análise da Imagem e Aplicação do Filtro de Privacidade -->
       <div v-if="step === 'analyzing'" class="step-analyzing">
-        <LoadingSpinner />
-        <p class="analyzing-text">{{ analyzingStatusText }}</p>
-        <span class="analyzing-sub">Avaliando veículos, segurança e dados sensíveis...</span>
+        <div class="analyzing-preview-card">
+          <!-- Preview da foto em análise -->
+          <img 
+            v-if="rawPreviewUrl" 
+            :src="rawPreviewUrl" 
+            alt="Foto em análise de privacidade" 
+            class="analyzing-preview-img" 
+          />
+          <div v-else class="analyzing-preview-placeholder">
+            <LoadingSpinner />
+          </div>
+
+          <!-- Overlay Animado: Escaneamento e Aplicação de Filtro de Privacidade -->
+          <div class="privacy-scan-overlay">
+            <!-- Grade cibernética de anonimização -->
+            <div class="privacy-scan-grid"></div>
+
+            <!-- Faixa laser de varredura que sobe e desce -->
+            <div class="scanner-laser-beam"></div>
+
+            <!-- Efeito de desfoque dinâmico em onda -->
+            <div class="scanner-blur-wave"></div>
+
+            <!-- Badge HUD de proteção ativa -->
+            <div class="scan-hud-badge">
+              <div class="hud-shield-pulse">🛡️</div>
+              <div class="hud-badge-info">
+                <span class="hud-badge-title">Filtro de Privacidade</span>
+                <span class="hud-badge-status">Anonimizando placas e rostos...</span>
+              </div>
+            </div>
+
+            <!-- Cantoneiras de mira de IA (Computer Vision HUD) -->
+            <span class="hud-corner corner-tl"></span>
+            <span class="hud-corner corner-tr"></span>
+            <span class="hud-corner corner-bl"></span>
+            <span class="hud-corner corner-br"></span>
+          </div>
+        </div>
+
+        <div class="analyzing-details">
+          <div class="analyzing-status-pill">
+            <span class="pulse-radar-dot"></span>
+            <p class="analyzing-text">{{ analyzingStatusText }}</p>
+          </div>
+          
+          <div class="analyzing-progress-bar">
+            <div class="analyzing-progress-fill"></div>
+          </div>
+          <span class="analyzing-sub">Avaliando veículos, segurança e dados sensíveis...</span>
+        </div>
       </div>
 
       <!-- Erro de Validação ou Instabilidade de IA -->
@@ -109,7 +171,8 @@
             </div>
           </div>
 
-          <div class="location-actions-bar">
+          <!-- Ações secundárias caso o endereço já esteja válido -->
+          <div v-if="isLocationValid" class="location-actions-bar">
             <button 
               type="button" 
               class="btn-loc-action btn-refresh-gps" 
@@ -129,6 +192,44 @@
             >
               {{ isAdjustingLocation ? '✓ Concluir Ajuste' : '🗺️ Ajustar no Mapa' }}
             </button>
+          </div>
+
+          <!-- Alerta Destacado: Endereço não identificado automaticamente -->
+          <div v-if="!isLocationValid && !isResolvingAddress" class="loc-required-alert">
+            <div class="loc-alert-header">
+              <span class="loc-alert-badge">⚠️ Endereço Incompleto</span>
+              <p class="loc-alert-msg">
+                A <strong>Cidade</strong> e o <strong>Estado</strong> precisam ser identificados para salvar na planilha. Escolha uma das opções abaixo para definir o local:
+              </p>
+            </div>
+            
+            <div class="loc-prominent-actions">
+              <button 
+                type="button" 
+                class="btn-prominent btn-prominent-gps" 
+                :disabled="isRefreshingGps"
+                @click="handleRefreshGps"
+              >
+                <span class="btn-prominent-icon">📍</span>
+                <span class="btn-prominent-text">
+                  <span class="btn-prominent-title">{{ isRefreshingGps ? 'Consultando GPS...' : 'Usar Meu GPS Atual' }}</span>
+                  <span class="btn-prominent-sub">Obtém a posição exata do seu aparelho</span>
+                </span>
+              </button>
+
+              <button 
+                type="button" 
+                class="btn-prominent btn-prominent-map" 
+                :class="{ 'is-active': isAdjustingLocation }"
+                @click="toggleAdjustLocation"
+              >
+                <span class="btn-prominent-icon">🗺️</span>
+                <span class="btn-prominent-text">
+                  <span class="btn-prominent-title">{{ isAdjustingLocation ? '✓ Concluir Escolha' : 'Escolher no Mapa' }}</span>
+                  <span class="btn-prominent-sub">Arraste o pino para a rua da infração</span>
+                </span>
+              </button>
+            </div>
           </div>
 
           <p v-if="gpsStatusMessage" class="gps-msg" :class="{ 'is-error': gpsStatusIsError }">
@@ -157,8 +258,16 @@
           <button class="btn btn-secondary" @click="resetToUpload" :disabled="isSaving">
             Trocar Foto
           </button>
-          <button class="btn btn-primary" @click="handleSaveIncident" :disabled="isSaving">
-            <span v-if="isSaving">Processando</span>
+          <button 
+            class="btn btn-primary btn-save-incident" 
+            @click="handleSaveIncident" 
+            :disabled="isSaving || isResolvingAddress || !isLocationValid"
+            :class="{ 'is-disabled-lock': !isLocationValid }"
+            :title="!isLocationValid ? 'Confirme a cidade e o estado para liberar o salvamento' : ''"
+          >
+            <span v-if="isSaving">Processando...</span>
+            <span v-else-if="isResolvingAddress">Obtendo endereço...</span>
+            <span v-else-if="!isLocationValid">🔒 Localização necessária para salvar</span>
             <span v-else>Salvar Ocorrência</span>
           </button>
         </div>
@@ -180,7 +289,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
 import { extractGpsData, blurSensitiveContentAndCompress, prepareImageForGemini } from '../../services/imageProcessor';
 import { saveIncidentToSheet } from '../../services/sheetsService';
@@ -207,6 +316,7 @@ const analyzingStatusText = ref('Iniciando análise...');
 const errorMessage = ref('');
 const isApiError = ref(false);
 const lastSelectedFile = ref(null);
+const rawPreviewUrl = ref('');
 const saveError = ref('');
 const isAdjustingLocation = ref(false);
 const addressText = ref('');
@@ -226,6 +336,134 @@ const selectedLocation = reactive({
   latitude: props.currentLocation.latitude,
   longitude: props.currentLocation.longitude
 });
+
+// --- Trava de Segurança 1: Cidade e Estado Obrigatórios para Salvar ---
+const isLocationValid = computed(() => {
+  return Boolean(
+    currentCidade.value && 
+    currentCidade.value.trim().length > 0 &&
+    currentEstado.value && 
+    currentEstado.value.trim().length > 0
+  );
+});
+
+// --- Trava de Segurança 2: Cache de Análise Gemini (1x por dia por foto via SHA-256) ---
+const GEMINI_CACHE_PREFIX = 'multei_gemini_cache_';
+const GEMINI_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
+
+const computeFileSha256 = async (file) => {
+  try {
+    if (typeof window !== 'undefined' && window.crypto?.subtle) {
+      const buffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch (err) {
+    console.warn('[CreateIncidentModal] Erro ao calcular SHA-256 via WebCrypto:', err);
+  }
+  return `${file.name}_${file.size}_${file.lastModified}`;
+};
+
+const getCachedGeminiAnalysis = (hash) => {
+  if (typeof window === 'undefined' || !hash) return null;
+  try {
+    const raw = localStorage.getItem(`${GEMINI_CACHE_PREFIX}${hash}`);
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    if (Date.now() - cached.timestamp > GEMINI_CACHE_TTL_MS) {
+      localStorage.removeItem(`${GEMINI_CACHE_PREFIX}${hash}`);
+      return null;
+    }
+    return cached.data;
+  } catch (e) {
+    console.warn('[CreateIncidentModal] Erro ao ler cache Gemini:', e);
+    return null;
+  }
+};
+
+const saveGeminiAnalysisCache = (hash, data) => {
+  if (typeof window === 'undefined' || !hash || !data) return;
+  try {
+    localStorage.setItem(`${GEMINI_CACHE_PREFIX}${hash}`, JSON.stringify({
+      timestamp: Date.now(),
+      data
+    }));
+  } catch (e) {
+    console.warn('[CreateIncidentModal] Erro ao salvar cache Gemini:', e);
+  }
+};
+
+// --- Trava de Segurança 3: Rate Limiting & Cooldown contra Spam (5 fotos seguidas -> 1 minuto) ---
+const COOLDOWN_UNTIL_KEY = 'multei_upload_cooldown_until';
+const RECENT_UPLOADS_KEY = 'multei_recent_upload_timestamps';
+const MAX_UPLOADS_BEFORE_COOLDOWN = 5;
+const COOLDOWN_SECONDS = 60;
+const UPLOAD_WINDOW_MS = 5 * 60 * 1000; // Janela de 5 minutos
+
+const cooldownSecondsLeft = ref(0);
+let cooldownTimer = null;
+
+const startCooldownCountdown = (seconds) => {
+  if (cooldownTimer) clearInterval(cooldownTimer);
+  cooldownSecondsLeft.value = Math.max(0, Math.ceil(seconds));
+
+  if (cooldownSecondsLeft.value <= 0) return;
+
+  cooldownTimer = setInterval(() => {
+    if (typeof window === 'undefined') return;
+    const until = Number(localStorage.getItem(COOLDOWN_UNTIL_KEY) || 0);
+    const remaining = Math.ceil((until - Date.now()) / 1000);
+
+    if (remaining <= 0) {
+      cooldownSecondsLeft.value = 0;
+      clearInterval(cooldownTimer);
+      cooldownTimer = null;
+      localStorage.removeItem(COOLDOWN_UNTIL_KEY);
+    } else {
+      cooldownSecondsLeft.value = remaining;
+    }
+  }, 1000);
+};
+
+const checkExistingCooldown = () => {
+  if (typeof window === 'undefined') return;
+  const until = Number(localStorage.getItem(COOLDOWN_UNTIL_KEY) || 0);
+  const now = Date.now();
+  if (until > now) {
+    const remaining = Math.ceil((until - now) / 1000);
+    startCooldownCountdown(remaining);
+  } else if (until > 0) {
+    localStorage.removeItem(COOLDOWN_UNTIL_KEY);
+  }
+};
+
+const registerUploadAttempt = () => {
+  if (typeof window === 'undefined') return;
+  const now = Date.now();
+  let timestamps = [];
+  try {
+    const raw = localStorage.getItem(RECENT_UPLOADS_KEY);
+    if (raw) timestamps = JSON.parse(raw);
+    if (!Array.isArray(timestamps)) timestamps = [];
+  } catch {
+    timestamps = [];
+  }
+
+  // Filtrar apenas uploads realizados dentro da janela de 5 minutos
+  timestamps = timestamps.filter(t => now - t < UPLOAD_WINDOW_MS);
+  timestamps.push(now);
+
+  if (timestamps.length >= MAX_UPLOADS_BEFORE_COOLDOWN) {
+    // Atingiu 5 uploads seguidos: bloqueia por 1 minuto mesmo se recarregar a página
+    const until = now + (COOLDOWN_SECONDS * 1000);
+    localStorage.setItem(COOLDOWN_UNTIL_KEY, String(until));
+    localStorage.removeItem(RECENT_UPLOADS_KEY);
+    startCooldownCountdown(COOLDOWN_SECONDS);
+  } else {
+    localStorage.setItem(RECENT_UPLOADS_KEY, JSON.stringify(timestamps));
+  }
+};
 
 const UF_MAP = {
   'acre': 'AC', 'alagoas': 'AL', 'amapá': 'AP', 'amapa': 'AP',
@@ -393,6 +631,9 @@ const handleRefreshGps = async () => {
 };
 
 onMounted(async () => {
+  // Verifica se há cooldown ativo persistido no localStorage (inclusive após F5 / recarregar a página)
+  checkExistingCooldown();
+
   const isDefaultSP = Math.abs(props.currentLocation.latitude - (-23.55052)) < 0.0001 &&
                       Math.abs(props.currentLocation.longitude - (-46.633308)) < 0.0001;
   if (!isDefaultSP) {
@@ -413,6 +654,21 @@ onMounted(async () => {
   }
 });
 
+onBeforeUnmount(() => {
+  if (rawPreviewUrl.value) {
+    URL.revokeObjectURL(rawPreviewUrl.value);
+    rawPreviewUrl.value = '';
+  }
+  if (cooldownTimer) {
+    clearInterval(cooldownTimer);
+    cooldownTimer = null;
+  }
+  if (geocodeDebounceTimer) {
+    clearTimeout(geocodeDebounceTimer);
+    geocodeDebounceTimer = null;
+  }
+});
+
 watch(() => props.currentLocation, (newVal) => {
   if (!newVal) return;
   const isDefaultSP = Math.abs(newVal.latitude - (-23.55052)) < 0.0001 &&
@@ -427,6 +683,10 @@ watch(() => props.currentLocation, (newVal) => {
 }, { deep: true });
 
 const resetToUpload = () => {
+  if (rawPreviewUrl.value) {
+    URL.revokeObjectURL(rawPreviewUrl.value);
+    rawPreviewUrl.value = '';
+  }
   step.value = 'upload';
   isApiError.value = false;
   errorMessage.value = '';
@@ -440,6 +700,9 @@ const resetToUpload = () => {
 
 const handleRetry = async () => {
   if (lastSelectedFile.value) {
+    if (!rawPreviewUrl.value) {
+      rawPreviewUrl.value = URL.createObjectURL(lastSelectedFile.value);
+    }
     await processSelectedImage(lastSelectedFile.value);
   } else {
     resetToUpload();
@@ -450,6 +713,10 @@ const handleFileSelected = async (e) => {
   const target = e.target;
   const file = target.files?.[0];
   if (file) {
+    if (rawPreviewUrl.value) {
+      URL.revokeObjectURL(rawPreviewUrl.value);
+    }
+    rawPreviewUrl.value = URL.createObjectURL(file);
     lastSelectedFile.value = file;
     await processSelectedImage(file);
   }
@@ -459,12 +726,26 @@ const handleFileSelected = async (e) => {
 const handlePhotoTaken = async (file) => {
   showCamera.value = false;
   if (file) {
+    if (rawPreviewUrl.value) {
+      URL.revokeObjectURL(rawPreviewUrl.value);
+    }
+    rawPreviewUrl.value = URL.createObjectURL(file);
     lastSelectedFile.value = file;
     await processSelectedImage(file);
   }
 };
 
 const processSelectedImage = async (file) => {
+  // Trava de Segurança: se o cooldown estiver ativo, bloqueia o envio
+  if (cooldownSecondsLeft.value > 0) {
+    errorMessage.value = `Limite atingido. Aguarde ${cooldownSecondsLeft.value} segundos antes de enviar novas fotos.`;
+    step.value = 'upload';
+    return;
+  }
+
+  // Registra o upload e dispara cooldown de 1 min se atingir 5 fotos seguidas
+  registerUploadAttempt();
+
   step.value = 'analyzing';
   isAnalyzing.value = true;
   isApiError.value = false;
@@ -500,11 +781,32 @@ const processSelectedImage = async (file) => {
     currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
 
     // 2. Redimensionar previamente a imagem para envio rápido e leve à IA (~250KB)
-    analyzingStatusText.value = 'Otimizando e analisando veículo com IA...';
+    analyzingStatusText.value = 'Otimizando imagem...';
     const optimizedBase64 = await prepareImageForGemini(file, 1200);
 
-    // 3. Chamar Gemini para análise de veículo, moderação e caixas delimitadoras
-    const analysis = await analyzeIncidentImage(geminiClient, optimizedBase64);
+    // 3. Cache diário (1x por dia por foto) para poupar cotas do Gemini
+    let imageHash = null;
+    let analysis = null;
+    try {
+      imageHash = await computeFileSha256(file);
+      analysis = getCachedGeminiAnalysis(imageHash);
+      if (analysis) {
+        analyzingStatusText.value = 'Foto já analisada hoje. Reutilizando análise do cache...';
+      }
+    } catch (hashErr) {
+      console.warn('[CreateIncidentModal] Erro ao consultar cache da imagem:', hashErr);
+    }
+
+    // Se não estiver em cache, chama a IA do Google Gemini
+    if (!analysis) {
+      analyzingStatusText.value = 'Analisando veículo e segurança com IA...';
+      analysis = await analyzeIncidentImage(geminiClient, optimizedBase64);
+
+      // Salva no cache local de 24h caso a chamada tenha sido bem-sucedida
+      if (imageHash && analysis && !analysis.apiError) {
+        saveGeminiAnalysisCache(imageHash, analysis);
+      }
+    }
 
     if (analysis.apiError) {
       isApiError.value = true;
@@ -571,6 +873,11 @@ const handlePinChange = (newLoc) => {
 };
 
 const handleSaveIncident = async () => {
+  if (!isLocationValid.value) {
+    saveError.value = 'A Cidade e o Estado precisam ser confirmados antes de salvar. Use o GPS ou escolha a posição no mapa.';
+    return;
+  }
+
   isSaving.value = true;
   saveError.value = '';
 
@@ -767,25 +1074,292 @@ const handleSaveIncident = async () => {
   border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
+/* --- Etapa 2: Análise da Imagem e Filtro de Privacidade Animado --- */
 .step-analyzing {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 3rem 1rem;
+  padding: 0.5rem 0 1rem 0;
+  gap: 1.25rem;
+  width: 100%;
+}
+
+.analyzing-preview-card {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  height: 260px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #0b0f19;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.analyzing-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: blur(15px) brightness(0.92) contrast(1.05);
+  transform: scale(1.08);
+  transition: filter 0.3s ease;
+}
+
+.analyzing-preview-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Overlay de Escaneamento e Anonimização */
+.privacy-scan-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Grade de escaneamento cibernético */
+.privacy-scan-grid {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(168, 85, 247, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(168, 85, 247, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Feixe laser de varredura que sobe e desce */
+.scanner-laser-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(168, 85, 247, 0.5) 15%, 
+    #c084fc 35%, 
+    #ffffff 50%, 
+    #f472b6 65%, 
+    rgba(244, 114, 182, 0.5) 85%, 
+    transparent 100%
+  );
+  box-shadow: 
+    0 0 12px 2px rgba(192, 132, 252, 0.8),
+    0 0 24px 4px rgba(244, 114, 182, 0.5);
+  animation: scanMove 2.6s ease-in-out infinite;
+  z-index: 5;
+}
+
+.scanner-laser-beam::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(180deg, transparent, rgba(168, 85, 247, 0.22));
+}
+
+.scanner-laser-beam::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(0deg, transparent, rgba(236, 72, 153, 0.22));
+}
+
+/* Onda de desfoque sutil simulando filtro ativo */
+.scanner-blur-wave {
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  opacity: 0.65;
+  animation: blurPulse 2.6s ease-in-out infinite;
+  z-index: 4;
+}
+
+/* Badge HUD de status de privacidade */
+.scan-hud-badge {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(192, 132, 252, 0.4);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45), 0 0 12px rgba(134, 0, 125, 0.3);
+  padding: 0.45rem 0.95rem;
+  border-radius: 9999px;
+  z-index: 10;
+  white-space: nowrap;
+}
+
+.hud-shield-pulse {
+  font-size: 1.15rem;
+  animation: shieldPulse 1.8s ease-in-out infinite;
+}
+
+.hud-badge-info {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.hud-badge-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.3px;
+}
+
+.hud-badge-status {
+  font-size: 0.68rem;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+/* Cantoneiras de visor de IA */
+.hud-corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-color: #c084fc;
+  border-style: solid;
+  z-index: 8;
+  opacity: 0.85;
+}
+
+.corner-tl { top: 12px; left: 12px; border-width: 2.5px 0 0 2.5px; border-top-left-radius: 4px; }
+.corner-tr { top: 12px; right: 12px; border-width: 2.5px 2.5px 0 0; border-top-right-radius: 4px; }
+.corner-bl { bottom: 12px; left: 12px; border-width: 0 0 2.5px 2.5px; border-bottom-left-radius: 4px; }
+.corner-br { bottom: 12px; right: 12px; border-width: 0 2.5px 2.5px 0; border-bottom-right-radius: 4px; }
+
+/* Detalhes de status e progresso abaixo da foto */
+.analyzing-details {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 440px;
   text-align: center;
-  gap: 1rem;
+}
+
+.analyzing-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.pulse-radar-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--primary, #86007D);
+  box-shadow: 0 0 0 0 rgba(134, 0, 125, 0.7);
+  animation: pulseDot 1.6s infinite;
+  flex-shrink: 0;
 }
 
 .analyzing-text {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: var(--text, #0f172a);
+  margin: 0;
+}
+
+.analyzing-progress-bar {
+  width: 100%;
+  height: 4px;
+  background: #e2e8f0;
+  border-radius: 9999px;
+  overflow: hidden;
+  position: relative;
+  margin: 0.25rem 0;
+}
+
+.analyzing-progress-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  background: linear-gradient(90deg, #86007D, #c084fc, #ec4899);
+  border-radius: 9999px;
+  animation: indeterminateBar 1.8s infinite ease-in-out;
 }
 
 .analyzing-sub {
-  font-size: 0.9rem;
+  font-size: 0.84rem;
   color: var(--text-muted, #64748b);
+}
+
+/* Keyframes de Animação */
+@keyframes scanMove {
+  0% {
+    top: 0%;
+  }
+  50% {
+    top: calc(100% - 3px);
+  }
+  100% {
+    top: 0%;
+  }
+}
+
+@keyframes blurPulse {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes shieldPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.22);
+  }
+}
+
+@keyframes pulseDot {
+  0% {
+    box-shadow: 0 0 0 0 rgba(134, 0, 125, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(134, 0, 125, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(134, 0, 125, 0);
+  }
+}
+
+@keyframes indeterminateBar {
+  0% {
+    left: -40%;
+  }
+  50% {
+    left: 40%;
+  }
+  100% {
+    left: 100%;
+  }
 }
 
 .step-error {
@@ -1057,5 +1631,218 @@ const handleSaveIncident = async () => {
   margin-top: 6px;
   border: 1px solid #cbd5e1;
   width: fit-content;
+}
+
+/* --- Cooldown Banner & Disabled Upload Buttons --- */
+.cooldown-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  background: #fff7ed;
+  border: 1.5px solid #fb923c;
+  border-radius: 14px;
+  padding: 1rem 1.15rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 4px 12px rgba(251, 146, 60, 0.12);
+  animation: fadeIn 0.25s ease-out;
+}
+
+.cooldown-icon {
+  font-size: 1.75rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.cooldown-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cooldown-title {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: #9a3412;
+}
+
+.cooldown-desc {
+  font-size: 0.88rem;
+  color: #c2410c;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.btn-upload.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+/* --- Alerta Destacado: Localização Obrigatória para Salvar --- */
+.loc-required-alert {
+  background: #fffbeb;
+  border: 2px solid #f59e0b;
+  border-radius: 14px;
+  padding: 1rem 1.15rem;
+  margin-top: 0.75rem;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.loc-alert-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.loc-alert-badge {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  width: fit-content;
+}
+
+.loc-alert-msg {
+  font-size: 0.92rem;
+  color: #78350f;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.loc-prominent-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.btn-prominent {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #ffffff;
+}
+
+.btn-prominent:hover {
+  transform: translateY(-2px);
+}
+
+.btn-prominent-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.btn-prominent-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.btn-prominent-title {
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.btn-prominent-sub {
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.btn-prominent-gps {
+  border-color: rgba(134, 0, 125, 0.3);
+  background: #fdf4fd;
+  color: var(--primary, #86007D);
+  box-shadow: 0 2px 8px rgba(134, 0, 125, 0.08);
+}
+
+.btn-prominent-gps:hover:not(:disabled) {
+  background: #fae8fa;
+  border-color: var(--primary, #86007D);
+  box-shadow: 0 4px 12px rgba(134, 0, 125, 0.18);
+}
+
+.btn-prominent-gps:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.btn-prominent-gps .btn-prominent-title {
+  color: var(--primary, #86007D);
+}
+
+.btn-prominent-gps .btn-prominent-sub {
+  color: #701a75;
+}
+
+.btn-prominent-map {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #1e293b;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.btn-prominent-map:hover {
+  background: #f1f5f9;
+  border-color: #64748b;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.btn-prominent-map.is-active {
+  background: #1e293b;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.btn-prominent-map.is-active .btn-prominent-title {
+  color: #ffffff;
+}
+
+.btn-prominent-map.is-active .btn-prominent-sub {
+  color: #cbd5e1;
+}
+
+.btn-prominent-map .btn-prominent-sub {
+  color: #64748b;
+}
+
+.btn-save-incident.is-disabled-lock {
+  background: #94a3b8 !important;
+  border-color: #94a3b8 !important;
+  cursor: not-allowed !important;
+  opacity: 0.75;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 540px) {
+  .loc-prominent-actions {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -1,12 +1,25 @@
 <template>
-  <div class="multei-page container">
-    <!-- Cabeçalho -->
-    <div class="multei-header">
-      <div class="header-top">
-        <span class="badge">Multei</span>
-        <span v-if="isLoadingSheet" class="badge-status">Sincronizando com a planilha...</span>
+  <div class="multei-fullscreen-page">
+    <!-- Título H1 para SEO (atrás do mapa, indexável pelos motores de busca) -->
+    <h1 class="seo-title">Multei - Denúncia anônima de uso irregular de vagas para PcD</h1>
+
+    <!-- Controles Flutuantes no Topo Esquerdo: Botão Voltar + Painel de Status/Filtros -->
+    <div class="top-left-controls">
+      <NuxtLink to="/" class="btn-back-home" title="Voltar para a página inicial do Vale PCD"
+        aria-label="Voltar para a Home do Vale PCD">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round" class="back-icon">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        <span class="back-label">Voltar</span>
+      </NuxtLink>
+  
+      <div class="top-bar-pills glass-panel">
+        <span class="badge-brand">Multei</span>
+        <span v-if="isLoadingSheet" class="badge-status">Sincronizando...</span>
         <span v-else class="badge-status is-active">
-          {{ incidents.length }} {{ filterScope === 'nearby' ? 'na sua região' : 'no mapa' }}
+          {{ incidents.length }} {{ filterScope === 'nearby' ? 'na região' : 'no mapa' }}
         </span>
         
         <div class="scope-toggle">
@@ -38,37 +51,27 @@
           title="Clique para obter sua localização exata no mapa"
         >
           <span>📍</span>
-          <span>{{ locationState === 'denied' ? 'Ativar Localização' : 'Obter Localização' }}</span>
+          <span>{{ locationState === 'denied' ? 'Ativar GPS' : 'Meu GPS' }}</span>
         </button>
         <span v-else class="badge-status is-gps">📍 GPS Ativo</span>
       </div>
-      <h1 class="title">
-        Fiscalização Cidadã <span class="gradient-text">Vale PCD</span>
-      </h1>
-      <p class="lead text-muted">
-        Mapeamento comunitário de infrações em vagas e rampas de acessibilidade.
-      </p>
     </div>
 
-    <!-- Seção do Mapa com Botão Sobreposto -->
-    <div class="map-section-wrapper">
-      <!-- Botão Flutuante Sobre o Mapa -->
-      <div class="map-floating-actions">
-        <button 
-          type="button" 
-          class="btn btn-primary btn-floating-report" 
-          @click="isCreateModalOpen = true"
-        >
-          <span>Incluir Ocorrência</span>
+    <!-- Botão Flutuante de Incluir Ocorrência -->
+    <div class="bottom-action-container">
+      <button type="button" class="btn btn-primary btn-floating-report" @click="isCreateModalOpen = true">
+        <span class="btn-report-icon" aria-hidden="true">+</span>
+        <span>Incluir</span>
         </button>
-      </div>
+        </div>
 
-      <!-- Componente do Mapa Google Maps -->
+    <!-- Mapa em Tela Cheia -->
+    <div class="fullscreen-map-container">
       <MulteiMapDisplay
         :incidents="incidents"
         :initial-center="initialCenter"
         :initial-zoom="15"
-        height="600px"
+        height="100vh"
         @marker-click="handleMarkerClick"
       />
     </div>
@@ -98,8 +101,12 @@ import { ref, onMounted } from 'vue';
 import { fetchIncidentsFromSheet } from '~/services/sheetsService';
 import { requestUserLocation } from '~/services/geoService';
 
+      definePageMeta({
+        layout: false
+      });
+
 useHead({
-  title: 'Multei | Fiscalização de Acessibilidade - Vale PCD',
+  title: 'Multei - Denúncia anônima de uso irregular de vagas para PcD',
   meta: [
     { name: 'description', content: 'Mapeamento colaborativo de vagas e infrações contra acessibilidade com proteção de privacidade por IA.' }
   ]
@@ -219,43 +226,125 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.multei-page {
-  padding-top: 2rem;
-  padding-bottom: 5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+.seo-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  z-index: 0;
 }
 
-.multei-header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  max-width: 800px;
+.multei-fullscreen-page {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  background: #0f172a;
+  z-index: 1;
 }
 
-.header-top {
+.fullscreen-map-container {
+  width: 100%;
+  height: 100%;
+}
+
+.fullscreen-map-container :deep(.map-display-wrapper) {
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  height: 100vh !important;
+  min-height: 100vh !important;
+}
+
+.top-left-controls {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 30;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
   flex-wrap: wrap;
+  max-width: calc(100vw - 32px);
+}
+
+.btn-back-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: #ffffff;
+  color: #1e293b;
+  font-weight: 700;
+  font-size: 0.88rem;
+  padding: 0.55rem 1.05rem;
+  border-radius: 9999px;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-back-home:hover {
+  background: #f8fafc;
+  color: var(--primary, #86007D);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
+}
+
+.back-icon {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+}
+
+.glass-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(14px);
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  flex-wrap: wrap;
+}
+
+.badge-brand {
+  background: linear-gradient(135deg, var(--primary, #86007D), #bf4848);
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .scope-toggle {
   display: inline-flex;
   align-items: center;
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(0, 0, 0, 0.06);
   border-radius: 9999px;
-  padding: 3px;
+  padding: 2px;
   gap: 2px;
 }
 
 .scope-btn {
   background: transparent;
   border: none;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 600;
-  padding: 0.25rem 0.65rem;
+  padding: 0.2rem 0.55rem;
   border-radius: 9999px;
   color: var(--text-muted, #64748b);
   cursor: pointer;
@@ -269,14 +358,14 @@ onMounted(async () => {
 .scope-btn.is-active {
   background: #ffffff;
   color: var(--primary, #86007D);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .badge-status {
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   color: var(--text-muted, #64748b);
   background: rgba(0, 0, 0, 0.05);
-  padding: 0.2rem 0.6rem;
+  padding: 0.18rem 0.55rem;
   border-radius: 9999px;
   font-weight: 500;
 }
@@ -294,12 +383,12 @@ onMounted(async () => {
 .badge-location-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 0.8rem;
+  gap: 0.3rem;
+  font-size: 0.76rem;
   background: rgba(134, 0, 125, 0.1);
   color: var(--primary, #86007D);
   border: 1px solid rgba(134, 0, 125, 0.25);
-  padding: 0.2rem 0.65rem;
+  padding: 0.18rem 0.55rem;
   border-radius: 9999px;
   cursor: pointer;
   font-weight: 600;
@@ -311,50 +400,58 @@ onMounted(async () => {
   color: #fff;
 }
 
-.title {
-  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
-  font-weight: 800;
-  line-height: 1.2;
-}
-
-.lead {
-  font-size: 1.1rem;
-  line-height: 1.6;
-}
-
-.map-section-wrapper {
-  position: relative;
-  width: 100%;
-  border-radius: var(--radius-lg, 20px);
-  overflow: hidden;
-}
-
-.map-floating-actions {
+.bottom-action-container {
   position: absolute;
   bottom: 24px;
-  left: 16px;
-  z-index: 25;
+  left: 20px;
+  z-index: 30;
 }
 
 .btn-floating-report {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.85rem 1.4rem;
+  padding: 0.85rem 1.5rem;
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.98rem;
   border-radius: 9999px;
-  box-shadow: 0 10px 25px rgba(134, 0, 125, 0.35);
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 10px 25px rgba(134, 0, 125, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.35);
   backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .btn-floating-report:hover {
   transform: translateY(-2px);
-  box-shadow: 0 14px 28px rgba(134, 0, 125, 0.45);
+  box-shadow: 0 14px 28px rgba(134, 0, 125, 0.5);
 }
 
-.btn-icon {
+.btn-report-icon {
   font-size: 1.15rem;
+}
+
+@media (max-width: 640px) {
+  .top-left-controls {
+    top: 12px;
+    left: 12px;
+    gap: 0.5rem;
+  }
+  .btn-back-home {
+    padding: 0.45rem 0.8rem;
+    font-size: 0.82rem;
+  }
+  .bottom-action-container {
+    bottom: 20px;
+    left: 16px;
+    right: 16px;
+    display: flex;
+    justify-content: center;
+  }
+  .btn-floating-report {
+    width: 100%;
+    max-width: 320px;
+    justify-content: center;
+  }
 }
 </style>
