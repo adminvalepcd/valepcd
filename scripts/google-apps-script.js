@@ -122,10 +122,10 @@ function doPost(e) {
   try {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
 
-    // 1. Garantir que os cabeçalhos existam
+    // 1. Garantir que os cabeçalhos existam na ordem padrão: id | data | latitude | longitude | foto | ativo | motivo_denuncia | cidade | estado
     var headers = [];
     if (sheet.getLastRow() === 0) {
-      headers = ['id', 'data', 'latitude', 'longitude', 'cidade', 'estado', 'foto', 'ativo', 'motivo_denuncia'];
+      headers = ['id', 'data', 'latitude', 'longitude', 'foto', 'ativo', 'motivo_denuncia', 'cidade', 'estado'];
       sheet.appendRow(headers);
       sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
     } else {
@@ -134,8 +134,8 @@ function doPost(e) {
         return String(h).trim().toLowerCase();
       });
 
-      // Se a planilha já tinha colunas antigas, adiciona as novas colunas que faltarem dinamicamente
-      var requiredHeaders = ['cidade', 'estado', 'ativo', 'motivo_denuncia'];
+      // Se a planilha já tinha colunas antigas, adiciona as novas colunas que faltarem dinamicamente (cidade e estado no final após motivo_denuncia)
+      var requiredHeaders = ['foto', 'ativo', 'motivo_denuncia', 'cidade', 'estado'];
       for (var r = 0; r < requiredHeaders.length; r++) {
         var req = requiredHeaders[r];
         if (headers.indexOf(req) === -1) {
@@ -224,11 +224,11 @@ function doPost(e) {
       else if (col === 'data' || col === 'timestamp') newRow.push(dataIso);
       else if (col === 'latitude') newRow.push(latitude);
       else if (col === 'longitude') newRow.push(longitude);
-      else if (col === 'cidade') newRow.push(cidade);
-      else if (col === 'estado') newRow.push(estado);
       else if (col === 'foto' || col === 'image') newRow.push(foto);
       else if (col === 'ativo') newRow.push(ativo);
       else if (col === 'motivo_denuncia') newRow.push(motivo);
+      else if (col === 'cidade') newRow.push(cidade);
+      else if (col === 'estado') newRow.push(estado);
       else newRow.push(payload[col] || '');
     }
 
@@ -281,6 +281,7 @@ function normalizeStateUF(stateStr) {
  * Resolve cidade e estado a partir de coordenadas geográficas
  * 1. Varre TODOS os resultados do Maps.newGeocoder() do Google Apps Script
  * 2. Fallback resiliente via OpenStreetMap Nominatim usando UrlFetchApp
+ * 3. Fallback BigDataCloud extraindo o município (adminLevel === 8)
  */
 function resolveLocationCityAndState(lat, lng) {
   var result = { cidade: '', estado: '' };
@@ -299,10 +300,16 @@ function resolveLocationCityAndState(lat, lng) {
             result.estado = comps[c].short_name || comps[c].long_name || '';
           }
           if (!result.cidade && types.indexOf('administrative_area_level_2') !== -1) {
-            result.cidade = comps[c].long_name || comps[c].short_name || '';
+            var candidate = comps[c].long_name || comps[c].short_name || '';
+            if (candidate && candidate.toLowerCase().indexOf('região metropolitana') === -1) {
+              result.cidade = candidate;
+            }
           }
           if (!result.cidade && types.indexOf('locality') !== -1) {
-            result.cidade = comps[c].long_name || comps[c].short_name || '';
+            var candidateLoc = comps[c].long_name || comps[c].short_name || '';
+            if (candidateLoc && candidateLoc.toLowerCase().indexOf('região metropolitana') === -1) {
+              result.cidade = candidateLoc;
+            }
           }
         }
         if (result.cidade && result.estado) break;
@@ -340,6 +347,38 @@ function resolveLocationCityAndState(lat, lng) {
         }
       }
     } catch (osmErr) {
+      // Fallback silencioso
+    }
+  }
+
+  // 3. Fallback BigDataCloud extraindo adminLevel 8 (Município brasileiro)
+  if (!result.cidade || !result.estado) {
+    try {
+      var bdcUrl = 'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + encodeURIComponent(lat) + '&longitude=' + encodeURIComponent(lng) + '&localityLanguage=pt';
+      var bdcRes = UrlFetchApp.fetch(bdcUrl, { muteHttpExceptions: true });
+      if (bdcRes.getResponseCode() === 200) {
+        var bdcData = JSON.parse(bdcRes.getContentText());
+        var adminList = (bdcData && bdcData.localityInfo && bdcData.localityInfo.administrative) ? bdcData.localityInfo.administrative : [];
+        if (!result.cidade) {
+          for (var a = 0; a < adminList.length; a++) {
+            if (adminList[a].adminLevel === 8 && adminList[a].name) {
+              result.cidade = String(adminList[a].name).trim();
+              break;
+            }
+          }
+          if (!result.cidade) {
+            var cand = bdcData.locality || bdcData.city || '';
+            if (cand && cand.toLowerCase().indexOf('região metropolitana') === -1) {
+              result.cidade = String(cand).trim();
+            }
+          }
+        }
+        if (!result.estado) {
+          var code = bdcData.principalSubdivisionCode ? String(bdcData.principalSubdivisionCode).replace(/^BR-/, '') : '';
+          result.estado = code || bdcData.principalSubdivision || '';
+        }
+      }
+    } catch (bdcErr) {
       // Fallback silencioso
     }
   }

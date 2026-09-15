@@ -952,18 +952,21 @@ const handleSaveIncident = async () => {
       }
     } catch (gpsErr) {
       console.warn('[CreateIncidentModal] Permissão do GPS negada ao tentar salvar sem cidade/estado:', gpsErr);
-      isSaving.value = false;
-      gpsStatusIsError.value = true;
-      gpsStatusMessage.value = 'Autorização do GPS necessária para identificar Cidade e Estado.';
-      saveError.value = 'Cidade e Estado não foram coletados. Por favor, autorize o uso do GPS no seu navegador para pegarmos sua localização antes de salvar.';
-      return;
+      if (locationSource.value === 'fallback') {
+        isSaving.value = false;
+        gpsStatusIsError.value = true;
+        gpsStatusMessage.value = 'Autorização do GPS necessária para identificar Cidade e Estado.';
+        saveError.value = 'Cidade e Estado não foram coletados. Por favor, autorize o uso do GPS no seu navegador para pegarmos sua localização antes de salvar.';
+        return;
+      }
     }
   }
 
-  const finalCidade = (currentCidade.value || (addressText.value ? extractCityAndStateFromText(addressText.value).cidade : '') || '').trim();
-  const finalEstado = (currentEstado.value || (addressText.value ? extractCityAndStateFromText(addressText.value).estado : '') || '').trim();
+  let finalCidade = (currentCidade.value || (addressText.value ? extractCityAndStateFromText(addressText.value).cidade : '') || '').trim();
+  let finalEstado = (currentEstado.value || (addressText.value ? extractCityAndStateFromText(addressText.value).estado : '') || '').trim();
 
-  if (!finalCidade || !finalEstado) {
+  // Só bloqueia se não houver coordenadas válidas (ainda em fallback)
+  if (locationSource.value === 'fallback' && (!finalCidade || !finalEstado)) {
     isSaving.value = false;
     saveError.value = 'Não foi possível identificar a Cidade e o Estado. Autorize o uso do GPS ou ajuste o pino no mapa para prosseguir.';
     return;
@@ -981,15 +984,17 @@ const handleSaveIncident = async () => {
   };
 
   try {
-    // Gravar na planilha através do serviço
+    // Gravar na planilha através do serviço (respeitando ordem das colunas: id, data, latitude, longitude, foto, ativo, motivo_denuncia, cidade, estado)
     const saveResult = await saveIncidentToSheet(props.appsScriptUrl || '', {
       id: newIncident.id,
       data: String(newIncident.timestamp),
       latitude: newIncident.latitude,
       longitude: newIncident.longitude,
+      foto: newIncident.maskedImageUrl,
+      ativo: true,
+      motivo_denuncia: '',
       cidade: newIncident.cidade,
-      estado: newIncident.estado,
-      foto: newIncident.maskedImageUrl
+      estado: newIncident.estado
     });
 
     if (saveResult && saveResult.cidade) {
@@ -999,6 +1004,9 @@ const handleSaveIncident = async () => {
     if (saveResult && saveResult.estado) {
       newIncident.estado = saveResult.estado;
       currentEstado.value = saveResult.estado;
+    }
+    if ((!addressText.value || addressText.value.startsWith('Lat:')) && newIncident.cidade) {
+      newIncident.description = `${newIncident.cidade}${newIncident.estado ? ` - ${newIncident.estado}` : ''}`;
     }
 
     emit('incidentCreated', newIncident);

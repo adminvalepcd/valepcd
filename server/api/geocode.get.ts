@@ -87,12 +87,23 @@ export default defineEventHandler(async (event) => {
       const bdcRes = await fetch(bdcUrl);
       if (bdcRes.ok) {
         const bdcData = await bdcRes.json();
+        const adminList = Array.isArray(bdcData?.localityInfo?.administrative) ? bdcData.localityInfo.administrative : [];
         if (!city) {
-          city = bdcData.city || bdcData.locality || '';
+          const munObj = adminList.find((a: any) => a.adminLevel === 8 && a.name);
+          if (munObj && munObj.name) {
+            city = String(munObj.name).trim();
+          } else {
+            const candidate = bdcData.locality || bdcData.city || '';
+            if (candidate && !/^(regi[aã]o metropolitana|microrregi[aã]o|mesorregi[aã]o)/i.test(String(candidate).trim())) {
+              city = String(candidate).trim();
+            }
+          }
         }
         if (!state) {
           const code = bdcData.principalSubdivisionCode ? String(bdcData.principalSubdivisionCode).replace(/^BR-/, '') : '';
-          state = normalizeState(code || bdcData.principalSubdivision || '');
+          const stateObj = adminList.find((a: any) => a.adminLevel === 4 && (a.isoCode || a.name));
+          const iso = stateObj?.isoCode ? String(stateObj.isoCode).replace(/^BR-/, '') : '';
+          state = normalizeState(code || iso || stateObj?.name || bdcData.principalSubdivision || '');
         }
         if (state === 'DF' && (!city || city.toLowerCase().includes('plano piloto') || city.toLowerCase().includes('distrito federal'))) {
           city = 'Brasília';

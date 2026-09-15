@@ -50,6 +50,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import LoadingSpinner from './LoadingSpinner.vue';
+import { requestUserLocation } from '~/services/geoService';
 
 const props = defineProps({
   incidents: {
@@ -78,7 +79,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['markerClick', 'pinLocationChange', 'boundsChange']);
+const emit = defineEmits(['markerClick', 'pinLocationChange', 'boundsChange', 'userLocationFound']);
 
 const config = useRuntimeConfig();
 const mapsApiKey = config.public.googleMapsApiKey || 'AIzaSyBE9MtDA7cziFHANDknpjvgP5jkAvXyguU';
@@ -96,6 +97,8 @@ let isInitialPanDone = false;
 let activeMarkers = [];
 let activeSpiderLines = [];
 let activeSpiderDots = [];
+let userLocationMarker = null;
+let userLocationHalo = null;
 
 const isReady = computed(() => {
   return (props.isMapApiLoaded || isApiLoaded.value) && !!map.value;
@@ -227,6 +230,131 @@ const updateSpiderGraphicsVisibility = () => {
   activeSpiderDots.forEach(dot => dot.setMap(showSpider ? map.value : null));
 };
 
+const updateUserLocationDot = (lat, lng) => {
+  if (!map.value || !window.google?.maps) return;
+  const googleMaps = window.google.maps;
+  const pos = { lat, lng };
+
+  if (!userLocationHalo) {
+    userLocationHalo = new googleMaps.Circle({
+      strokeColor: '#4285F4',
+      strokeOpacity: 0.35,
+      strokeWeight: 1,
+      fillColor: '#4285F4',
+      fillOpacity: 0.15,
+      map: map.value,
+      center: pos,
+      radius: 35,
+      clickable: false,
+      zIndex: 998
+    });
+  } else {
+    userLocationHalo.setCenter(pos);
+    userLocationHalo.setMap(map.value);
+  }
+
+  if (!userLocationMarker) {
+    userLocationMarker = new googleMaps.Marker({
+      position: pos,
+      map: map.value,
+      title: 'Sua localização atual',
+      clickable: false,
+      zIndex: 999,
+      icon: {
+        path: googleMaps.SymbolPath.CIRCLE,
+        scale: 7,
+        fillColor: '#4285F4',
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 2.5
+      }
+    });
+  } else {
+    userLocationMarker.setPosition(pos);
+    userLocationMarker.setMap(map.value);
+  }
+};
+
+const createMyLocationControl = (mapInstance, googleMaps) => {
+  const controlDiv = document.createElement('div');
+  controlDiv.style.margin = '10px';
+
+  const controlButton = document.createElement('button');
+  controlButton.type = 'button';
+  controlButton.title = 'Centralizar na minha localização';
+  controlButton.setAttribute('aria-label', 'Centralizar na minha localização');
+  controlButton.style.backgroundColor = '#ffffff';
+  controlButton.style.border = 'none';
+  controlButton.style.borderRadius = '2px';
+  controlButton.style.boxShadow = 'rgba(0, 0, 0, 0.3) 0px 1px 4px -1px';
+  controlButton.style.cursor = 'pointer';
+  controlButton.style.width = '40px';
+  controlButton.style.height = '40px';
+  controlButton.style.padding = '0';
+  controlButton.style.display = 'flex';
+  controlButton.style.alignItems = 'center';
+  controlButton.style.justifyContent = 'center';
+  controlButton.style.transition = 'background-color 0.15s ease';
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '20');
+  svg.setAttribute('height', '20');
+  svg.style.fill = '#666666';
+  svg.style.transition = 'fill 0.2s ease, transform 0.3s ease';
+
+  const path = document.createElementNS(svgNS, 'path');
+  path.setAttribute(
+    'd',
+    'M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z'
+  );
+  svg.appendChild(path);
+  controlButton.appendChild(svg);
+  controlDiv.appendChild(controlButton);
+
+  controlButton.addEventListener('mouseenter', () => {
+    controlButton.style.backgroundColor = '#f8fafc';
+    if (svg.style.fill !== 'rgb(26, 115, 232)' && svg.style.fill !== '#1a73e8') {
+      svg.style.fill = '#333333';
+    }
+  });
+  controlButton.addEventListener('mouseleave', () => {
+    controlButton.style.backgroundColor = '#ffffff';
+    if (svg.style.fill !== 'rgb(26, 115, 232)' && svg.style.fill !== '#1a73e8') {
+      svg.style.fill = '#666666';
+    }
+  });
+
+  controlButton.addEventListener('click', async () => {
+    svg.style.fill = '#1a73e8';
+    svg.style.transform = 'rotate(45deg)';
+    try {
+      const coords = await requestUserLocation();
+      svg.style.transform = 'rotate(0deg)';
+      svg.style.fill = '#1a73e8';
+
+      updateUserLocationDot(coords.latitude, coords.longitude);
+
+      mapInstance.panTo({ lat: coords.latitude, lng: coords.longitude });
+      if ((mapInstance.getZoom() || 0) < 16) {
+        mapInstance.setZoom(16);
+      }
+
+      if (props.pinLocation) {
+        emit('pinLocationChange', { latitude: coords.latitude, longitude: coords.longitude });
+      }
+      emit('userLocationFound', { latitude: coords.latitude, longitude: coords.longitude });
+    } catch (err) {
+      svg.style.transform = 'rotate(0deg)';
+      svg.style.fill = '#dc2626';
+      console.warn('[MapDisplay] Não foi possível obter GPS pelo botão Minha Localização:', err);
+    }
+  });
+
+  mapInstance.controls[googleMaps.ControlPosition.RIGHT_BOTTOM].push(controlDiv);
+};
+
 const initMap = () => {
   if (!mapContainer.value || map.value || !window.google?.maps) {
     return;
@@ -248,6 +376,13 @@ const initMap = () => {
       mapTypeControl: false,
       gestureHandling: 'greedy'
     });
+
+    createMyLocationControl(map.value, googleMaps);
+
+    const isDefaultSP = Math.abs(center.lat - (-23.55052)) < 0.0001 && Math.abs(center.lng - (-46.633308)) < 0.0001;
+    if (!isDefaultSP && !props.pinLocation) {
+      updateUserLocationDot(center.lat, center.lng);
+    }
 
     if (window.markerClusterer?.MarkerClusterer && !props.pinLocation) {
       const clusterOptions = {
@@ -556,6 +691,10 @@ watch(() => props.initialCenter, (newCenter) => {
     if ((map.value.getZoom() || 0) < props.initialZoom) {
       map.value.setZoom(props.initialZoom);
     }
+    const isDefaultSP = Math.abs(newCenter.latitude - (-23.55052)) < 0.0001 && Math.abs(newCenter.longitude - (-46.633308)) < 0.0001;
+    if (!isDefaultSP) {
+      updateUserLocationDot(newCenter.latitude, newCenter.longitude);
+    }
   }
 }, { deep: true });
 
@@ -583,6 +722,14 @@ onBeforeUnmount(() => {
       marker.setMap(null);
     });
     activeMarkers = [];
+  }
+  if (userLocationMarker) {
+    userLocationMarker.setMap(null);
+    userLocationMarker = null;
+  }
+  if (userLocationHalo) {
+    userLocationHalo.setMap(null);
+    userLocationHalo = null;
   }
   clearSpiderGraphics();
   if (listenerRef) {

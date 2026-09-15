@@ -254,12 +254,23 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
       const bdcRes = await fetch(bdcUrl);
       if (bdcRes.ok) {
         const bdcData = await bdcRes.json();
+        const adminList = Array.isArray(bdcData?.localityInfo?.administrative) ? bdcData.localityInfo.administrative : [];
         if (!accCidade) {
-          accCidade = bdcData.city || bdcData.locality || '';
+          const munObj = adminList.find((a: any) => a.adminLevel === 8 && a.name);
+          if (munObj && munObj.name) {
+            accCidade = String(munObj.name).trim();
+          } else {
+            const candidate = bdcData.locality || bdcData.city || '';
+            if (candidate && !/^(regi[aã]o metropolitana|microrregi[aã]o|mesorregi[aã]o)/i.test(String(candidate).trim())) {
+              accCidade = String(candidate).trim();
+            }
+          }
         }
         if (!accEstado) {
           const code = bdcData.principalSubdivisionCode ? String(bdcData.principalSubdivisionCode).replace(/^BR-/, '') : '';
-          accEstado = normalizeState(code || bdcData.principalSubdivision || '');
+          const stateObj = adminList.find((a: any) => a.adminLevel === 4 && (a.isoCode || a.name));
+          const iso = stateObj?.isoCode ? String(stateObj.isoCode).replace(/^BR-/, '') : '';
+          accEstado = normalizeState(code || iso || stateObj?.name || bdcData.principalSubdivision || '');
         }
         if (accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
           accCidade = 'Brasília';

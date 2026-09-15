@@ -108,6 +108,7 @@
         height="100vh"
         @marker-click="handleMarkerClick"
         @bounds-change="handleBoundsChange"
+        @user-location-found="handleUserLocationFound"
       />
     </div>
 
@@ -152,7 +153,7 @@ const config = useRuntimeConfig();
 const appsScriptUrl = ref(
   (config.public.appsScriptUrl) || 
   (process.env.VITE_APPS_SCRIPT_URL) || 
-  'https://script.google.com/macros/s/AKfycbxviY_Dn5xvGiFEicWg0T-1mrkGlEBuBCoharmgS_BHMkNC188KpXBpAxKH58_UkfGs/exec'
+  'https://script.google.com/macros/s/AKfycbwGVAI7cZmvn9WTEhshd_5_tYo-DYHqw6EwE8_buh__dz1KzPAKaC3avd-56k7dvHKt/exec'
 );
 
 const isCreateModalOpen = ref(false);
@@ -309,6 +310,15 @@ const handleRegionButtonClick = () => {
 const setFilterScope = (scope) => {
   if (filterScope.value === scope) return;
   loadIncidents(scope);
+};
+
+const handleUserLocationFound = (coords) => {
+  initialCenter.value = coords;
+  currentMapCenter.value = coords;
+  locationState.value = 'granted';
+  if (filterScope.value === 'nearby') {
+    loadIncidents('nearby', coords);
+  }
 };
 
 const requestLocation = async () => {

@@ -1,15 +1,16 @@
 import type { ReportedIncident } from '../types';
+import { getAddressDetailsFromCoords } from './geoService';
 
 export interface SheetRowPayload {
   id: string;
   data: string;
   latitude: number;
   longitude: number;
-  cidade?: string;
-  estado?: string;
   foto: string;
   ativo?: boolean;
   motivo_denuncia?: string;
+  cidade?: string;
+  estado?: string;
 }
 
 export interface FetchIncidentsOptions {
@@ -124,12 +125,28 @@ export async function saveIncidentToSheet(
   appsScriptUrl: string,
   incident: SheetRowPayload
 ): Promise<{ success: boolean; cidade?: string; estado?: string }> {
+  let resolvedCidade = (incident.cidade || '').trim();
+  let resolvedEstado = (incident.estado || '').trim();
+
+  if ((!resolvedCidade || !resolvedEstado) && Number.isFinite(incident.latitude) && Number.isFinite(incident.longitude)) {
+    try {
+      const geoDetails = await getAddressDetailsFromCoords(incident.latitude, incident.longitude);
+      if (!resolvedCidade && geoDetails.cidade) resolvedCidade = geoDetails.cidade;
+      if (!resolvedEstado && geoDetails.estado) resolvedEstado = geoDetails.estado;
+    } catch {}
+  }
+
+  // Ordem exata das colunas na planilha: id | data | latitude | longitude | foto | ativo | motivo_denuncia | cidade | estado
   const fullIncident = {
-    ...incident,
-    cidade: incident.cidade || '',
-    estado: incident.estado || '',
+    id: incident.id,
+    data: incident.data,
+    latitude: incident.latitude,
+    longitude: incident.longitude,
+    foto: incident.foto,
     ativo: incident.ativo !== undefined ? incident.ativo : true,
-    motivo_denuncia: incident.motivo_denuncia || ''
+    motivo_denuncia: incident.motivo_denuncia || '',
+    cidade: resolvedCidade,
+    estado: resolvedEstado
   };
 
   // Salvar sempre em cache local preventivamente
