@@ -97,23 +97,38 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
 
   const cacheKey = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
   if (detailsCache.has(cacheKey)) {
-    return detailsCache.get(cacheKey)!;
+    const cached = detailsCache.get(cacheKey)!;
+    if (cached.cidade && cached.estado) {
+      return cached;
+    }
   }
+
+  let accFormattedAddress = '';
+  let accCidade = '';
+  let accEstado = '';
 
   // 1. Tentar endpoint interno do servidor Nuxt /api/geocode (sem problemas de CORS ou bloqueio 403)
   try {
     const res = await fetch(`/api/geocode?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`);
     if (res.ok) {
       const data = await res.json();
-      if (data && data.formattedAddress && (data.cidade || data.estado)) {
-        const details: GeoAddressDetails = {
-          formattedAddress: data.formattedAddress,
-          cidade: data.cidade || '',
-          estado: normalizeState(data.estado || '')
-        };
-        detailsCache.set(cacheKey, details);
-        addressCache.set(cacheKey, details.formattedAddress);
-        return details;
+      if (data) {
+        if (data.formattedAddress && !data.formattedAddress.startsWith('Lat:')) {
+          accFormattedAddress = data.formattedAddress;
+        }
+        if (data.cidade) accCidade = data.cidade;
+        if (data.estado) accEstado = normalizeState(data.estado);
+
+        if (accCidade && accEstado) {
+          const details: GeoAddressDetails = {
+            formattedAddress: accFormattedAddress || `${accCidade} - ${accEstado}`,
+            cidade: accCidade,
+            estado: accEstado
+          };
+          detailsCache.set(cacheKey, details);
+          addressCache.set(cacheKey, details.formattedAddress);
+          return details;
+        }
       }
     }
   } catch (apiErr) {
@@ -138,39 +153,38 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
       });
 
       if (results && results.length > 0) {
-        let cidade = '';
-        let estado = '';
-        const formattedAddress = results[0]?.formatted_address || '';
+        if (!accFormattedAddress && results[0]?.formatted_address) {
+          accFormattedAddress = results[0].formatted_address;
+        }
 
         // Varre TODOS os resultados para encontrar cidade e estado mesmo se o primeiro for apenas a rua
         for (const res of results) {
           if (Array.isArray(res.address_components)) {
             for (const comp of res.address_components) {
               const types: string[] = comp.types || [];
-              if (!estado && types.includes('administrative_area_level_1')) {
-                estado = comp.short_name || comp.long_name || '';
+              if (!accEstado && types.includes('administrative_area_level_1')) {
+                accEstado = normalizeState(comp.short_name || comp.long_name || '');
               }
-              if (!cidade && types.includes('administrative_area_level_2')) {
-                cidade = comp.long_name || comp.short_name || '';
+              if (!accCidade && types.includes('administrative_area_level_2')) {
+                accCidade = comp.long_name || comp.short_name || '';
               }
-              if (!cidade && (types.includes('locality') || types.includes('sublocality_level_1'))) {
-                cidade = comp.long_name || comp.short_name || '';
+              if (!accCidade && (types.includes('locality') || types.includes('sublocality_level_1'))) {
+                accCidade = comp.long_name || comp.short_name || '';
               }
             }
           }
-          if (cidade && estado) break;
+          if (accCidade && accEstado) break;
         }
 
-        estado = normalizeState(estado);
-        if (estado === 'DF' && (!cidade || cidade.toLowerCase().includes('plano piloto'))) {
-          cidade = 'Brasília';
+        if (accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
+          accCidade = 'Brasília';
         }
 
-        if (cidade || estado) {
+        if (accCidade && accEstado) {
           const details: GeoAddressDetails = {
-            formattedAddress: formattedAddress || `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
-            cidade,
-            estado
+            formattedAddress: accFormattedAddress || `${accCidade} - ${accEstado}`,
+            cidade: accCidade,
+            estado: accEstado
           };
           detailsCache.set(cacheKey, details);
           addressCache.set(cacheKey, details.formattedAddress);
@@ -183,66 +197,95 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
   }
 
   // 3. Fallback: OpenStreetMap Nominatim
-  try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&zoom=18&addressdetails=1&email=contato@valepcd.com.br`;
-    const res = await fetch(url, {
-      headers: {
-        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
+  if (!accCidade || !accEstado) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&zoom=18&addressdetails=1&email=contato@valepcd.com.br`;
+      const res = await fetch(url, {
+        headers: {
+          'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
+        }
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.address) {
+          const addr = data.address;
+          const street = addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || '';
+          const number = addr.house_number ? `, ${addr.house_number}` : '';
+          const suburb = addr.suburb || addr.neighbourhood || addr.city_district || '';
+          if (!accCidade) {
+            accCidade = addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || addr.hamlet || addr.state_district || '';
+          }
+          if (!accEstado) {
+            let state = '';
+            if (addr['ISO3166-2-lvl4']) {
+              state = String(addr['ISO3166-2-lvl4']).replace(/^BR-/, '');
+            } else {
+              state = addr.state || '';
+            }
+            accEstado = normalizeState(state);
+          }
+
+          if (accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
+            accCidade = 'Brasília';
+          }
+
+          const parts = [
+            street ? `${street}${number}` : '',
+            suburb,
+            accCidade,
+            accEstado
+          ].filter(Boolean);
+
+          if (!accFormattedAddress) {
+            accFormattedAddress = parts.length > 0 ? parts.join(' - ') : (data.display_name || '');
+          }
+        }
       }
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.address) {
-        const addr = data.address;
-        const street = addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || '';
-        const number = addr.house_number ? `, ${addr.house_number}` : '';
-        const suburb = addr.suburb || addr.neighbourhood || addr.city_district || '';
-        let city = addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || addr.hamlet || '';
-        let state = '';
-        if (addr['ISO3166-2-lvl4']) {
-          state = String(addr['ISO3166-2-lvl4']).replace(/^BR-/, '');
-        } else {
-          state = addr.state || '';
-        }
-        state = normalizeState(state);
-
-        if (state === 'DF' && (!city || city.toLowerCase().includes('plano piloto'))) {
-          city = 'Brasília';
-        }
-
-        const parts = [
-          street ? `${street}${number}` : '',
-          suburb,
-          city,
-          state
-        ].filter(Boolean);
-
-        const formatted = parts.length > 0 ? parts.join(' - ') : (data.display_name || '');
-        const details: GeoAddressDetails = {
-          formattedAddress: formatted || `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
-          cidade: city,
-          estado: state
-        };
-
-        if (details.cidade || details.estado) {
-          detailsCache.set(cacheKey, details);
-          addressCache.set(cacheKey, details.formattedAddress);
-        }
-        return details;
-      }
+    } catch (osmErr) {
+      console.warn('[geoService] Fallback Nominatim falhou:', osmErr);
     }
-  } catch (osmErr) {
-    console.warn('[geoService] Fallback Nominatim falhou:', osmErr);
   }
 
-  // 4. Caso nenhum consiga resolver, exibe as coordenadas (NÃO armazena falha vazia no cache)
-  const fallbackDetails: GeoAddressDetails = {
-    formattedAddress: `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
-    cidade: '',
-    estado: ''
+  // 4. Fallback final garantido: BigDataCloud Client Reverse Geocoding (sem rate-limit para cliente)
+  if (!accCidade || !accEstado) {
+    try {
+      const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&localityLanguage=pt`;
+      const bdcRes = await fetch(bdcUrl);
+      if (bdcRes.ok) {
+        const bdcData = await bdcRes.json();
+        if (!accCidade) {
+          accCidade = bdcData.city || bdcData.locality || '';
+        }
+        if (!accEstado) {
+          const code = bdcData.principalSubdivisionCode ? String(bdcData.principalSubdivisionCode).replace(/^BR-/, '') : '';
+          accEstado = normalizeState(code || bdcData.principalSubdivision || '');
+        }
+        if (accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
+          accCidade = 'Brasília';
+        }
+        if (!accFormattedAddress) {
+          const parts = [bdcData.locality, accCidade, accEstado].filter(Boolean);
+          accFormattedAddress = parts.join(' - ');
+        }
+      }
+    } catch (bdcErr) {
+      console.warn('[geoService] Fallback BigDataCloud falhou:', bdcErr);
+    }
+  }
+
+  const finalDetails: GeoAddressDetails = {
+    formattedAddress: accFormattedAddress || `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
+    cidade: accCidade,
+    estado: accEstado
   };
-  return fallbackDetails;
+
+  if (finalDetails.cidade && finalDetails.estado) {
+    detailsCache.set(cacheKey, finalDetails);
+    addressCache.set(cacheKey, finalDetails.formattedAddress);
+  }
+
+  return finalDetails;
 }
 
 /**

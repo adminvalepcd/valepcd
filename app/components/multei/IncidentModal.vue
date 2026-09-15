@@ -21,7 +21,9 @@
           v-else-if="currentPhoto"
           :src="currentPhoto" 
           alt="Foto da infração com dados sensíveis ocultos" 
-          class="incident-image" 
+          class="incident-image is-clickable" 
+          title="Clique para ver em tamanho original"
+          @click="isPhotoExpanded = true"
         />
         <div v-else class="image-empty-placeholder">
           <span>📷 Foto da infração indisponível</span>
@@ -31,6 +33,20 @@
         </p>
       </div>
 
+      <!-- Visualização da foto em tamanho original acima do modal -->
+      <div 
+        v-if="isPhotoExpanded && currentPhoto" 
+        class="photo-expanded-overlay" 
+        title="Clique para fechar"
+        @click.stop="isPhotoExpanded = false"
+      >
+        <img 
+          :src="currentPhoto" 
+          alt="Foto da infração em tamanho original" 
+          class="photo-expanded-img" 
+        />
+      </div>
+
       <div class="modal-info-list">
         <div class="info-row">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
@@ -38,7 +54,7 @@
           </svg>
           <div>
             <p class="info-label">Data e Hora:</p>
-            <p class="info-val">{{ new Date(incident.timestamp).toLocaleString() }}</p>
+            <p class="info-val">{{ formattedDate }}</p>
           </div>
         </div>
         
@@ -133,7 +149,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { getAddressFromCoords } from '../../services/geoService';
 import { reportIncidentInSheet, fetchIncidentPhoto } from '../../services/sheetsService';
 import LoadingSpinner from './LoadingSpinner.vue';
@@ -153,6 +169,7 @@ const emit = defineEmits(['close', 'incidentReported']);
 
 const currentPhoto = ref(props.incident?.maskedImageUrl || '');
 const isLoadingPhoto = ref(!currentPhoto.value);
+const isPhotoExpanded = ref(false);
 const addressText = ref('');
 const isResolving = ref(false);
 
@@ -188,6 +205,18 @@ const cleanStreetAndNeighborhood = (rawAddress, city, state) => {
 
   return addr;
 };
+
+const formattedDate = computed(() => {
+  if (!props.incident?.timestamp) return '';
+  const d = new Date(props.incident.timestamp);
+  if (isNaN(d.getTime())) return String(props.incident.timestamp);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${year} às ${hours}:${minutes}`;
+});
 
 const displayAddress = computed(() => {
   if (!addressText.value) return '';
@@ -282,12 +311,24 @@ const handleSubmitReport = async () => {
   }
 };
 
+const handleKeydown = (e) => {
+  if (e.key === 'Escape' && isPhotoExpanded.value) {
+    isPhotoExpanded.value = false;
+  }
+};
+
 onMounted(() => {
   resolveAddress();
   loadPhotoIfNeeded();
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
 });
 
 watch(() => props.incident, () => {
+  isPhotoExpanded.value = false;
   resolveAddress();
   loadPhotoIfNeeded();
 });
@@ -384,9 +425,42 @@ watch(() => props.incident, () => {
 .incident-image {
   width: 100%;
   max-height: 45vh;
-  object-fit: cover;
+  object-fit: scale-down;
   border-radius: var(--radius-md, 12px);
   background: #000;
+}
+
+.incident-image.is-clickable {
+  cursor: zoom-in;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.incident-image.is-clickable:hover {
+  opacity: 0.94;
+}
+
+.photo-expanded-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  background-color: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  cursor: zoom-out;
+}
+
+.photo-expanded-img {
+  max-width: 95vw;
+  max-height: 95vh;
+  width: auto;
+  height: auto;
+  object-fit: scale-down;
+  border-radius: var(--radius-md, 12px);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75);
+  cursor: zoom-out;
 }
 
 .privacy-note {

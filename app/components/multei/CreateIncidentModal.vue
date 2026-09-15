@@ -271,13 +271,10 @@
           <button 
             class="btn btn-primary btn-save-incident" 
             @click="handleSaveIncident" 
-            :disabled="isSaving || isResolvingAddress || !isLocationValid"
-            :class="{ 'is-disabled-lock': !isLocationValid }"
-            :title="!isLocationValid ? 'Confirme a cidade e o estado para liberar o salvamento' : ''"
+            :disabled="isSaving || isResolvingAddress"
           >
             <span v-if="isSaving">Processando...</span>
             <span v-else-if="isResolvingAddress">Obtendo endereço...</span>
-            <span v-else-if="!isLocationValid">Localização necessária para salvar</span>
             <span v-else>Salvar Ocorrência</span>
           </button>
         </div>
@@ -350,6 +347,7 @@ const selectedLocation = reactive({
 // --- Trava de Segurança 1: Cidade e Estado Obrigatórios para Salvar ---
 const isLocationValid = computed(() => {
   return Boolean(
+    locationSource.value !== 'fallback' &&
     currentCidade.value && 
     currentCidade.value.trim().length > 0 &&
     currentEstado.value && 
@@ -658,8 +656,11 @@ onMounted(async () => {
       locationSource.value = 'device';
       updateAddress(coords.latitude, coords.longitude);
     } catch {
-      // Permissão ainda não concedida, resolve endereço da posição inicial
-      updateAddress(selectedLocation.latitude, selectedLocation.longitude);
+      // Permissão ainda não concedida: mantém cidade e estado vazios para solicitar GPS antes de salvar
+      locationSource.value = 'fallback';
+      currentCidade.value = '';
+      currentEstado.value = '';
+      addressText.value = 'Localização pendente (autorize o GPS ou escolha no mapa)';
     }
   }
 });
@@ -787,8 +788,15 @@ const processSelectedImage = async (file) => {
       }
     }
 
-    // Iniciar busca pelo nome da rua imediatamente
-    currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
+    // Iniciar busca pelo nome da rua apenas se não for fallback sem localização real
+    if (locationSource.value === 'fallback') {
+      currentCidade.value = '';
+      currentEstado.value = '';
+      addressText.value = 'Localização pendente (autorize o GPS ou ajuste no mapa)';
+      currentAddressPromise = Promise.resolve(null);
+    } else {
+      currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
+    }
 
     // 2. Redimensionar previamente a imagem para envio rápido e leve à IA (~250KB)
     analyzingStatusText.value = 'Otimizando imagem...';
@@ -883,11 +891,6 @@ const handlePinChange = (newLoc) => {
 };
 
 const handleSaveIncident = async () => {
-  if (!isLocationValid.value) {
-    saveError.value = 'A Cidade e o Estado precisam ser confirmados antes de salvar. Use o GPS ou escolha a posição no mapa.';
-    return;
-  }
-
   isSaving.value = true;
   saveError.value = '';
 
@@ -895,7 +898,9 @@ const handleSaveIncident = async () => {
   if (geocodeDebounceTimer) {
     clearTimeout(geocodeDebounceTimer);
     geocodeDebounceTimer = null;
-    currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
+    if (locationSource.value !== 'fallback') {
+      currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
+    }
   }
 
   // 2. Se a busca de endereço estiver em andamento, aguarda finalizar
@@ -905,15 +910,15 @@ const handleSaveIncident = async () => {
     } catch {}
   }
 
-  // 3. Puxar SEMPRE cidade e estado diretamente do texto exibido no modal (addressText)
-  if (addressText.value) {
+  // 3. Puxar cidade e estado diretamente do texto exibido no modal se não estiver no fallback
+  if (locationSource.value !== 'fallback' && addressText.value) {
     const fromText = extractCityAndStateFromText(addressText.value);
     if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
     if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
   }
 
-  // 4. Se ainda faltar cidade ou estado, força uma tentativa direta
-  if (!currentCidade.value || !currentEstado.value) {
+  // 4. Se for posição válida mas ainda faltar cidade ou estado, força uma tentativa direta
+  if (locationSource.value !== 'fallback' && (!currentCidade.value || !currentEstado.value)) {
     try {
       const details = await getAddressDetailsFromCoords(selectedLocation.latitude, selectedLocation.longitude);
       if (details.cidade && !currentCidade.value) currentCidade.value = details.cidade;
@@ -924,15 +929,45 @@ const handleSaveIncident = async () => {
     } catch {}
   }
 
-  // 5. Garantia final via texto do modal
-  if (addressText.value && (!currentCidade.value || !currentEstado.value)) {
-    const fromText = extractCityAndStateFromText(addressText.value);
-    if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
-    if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
+  // 5. VERIFICAÇÃO ANTES DE SALVAR: se Cidade ou Estado não foram coletados (ou ainda está no fallback),
+  // solicita autorização do GPS ao usuário e coleta Cidade e Estado pelo GPS!
+  if (!currentCidade.value?.trim() || !currentEstado.value?.trim() || locationSource.value === 'fallback') {
+    gpsStatusIsError.value = false;
+    gpsStatusMessage.value = 'Solicitando autorização do GPS para coletar Cidade e Estado...';
+    try {
+      const gpsCoords = await requestUserLocation();
+      selectedLocation.latitude = gpsCoords.latitude;
+      selectedLocation.longitude = gpsCoords.longitude;
+      locationSource.value = 'device';
+      gpsStatusMessage.value = 'GPS autorizado! Identificando Cidade e Estado...';
+
+      const details = await updateAddress(gpsCoords.latitude, gpsCoords.longitude);
+      if (details?.cidade) currentCidade.value = details.cidade;
+      if (details?.estado) currentEstado.value = details.estado;
+
+      if (!currentCidade.value || !currentEstado.value) {
+        const fromText = extractCityAndStateFromText(addressText.value || '');
+        if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
+        if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
+      }
+    } catch (gpsErr) {
+      console.warn('[CreateIncidentModal] Permissão do GPS negada ao tentar salvar sem cidade/estado:', gpsErr);
+      isSaving.value = false;
+      gpsStatusIsError.value = true;
+      gpsStatusMessage.value = 'Autorização do GPS necessária para identificar Cidade e Estado.';
+      saveError.value = 'Cidade e Estado não foram coletados. Por favor, autorize o uso do GPS no seu navegador para pegarmos sua localização antes de salvar.';
+      return;
+    }
   }
 
-  const finalCidade = currentCidade.value || (addressText.value ? extractCityAndStateFromText(addressText.value).cidade : '') || '';
-  const finalEstado = currentEstado.value || (addressText.value ? extractCityAndStateFromText(addressText.value).estado : '') || '';
+  const finalCidade = (currentCidade.value || (addressText.value ? extractCityAndStateFromText(addressText.value).cidade : '') || '').trim();
+  const finalEstado = (currentEstado.value || (addressText.value ? extractCityAndStateFromText(addressText.value).estado : '') || '').trim();
+
+  if (!finalCidade || !finalEstado) {
+    isSaving.value = false;
+    saveError.value = 'Não foi possível identificar a Cidade e o Estado. Autorize o uso do GPS ou ajuste o pino no mapa para prosseguir.';
+    return;
+  }
 
   const newIncident = {
     id: `inc-${Date.now()}`,

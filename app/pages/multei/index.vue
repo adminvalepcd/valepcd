@@ -18,19 +18,26 @@
       <div class="top-bar-pills glass-panel">
         <span class="badge-brand">Multei</span>
         <span v-if="isLoadingSheet" class="badge-status">Sincronizando...</span>
-        <span v-else class="badge-status is-active">
-          {{ incidents.length }} {{ filterScope === 'nearby' ? 'na região' : 'no mapa' }}
+        <span 
+          v-else 
+          class="badge-status is-active"
+          :title="`Exibindo ${visibleIncidentsCount} de ${incidents.length} ocorrências carregadas`"
+        >
+          {{ visibleIncidentsCount }} na região
         </span>
         
         <div class="scope-toggle">
           <button 
             type="button" 
             class="scope-btn" 
-            :class="{ 'is-active': filterScope === 'nearby' }" 
-            @click="setFilterScope('nearby')"
-            title="Ver ocorrências próximas ao seu GPS (raio de 30 km)"
+            :class="{ 
+              'is-active': filterScope === 'nearby' && !hasMovedRegion,
+              'is-refresh-alert': hasMovedRegion
+            }" 
+            @click="handleRegionButtonClick"
+            :title="hasMovedRegion ? 'Você moveu o mapa. Clique para atualizar as ocorrências desta região (30 km)' : 'Ver ocorrências próximas (raio de 30 km)'"
           >
-            📍 Região (30 km)
+            {{ hasMovedRegion ? '🔄 Atualizar região' : '📍 Região (30 km)' }}
           </button>
           <button 
             type="button" 
@@ -53,9 +60,31 @@
           <span>📍</span>
           <span>{{ locationState === 'denied' ? 'Ativar GPS' : 'Meu GPS' }}</span>
         </button>
-        <span v-else class="badge-status is-gps">📍 GPS Ativo</span>
+        <button 
+          v-else 
+          type="button" 
+          class="badge-status is-gps is-clickable-gps"
+          @click="requestLocation"
+          title="Clique para voltar à sua localização GPS"
+        >
+          📍 GPS Ativo
+        </button>
       </div>
     </div>
+
+    <!-- Alerta sucinto flutuante quando o usuário move o mapa para outra região -->
+    <Transition name="fade-slide">
+      <button
+        v-if="hasMovedRegion && !isLoadingSheet"
+        type="button"
+        class="btn-floating-refresh"
+        @click="handleRegionButtonClick"
+        title="Você mudou a localização do mapa. Clique para carregar ocorrências desta região."
+      >
+        <span>🔄</span>
+        <span>Atualizar região</span>
+      </button>
+    </Transition>
 
     <!-- Botões Flutuantes: Incluir Ocorrência + Dúvidas? -->
     <div class="bottom-action-container">
@@ -78,6 +107,7 @@
         :initial-zoom="15"
         height="100vh"
         @marker-click="handleMarkerClick"
+        @bounds-change="handleBoundsChange"
       />
     </div>
 
@@ -102,7 +132,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { fetchIncidentsFromSheet } from '~/services/sheetsService';
 import { requestUserLocation } from '~/services/geoService';
 
@@ -136,7 +166,67 @@ const initialCenter = ref({
   longitude: -46.633308
 });
 
+const loadedCenter = ref({
+  latitude: -23.55052,
+  longitude: -46.633308
+});
+
+const currentMapCenter = ref({
+  latitude: -23.55052,
+  longitude: -46.633308
+});
+
 const incidents = ref([]);
+const mapBounds = ref(null);
+
+const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const hasMovedRegion = computed(() => {
+  if (filterScope.value !== 'nearby') return false;
+  if (!currentMapCenter.value || !loadedCenter.value) return false;
+  const dist = getDistanceKm(
+    currentMapCenter.value.latitude,
+    currentMapCenter.value.longitude,
+    loadedCenter.value.latitude,
+    loadedCenter.value.longitude
+  );
+  return dist > 2.5;
+});
+
+const handleBoundsChange = (bounds) => {
+  mapBounds.value = bounds;
+  if (bounds?.center) {
+    currentMapCenter.value = bounds.center;
+  }
+};
+
+const visibleIncidentsCount = computed(() => {
+  if (!mapBounds.value) {
+    return incidents.value.length;
+  }
+  const { north, south, east, west } = mapBounds.value;
+  return incidents.value.filter((inc) => {
+    const lat = Number(inc.latitude);
+    const lng = Number(inc.longitude);
+    if (isNaN(lat) || isNaN(lng)) return false;
+    const inLat = lat >= south && lat <= north;
+    const inLng = west <= east
+      ? (lng >= west && lng <= east)
+      : (lng >= west || lng <= east);
+    return inLat && inLng;
+  }).length;
+});
 
 const handleMarkerClick = (incident) => {
   selectedIncident.value = incident;
@@ -178,16 +268,24 @@ const handleIncidentReported = (reportedData) => {
   });
 };
 
-const loadIncidents = async (scope = filterScope.value) => {
+const loadIncidents = async (scope = filterScope.value, customCenter = null) => {
   if (!appsScriptUrl.value) return;
   isLoadingSheet.value = true;
   filterScope.value = scope;
 
+  const targetCenter = customCenter || currentMapCenter.value || initialCenter.value;
+  if (scope === 'nearby' && targetCenter) {
+    loadedCenter.value = {
+      latitude: targetCenter.latitude,
+      longitude: targetCenter.longitude
+    };
+  }
+
   try {
-    const isNearby = scope === 'nearby' && locationState.value === 'granted';
+    const isNearby = scope === 'nearby' && !!targetCenter;
     const options = isNearby ? {
-      latitude: initialCenter.value.latitude,
-      longitude: initialCenter.value.longitude,
+      latitude: targetCenter.latitude,
+      longitude: targetCenter.longitude,
       radiusKm: 30,
       includePhoto: true
     } : {
@@ -203,6 +301,11 @@ const loadIncidents = async (scope = filterScope.value) => {
   }
 };
 
+const handleRegionButtonClick = () => {
+  if (filterScope.value === 'nearby' && !hasMovedRegion.value) return;
+  loadIncidents('nearby', currentMapCenter.value || initialCenter.value);
+};
+
 const setFilterScope = (scope) => {
   if (filterScope.value === scope) return;
   loadIncidents(scope);
@@ -213,10 +316,9 @@ const requestLocation = async () => {
   try {
     const coords = await requestUserLocation();
     initialCenter.value = coords;
+    currentMapCenter.value = coords;
     locationState.value = 'granted';
-    if (filterScope.value === 'nearby') {
-      loadIncidents('nearby');
-    }
+    loadIncidents('nearby', coords);
   } catch (err) {
     console.warn('[multei] Permissão de geolocalização recusada ou indisponível:', err);
     locationState.value = 'denied';
@@ -366,6 +468,28 @@ onMounted(async () => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
+.scope-btn.is-refresh-alert {
+  background: linear-gradient(135deg, var(--primary, #86007D), #d97706);
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(134, 0, 125, 0.35);
+  animation: pulseRefresh 1.8s infinite ease-in-out;
+}
+
+.scope-btn.is-refresh-alert:hover {
+  color: #ffffff;
+  filter: brightness(1.08);
+}
+
+@keyframes pulseRefresh {
+  0%, 100% {
+    box-shadow: 0 2px 8px rgba(134, 0, 125, 0.35);
+  }
+  50% {
+    box-shadow: 0 2px 14px rgba(217, 119, 6, 0.55);
+  }
+}
+
 .badge-status {
   font-size: 0.76rem;
   color: var(--text-muted, #64748b);
@@ -383,6 +507,56 @@ onMounted(async () => {
 .badge-status.is-gps {
   color: #0369a1;
   background: #e0f2fe;
+}
+
+.is-clickable-gps {
+  border: 1px solid rgba(3, 105, 161, 0.25);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.is-clickable-gps:hover {
+  background: #0369a1;
+  color: #ffffff;
+}
+
+.btn-floating-refresh {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: #ffffff;
+  color: var(--primary, #86007D);
+  border: 1.5px solid var(--primary, #86007D);
+  padding: 0.5rem 1.15rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-floating-refresh:hover {
+  background: var(--primary, #86007D);
+  color: #ffffff;
+  transform: translateX(-50%) translateY(-1px);
+  box-shadow: 0 8px 22px rgba(134, 0, 125, 0.35);
+}
+
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-10px);
 }
 
 .badge-location-btn {
@@ -487,6 +661,9 @@ onMounted(async () => {
   .btn-back-home {
     padding: 0.45rem 0.8rem;
     font-size: 0.82rem;
+  }
+  .btn-floating-refresh {
+    top: 108px;
   }
   .bottom-action-container {
     bottom: 20px;

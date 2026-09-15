@@ -78,7 +78,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['markerClick', 'pinLocationChange']);
+const emit = defineEmits(['markerClick', 'pinLocationChange', 'boundsChange']);
 
 const config = useRuntimeConfig();
 const mapsApiKey = config.public.googleMapsApiKey || 'AIzaSyBE9MtDA7cziFHANDknpjvgP5jkAvXyguU';
@@ -91,6 +91,7 @@ const isApiLoaded = ref(false);
 let listenerRef = null;
 let clickListenerRef = null;
 let zoomListenerRef = null;
+let boundsListenerRef = null;
 let isInitialPanDone = false;
 let activeMarkers = [];
 let activeSpiderLines = [];
@@ -200,6 +201,24 @@ const clearSpiderGraphics = () => {
   activeSpiderDots = [];
 };
 
+const emitVisibleBounds = () => {
+  if (!map.value) return;
+  const bounds = map.value.getBounds();
+  const center = map.value.getCenter();
+  if (!bounds) return;
+  const ne = bounds.getNorthEast();
+  const sw = bounds.getSouthWest();
+  if (ne && sw) {
+    emit('boundsChange', {
+      north: ne.lat(),
+      south: sw.lat(),
+      east: ne.lng(),
+      west: sw.lng(),
+      center: center ? { latitude: center.lat(), longitude: center.lng() } : null
+    });
+  }
+};
+
 const updateSpiderGraphicsVisibility = () => {
   if (!map.value) return;
   const currentZoom = map.value.getZoom() || 15;
@@ -278,6 +297,15 @@ const initMap = () => {
     }
     zoomListenerRef = map.value.addListener('zoom_changed', () => {
       updateSpiderGraphicsVisibility();
+      emitVisibleBounds();
+    });
+
+    if (boundsListenerRef) {
+      boundsListenerRef.remove();
+      boundsListenerRef = null;
+    }
+    boundsListenerRef = map.value.addListener('idle', () => {
+      emitVisibleBounds();
     });
 
     setupPinListeners();
@@ -492,6 +520,8 @@ const updateMarkers = () => {
   if (clusterer.value) {
     clusterer.value.addMarkers(newMarkers);
   }
+
+  emitVisibleBounds();
 };
 
 // Observar pinLocation para modo de marcação
@@ -566,6 +596,10 @@ onBeforeUnmount(() => {
   if (zoomListenerRef) {
     zoomListenerRef.remove();
     zoomListenerRef = null;
+  }
+  if (boundsListenerRef) {
+    boundsListenerRef.remove();
+    boundsListenerRef = null;
   }
 });
 </script>

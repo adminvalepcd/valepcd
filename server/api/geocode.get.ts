@@ -33,6 +33,10 @@ export default defineEventHandler(async (event) => {
     };
   }
 
+  let formattedAddress = '';
+  let city = '';
+  let state = '';
+
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1&email=contato@valepcd.com.br`;
     const res = await fetch(url, {
@@ -49,9 +53,8 @@ export default defineEventHandler(async (event) => {
         const street = addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || '';
         const number = addr.house_number ? `, ${addr.house_number}` : '';
         const suburb = addr.suburb || addr.neighbourhood || addr.city_district || '';
-        let city = addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || addr.hamlet || '';
+        city = addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || addr.hamlet || addr.state_district || '';
         
-        let state = '';
         if (addr['ISO3166-2-lvl4']) {
           state = String(addr['ISO3166-2-lvl4']).replace(/^BR-/, '');
         } else {
@@ -59,7 +62,6 @@ export default defineEventHandler(async (event) => {
         }
         state = normalizeState(state);
 
-        // Caso especial: Distrito Federal / Brasília
         if (state === 'DF' && (!city || city.toLowerCase().includes('plano piloto') || city.toLowerCase().includes('distrito federal'))) {
           city = 'Brasília';
         }
@@ -71,21 +73,43 @@ export default defineEventHandler(async (event) => {
           state
         ].filter(Boolean);
 
-        const formatted = parts.length > 0 ? parts.join(' - ') : (data.display_name || '');
-        return {
-          formattedAddress: formatted || `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`,
-          cidade: city,
-          estado: state
-        };
+        formattedAddress = parts.length > 0 ? parts.join(' - ') : (data.display_name || '');
       }
     }
   } catch (err) {
-    console.error('[server/api/geocode] Erro ao resolver coordenadas:', err);
+    console.warn('[server/api/geocode] Nominatim falhou, tentando fallback:', err);
+  }
+
+  // Fallback BigDataCloud se Nominatim falhar ou não retornar cidade/estado
+  if (!city || !state) {
+    try {
+      const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}&localityLanguage=pt`;
+      const bdcRes = await fetch(bdcUrl);
+      if (bdcRes.ok) {
+        const bdcData = await bdcRes.json();
+        if (!city) {
+          city = bdcData.city || bdcData.locality || '';
+        }
+        if (!state) {
+          const code = bdcData.principalSubdivisionCode ? String(bdcData.principalSubdivisionCode).replace(/^BR-/, '') : '';
+          state = normalizeState(code || bdcData.principalSubdivision || '');
+        }
+        if (state === 'DF' && (!city || city.toLowerCase().includes('plano piloto') || city.toLowerCase().includes('distrito federal'))) {
+          city = 'Brasília';
+        }
+        if (!formattedAddress) {
+          const parts = [bdcData.locality, city, state].filter(Boolean);
+          formattedAddress = parts.join(' - ');
+        }
+      }
+    } catch (bdcErr) {
+      console.warn('[server/api/geocode] BigDataCloud fallback falhou:', bdcErr);
+    }
   }
 
   return {
-    formattedAddress: `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`,
-    cidade: '',
-    estado: ''
+    formattedAddress: formattedAddress || `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`,
+    cidade: city,
+    estado: state
   };
 });
