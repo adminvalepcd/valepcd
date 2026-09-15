@@ -57,13 +57,18 @@
       </div>
     </div>
 
-    <!-- Botão Flutuante de Incluir Ocorrência -->
+    <!-- Botões Flutuantes: Incluir Ocorrência + Dúvidas? -->
     <div class="bottom-action-container">
       <button type="button" class="btn btn-primary btn-floating-report" @click="isCreateModalOpen = true">
         <span class="btn-report-icon" aria-hidden="true">+</span>
         <span>Incluir</span>
-        </button>
-        </div>
+      </button>
+
+      <NuxtLink to="/multei/orientacoes" class="btn-floating-help" title="Ver orientações e perguntas frequentes sobre o Multei">
+        <span class="btn-help-icon" aria-hidden="true">?</span>
+        <span>Dúvidas?</span>
+      </NuxtLink>
+    </div>
 
     <!-- Mapa em Tela Cheia -->
     <div class="fullscreen-map-container">
@@ -101,9 +106,9 @@ import { ref, onMounted } from 'vue';
 import { fetchIncidentsFromSheet } from '~/services/sheetsService';
 import { requestUserLocation } from '~/services/geoService';
 
-      definePageMeta({
-        layout: false
-      });
+definePageMeta({
+  layout: false
+});
 
 useHead({
   title: 'Multei - Denúncia anônima de uso irregular de vagas para PcD',
@@ -405,6 +410,9 @@ onMounted(async () => {
   bottom: 24px;
   left: 20px;
   z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .btn-floating-report {
@@ -431,6 +439,45 @@ onMounted(async () => {
   font-size: 1.15rem;
 }
 
+.btn-floating-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.85rem 1.35rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #1e293b;
+  text-decoration: none;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+  border: 1.5px solid rgba(134, 0, 125, 0.25);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-floating-help:hover {
+  background: #ffffff;
+  color: var(--primary, #86007D);
+  border-color: var(--primary, #86007D);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
+}
+
+.btn-help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(134, 0, 125, 0.12);
+  color: var(--primary, #86007D);
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
 @media (max-width: 640px) {
   .top-left-controls {
     top: 12px;
@@ -447,11 +494,14 @@ onMounted(async () => {
     right: 16px;
     display: flex;
     justify-content: center;
+    gap: 0.65rem;
   }
-  .btn-floating-report {
-    width: 100%;
-    max-width: 320px;
+  .btn-floating-report,
+  .btn-floating-help {
+    flex: 1;
+    max-width: 190px;
     justify-content: center;
+    padding: 0.8rem 1rem;
   }
 }
 </style>
