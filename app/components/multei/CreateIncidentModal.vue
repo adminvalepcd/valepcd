@@ -582,22 +582,27 @@ const updateAddress = async (lat, lng) => {
   isResolvingAddress.value = true;
   try {
     const details = await getAddressDetailsFromCoords(lat, lng);
-    addressText.value = details.formattedAddress;
-    currentCidade.value = details.cidade || '';
-    currentEstado.value = details.estado || '';
+    if (details.formattedAddress && (!addressText.value || addressText.value.startsWith('Lat:') || !details.formattedAddress.startsWith('Lat:'))) {
+      addressText.value = details.formattedAddress;
+    }
+    if (details.cidade) currentCidade.value = details.cidade;
+    if (details.estado) currentEstado.value = details.estado;
 
     // Se o serviço não tiver separado cidade/estado mas o texto os contém, puxa direto do texto
     if (!currentCidade.value || !currentEstado.value) {
-      const fromText = extractCityAndStateFromText(details.formattedAddress);
-      if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
-      if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
+      const textToParse = details.formattedAddress || addressText.value;
+      if (textToParse) {
+        const fromText = extractCityAndStateFromText(textToParse);
+        if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
+        if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
+      }
     }
 
     return details;
   } catch {
-    addressText.value = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
-    currentCidade.value = '';
-    currentEstado.value = '';
+    if (!addressText.value) {
+      addressText.value = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
+    }
     return null;
   } finally {
     isResolvingAddress.value = false;
@@ -912,6 +917,10 @@ const handleSaveIncident = async () => {
   isSaving.value = true;
   saveError.value = '';
 
+  const screenCidade = (currentCidade.value || '').trim();
+  const screenEstado = (currentEstado.value || '').trim();
+  const screenAddress = (addressText.value || '').trim();
+
   // 1. Se ainda houver debounce ativo do pino, cancela e roda imediatamente
   if (geocodeDebounceTimer) {
     clearTimeout(geocodeDebounceTimer);
@@ -926,8 +935,8 @@ const handleSaveIncident = async () => {
     } catch {}
   }
 
-  // 3. Se ainda estiver no fallback (usuário não mexeu no mapa e foto sem EXIF), tenta pegar o GPS ao vivo
-  if (locationSource.value === 'fallback') {
+  // 3. Se ainda estiver no fallback (usuário não mexeu no mapa e foto sem EXIF) e ainda sem Cidade/Estado na tela, tenta pegar o GPS ao vivo
+  if (locationSource.value === 'fallback' && (!currentCidade.value?.trim() || !currentEstado.value?.trim()) && (!screenCidade || !screenEstado)) {
     gpsStatusIsError.value = false;
     gpsStatusMessage.value = 'Solicitando autorização do GPS para confirmar localização...';
     try {
@@ -955,14 +964,29 @@ const handleSaveIncident = async () => {
   }
 
   // 5. Extração complementar do texto do endereço caso necessário
-  if ((!currentCidade.value?.trim() || !currentEstado.value?.trim()) && addressText.value) {
-    const fromText = extractCityAndStateFromText(addressText.value);
+  if ((!currentCidade.value?.trim() || !currentEstado.value?.trim()) && (addressText.value || screenAddress)) {
+    const fromText = extractCityAndStateFromText(addressText.value || screenAddress);
     if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
     if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
   }
 
-  let finalCidade = (currentCidade.value || (addressText.value ? extractCityAndStateFromText(addressText.value).cidade : '') || '').trim();
-  let finalEstado = (currentEstado.value || (addressText.value ? extractCityAndStateFromText(addressText.value).estado : '') || '').trim();
+  let finalCidade = (
+    currentCidade.value ||
+    screenCidade ||
+    (addressText.value ? extractCityAndStateFromText(addressText.value).cidade : '') ||
+    (screenAddress ? extractCityAndStateFromText(screenAddress).cidade : '') ||
+    ''
+  ).trim();
+  let finalEstado = (
+    currentEstado.value ||
+    screenEstado ||
+    (addressText.value ? extractCityAndStateFromText(addressText.value).estado : '') ||
+    (screenAddress ? extractCityAndStateFromText(screenAddress).estado : '') ||
+    ''
+  ).trim();
+
+  if (finalCidade) currentCidade.value = finalCidade;
+  if (finalEstado) currentEstado.value = finalEstado;
 
   // Só bloqueia se realmente não houver coordenadas válidas nem cidade/estado após todas as tentativas
   if (!finalCidade || !finalEstado) {

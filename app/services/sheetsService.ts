@@ -20,20 +20,31 @@ export interface FetchIncidentsOptions {
   includePhoto?: boolean;
 }
 
+const ACTIVE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxSnNql1Ai7AwY78SZPSER9M1S48-u7AW7n4AdY7R6zZlfd6fSn9dJ1QkqvPS0RPm0b/exec';
+
+export function normalizeAppsScriptUrl(url?: string): string {
+  if (!url) return '';
+  if (url.includes('AKfycbzIPiQOC_') || url.includes('AKfycbxviY_') || url.includes('AKfycbwGVAI')) {
+    return ACTIVE_APPS_SCRIPT_URL;
+  }
+  return url;
+}
+
 export async function fetchIncidentsFromSheet(
   appsScriptUrl?: string,
   options?: FetchIncidentsOptions
 ): Promise<ReportedIncident[]> {
-  if (!appsScriptUrl) {
+  const normalizedUrl = normalizeAppsScriptUrl(appsScriptUrl);
+  if (!normalizedUrl) {
     // Carrega do cache local se a URL do Apps Script ainda não estiver preenchida
     return loadIncidentsFromLocalCache();
   }
 
   try {
-    let finalUrl = appsScriptUrl;
+    let finalUrl = normalizedUrl;
     if (options) {
       try {
-        const urlObj = new URL(appsScriptUrl);
+        const urlObj = new URL(normalizedUrl);
         if (options.latitude !== undefined && options.longitude !== undefined) {
           urlObj.searchParams.set('lat', String(options.latitude));
           urlObj.searchParams.set('lng', String(options.longitude));
@@ -107,9 +118,10 @@ export async function fetchIncidentPhoto(
   appsScriptUrl: string,
   incidentId: string
 ): Promise<string> {
-  if (!appsScriptUrl || !incidentId) return '';
+  const normalizedUrl = normalizeAppsScriptUrl(appsScriptUrl);
+  if (!normalizedUrl || !incidentId) return '';
   try {
-    const urlObj = new URL(appsScriptUrl);
+    const urlObj = new URL(normalizedUrl);
     urlObj.searchParams.set('id', incidentId);
     const response = await fetch(urlObj.toString());
     if (!response.ok) return '';
@@ -141,17 +153,17 @@ export async function saveIncidentToSheet(
     } catch {}
   }
 
-  // Ordem exata das colunas na planilha: id | data | latitude | longitude | foto | ativo | motivo_denuncia | cidade | estado
+  // Coloca cidade e estado antes da foto base64 para garantir parsing prioritário no JSON
   const fullIncident = {
     id: incident.id,
     data: incident.data,
     latitude: incident.latitude,
     longitude: incident.longitude,
-    foto: incident.foto,
+    cidade: resolvedCidade,
+    estado: resolvedEstado,
     ativo: incident.ativo !== undefined ? incident.ativo : true,
     motivo_denuncia: incident.motivo_denuncia || '',
-    cidade: resolvedCidade,
-    estado: resolvedEstado
+    foto: incident.foto
   };
 
   // Salvar sempre em cache local preventivamente
@@ -168,13 +180,22 @@ export async function saveIncidentToSheet(
     motivo_denuncia: fullIncident.motivo_denuncia
   });
 
-  if (!appsScriptUrl) {
+  const normalizedUrl = normalizeAppsScriptUrl(appsScriptUrl);
+  if (!normalizedUrl) {
     // Se a URL do script ainda não foi configurada, considera gravado no cache local do MVP
     return { success: true, cidade: fullIncident.cidade, estado: fullIncident.estado };
   }
 
   try {
-    const response = await fetch(appsScriptUrl, {
+    let targetUrl = normalizedUrl;
+    try {
+      const urlObj = new URL(normalizedUrl);
+      if (resolvedCidade) urlObj.searchParams.set('cidade', resolvedCidade);
+      if (resolvedEstado) urlObj.searchParams.set('estado', resolvedEstado);
+      targetUrl = urlObj.toString();
+    } catch {}
+
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8' // Crucial para o Google Apps Script não travar em CORS preflight
@@ -238,12 +259,13 @@ export async function reportIncidentInSheet(
     }
   }
 
-  if (!appsScriptUrl) {
+  const normalizedUrl = normalizeAppsScriptUrl(appsScriptUrl);
+  if (!normalizedUrl) {
     return true;
   }
 
   try {
-    const response = await fetch(appsScriptUrl, {
+    const response = await fetch(normalizedUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8'

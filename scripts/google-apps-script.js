@@ -201,8 +201,8 @@ function doPost(e) {
     const dataIso = payload.data || new Date().toISOString();
     const latitude = Number(payload.latitude) || 0;
     const longitude = Number(payload.longitude) || 0;
-    var cidade = String(payload.cidade || '').trim();
-    var estado = String(payload.estado || '').trim();
+    var cidade = String(payload.cidade || (e && e.parameter && e.parameter.cidade) || '').trim();
+    var estado = String(payload.estado || (e && e.parameter && e.parameter.estado) || '').trim();
     const foto = payload.foto || '';
     const ativo = payload.ativo !== undefined ? Boolean(payload.ativo) : true;
     const motivo = payload.motivo_denuncia || '';
@@ -234,15 +234,32 @@ function doPost(e) {
       else newRow.push(payload[col] || '');
     }
 
-    sheet.appendRow(newRow);
-    var insertedRow = sheet.getLastRow();
+    // Procura a primeira linha onde a coluna 'id' está vazia (evita pular linhas formatadas vazias)
+    var allValues = sheet.getDataRange().getValues();
+    var idColIdx = headers.indexOf('id');
+    if (idColIdx < 0) idColIdx = 0;
+    var targetRow = -1;
+    for (var r = 1; r < allValues.length; r++) {
+      if (!String(allValues[r][idColIdx] || '').trim()) {
+        targetRow = r + 1; // 1-based row index
+        break;
+      }
+    }
+
+    if (targetRow > 0) {
+      sheet.getRange(targetRow, 1, 1, newRow.length).setValues([newRow]);
+    } else {
+      sheet.appendRow(newRow);
+      targetRow = sheet.getLastRow();
+    }
+
     var colCidadeIdx = headers.indexOf('cidade') + 1;
     var colEstadoIdx = headers.indexOf('estado') + 1;
     if (colCidadeIdx > 0 && cidade) {
-      sheet.getRange(insertedRow, colCidadeIdx).setValue(cidade);
+      sheet.getRange(targetRow, colCidadeIdx).setValue(cidade);
     }
     if (colEstadoIdx > 0 && estado) {
-      sheet.getRange(insertedRow, colEstadoIdx).setValue(estado);
+      sheet.getRange(targetRow, colEstadoIdx).setValue(estado);
     }
     SpreadsheetApp.flush();
 

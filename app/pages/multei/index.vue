@@ -134,7 +134,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { fetchIncidentsFromSheet } from '~/services/sheetsService';
+import { fetchIncidentsFromSheet, normalizeAppsScriptUrl } from '~/services/sheetsService';
 import { requestUserLocation } from '~/services/geoService';
 
 definePageMeta({
@@ -151,9 +151,11 @@ useHead({
 const config = useRuntimeConfig();
 // URL do Google Apps Script configurável via env ou fallback
 const appsScriptUrl = ref(
-  (config.public.appsScriptUrl) || 
-  (process.env.VITE_APPS_SCRIPT_URL) || 
-  'https://script.google.com/macros/s/AKfycbzIPiQOC_sn1RhoZKEpWra7OPCa1z2uZn8lswINxZ578WmICrVHjX9ZCKjwJNyy275_/exec'
+  normalizeAppsScriptUrl(
+    (config.public.appsScriptUrl) || 
+    (process.env.VITE_APPS_SCRIPT_URL) || 
+    'https://script.google.com/macros/s/AKfycbxSnNql1Ai7AwY78SZPSER9M1S48-u7AW7n4AdY7R6zZlfd6fSn9dJ1QkqvPS0RPm0b/exec'
+  )
 );
 
 const isCreateModalOpen = ref(false);
