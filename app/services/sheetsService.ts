@@ -20,13 +20,27 @@ export interface FetchIncidentsOptions {
   includePhoto?: boolean;
 }
 
-const ACTIVE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxSnNql1Ai7AwY78SZPSER9M1S48-u7AW7n4AdY7R6zZlfd6fSn9dJ1QkqvPS0RPm0b/exec';
+const ACTIVE_APPS_SCRIPT_DEPLOYMENT_ID = 'AKfycbyICoKQagn4rYq2_38n4DZNBMi4kbZCg07zkHwdSuiNwU6Tk1ZIzETNUh368g3mvOHM';
+const ACTIVE_APPS_SCRIPT_URL = `https://script.google.com/macros/s/${ACTIVE_APPS_SCRIPT_DEPLOYMENT_ID}/exec`;
 
+/**
+ * Garante que toda chamada use SEMPRE a implantação ativa do Apps Script.
+ * Variáveis de ambiente antigas (cache do `nuxt dev`, painel da Vercel, build antigo em cache
+ * no service worker do navegador) apontando para implantações anteriores são descartadas,
+ * pois implantações antigas gravam em código desatualizado ou simplesmente não respondem.
+ */
 export function normalizeAppsScriptUrl(url?: string): string {
-  if (!url) return '';
-  if (url.includes('AKfycbzIPiQOC_') || url.includes('AKfycbxviY_') || url.includes('AKfycbwGVAI')) {
-    return ACTIVE_APPS_SCRIPT_URL;
+  if (!url) return ACTIVE_APPS_SCRIPT_URL;
+
+  // Qualquer URL de Apps Script que não seja a implantação ativa é substituída
+  if (url.includes('script.google.com/macros/')) {
+    if (!url.includes(ACTIVE_APPS_SCRIPT_DEPLOYMENT_ID)) {
+      console.warn('[sheetsService] URL de implantação desatualizada detectada. Redirecionando para a implantação ativa.');
+      return ACTIVE_APPS_SCRIPT_URL;
+    }
+    return url;
   }
+
   return url;
 }
 

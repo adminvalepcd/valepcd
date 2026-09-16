@@ -154,7 +154,7 @@ const appsScriptUrl = ref(
   normalizeAppsScriptUrl(
     (config.public.appsScriptUrl) || 
     (process.env.VITE_APPS_SCRIPT_URL) || 
-    'https://script.google.com/macros/s/AKfycbxSnNql1Ai7AwY78SZPSER9M1S48-u7AW7n4AdY7R6zZlfd6fSn9dJ1QkqvPS0RPm0b/exec'
+    'https://script.google.com/macros/s/AKfycbyICoKQagn4rYq2_38n4DZNBMi4kbZCg07zkHwdSuiNwU6Tk1ZIzETNUh368g3mvOHM/exec'
   )
 );
 

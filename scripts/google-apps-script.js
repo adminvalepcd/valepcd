@@ -27,10 +27,34 @@ function getDistanceKm(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+/**
+ * Resolve SEMPRE a mesma aba da planilha.
+ * `getActiveSheet()` devolve a aba que estiver ativa no momento, o que em um Web App
+ * pode apontar para uma aba diferente da esperada. Aqui procuramos a aba que realmente
+ * possui a coluna `id` no cabeçalho e, na falta dela, usamos a primeira aba.
+ */
+function getTargetSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = ss.getSheets();
+
+  for (var i = 0; i < sheets.length; i++) {
+    var s = sheets[i];
+    if (s.getLastRow() === 0 || s.getLastColumn() === 0) continue;
+    var head = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].map(function (h) {
+      return String(h).trim().toLowerCase();
+    });
+    if (head.indexOf('id') !== -1) {
+      return s;
+    }
+  }
+
+  return sheets[0];
+}
+
 function doGet(e) {
   try {
     var params = (e && e.parameter) ? e.parameter : {};
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var sheet = getTargetSheet();
     var data = sheet.getDataRange().getValues();
     
     // Se a planilha estiver vazia ou tiver apenas cabeçalho
@@ -120,7 +144,7 @@ function doGet(e) {
 
 function doPost(e) {
   try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const sheet = getTargetSheet();
 
     // 1. Garantir que os cabeçalhos existam na ordem padrão: id | data | latitude | longitude | foto | ativo | motivo_denuncia | cidade | estado
     var headers = [];
@@ -269,7 +293,9 @@ function doPost(e) {
       id: id,
       cidade: cidade,
       estado: estado,
-      ativo: ativo
+      ativo: ativo,
+      aba: sheet.getName(),
+      linha: targetRow
     });
   } catch (error) {
     return jsonResponse({
