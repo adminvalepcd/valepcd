@@ -25,30 +25,6 @@
         >
           {{ visibleIncidentsCount }} na região
         </span>
-        
-        <div class="scope-toggle">
-          <button 
-            type="button" 
-            class="scope-btn" 
-            :class="{ 
-              'is-active': filterScope === 'nearby' && !hasMovedRegion,
-              'is-refresh-alert': hasMovedRegion
-            }" 
-            @click="handleRegionButtonClick"
-            :title="hasMovedRegion ? 'Você moveu o mapa. Clique para atualizar as ocorrências desta região (30 km)' : 'Ver ocorrências próximas (raio de 30 km)'"
-          >
-            {{ hasMovedRegion ? '🔄 Atualizar região' : '📍 Região (30 km)' }}
-          </button>
-          <button 
-            type="button" 
-            class="scope-btn" 
-            :class="{ 'is-active': filterScope === 'all' }" 
-            @click="setFilterScope('all')"
-            title="Ver todas as ocorrências do Brasil (modo ultra-leve)"
-          >
-            🇧🇷 Brasil Todo
-          </button>
-        </div>
 
         <button 
           v-if="locationState !== 'granted'" 
