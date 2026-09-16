@@ -163,20 +163,22 @@ function doPost(e) {
       const data = sheet.getDataRange().getValues();
       let foundRowIndex = -1;
 
-      // Procura a linha com o id correspondente (coluna 'id')
+      // Procura todas as linhas com o id correspondente (coluna 'id')
       const idCol = headers.indexOf('id');
+      const colAtivo = headers.indexOf('ativo') + 1;
+      const colMotivo = headers.indexOf('motivo_denuncia') + 1;
+      let updatedCount = 0;
+
       for (let i = 1; i < data.length; i++) {
         if (String(data[i][idCol >= 0 ? idCol : 0]).trim() === incidentId) {
           foundRowIndex = i + 1; // 1-based index no Sheets
-          break;
+          if (colAtivo > 0) sheet.getRange(foundRowIndex, colAtivo).setValue(false);
+          if (colMotivo > 0) sheet.getRange(foundRowIndex, colMotivo).setValue(reason);
+          updatedCount++;
         }
       }
 
-      if (foundRowIndex > 0) {
-        const colAtivo = headers.indexOf('ativo') + 1;
-        const colMotivo = headers.indexOf('motivo_denuncia') + 1;
-        if (colAtivo > 0) sheet.getRange(foundRowIndex, colAtivo).setValue(false);
-        if (colMotivo > 0) sheet.getRange(foundRowIndex, colMotivo).setValue(reason);
+      if (updatedCount > 0) {
         SpreadsheetApp.flush();
 
         return jsonResponse({
@@ -233,6 +235,15 @@ function doPost(e) {
     }
 
     sheet.appendRow(newRow);
+    var insertedRow = sheet.getLastRow();
+    var colCidadeIdx = headers.indexOf('cidade') + 1;
+    var colEstadoIdx = headers.indexOf('estado') + 1;
+    if (colCidadeIdx > 0 && cidade) {
+      sheet.getRange(insertedRow, colCidadeIdx).setValue(cidade);
+    }
+    if (colEstadoIdx > 0 && estado) {
+      sheet.getRange(insertedRow, colEstadoIdx).setValue(estado);
+    }
     SpreadsheetApp.flush();
 
     return jsonResponse({
@@ -354,7 +365,7 @@ function resolveLocationCityAndState(lat, lng) {
   // 3. Fallback BigDataCloud extraindo adminLevel 8 (Município brasileiro)
   if (!result.cidade || !result.estado) {
     try {
-      var bdcUrl = 'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + encodeURIComponent(lat) + '&longitude=' + encodeURIComponent(lng) + '&localityLanguage=pt';
+      var bdcUrl = 'https://api-bdc.io/data/reverse-geocode-client?latitude=' + encodeURIComponent(lat) + '&longitude=' + encodeURIComponent(lng) + '&localityLanguage=pt';
       var bdcRes = UrlFetchApp.fetch(bdcUrl, { muteHttpExceptions: true });
       if (bdcRes.getResponseCode() === 200) {
         var bdcData = JSON.parse(bdcRes.getContentText());

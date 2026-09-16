@@ -872,22 +872,40 @@ const fileToBase64 = (file) => {
 
 const toggleAdjustLocation = () => {
   isAdjustingLocation.value = !isAdjustingLocation.value;
+  if (locationSource.value === 'fallback') {
+    locationSource.value = 'manual';
+  }
+  if (!currentCidade.value || !currentEstado.value) {
+    if (geocodeDebounceTimer) {
+      clearTimeout(geocodeDebounceTimer);
+      geocodeDebounceTimer = null;
+    }
+    currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
+  }
 };
 
 const handlePinChange = (newLoc) => {
+  const latDiff = Math.abs(newLoc.latitude - selectedLocation.latitude);
+  const lngDiff = Math.abs(newLoc.longitude - selectedLocation.longitude);
+  const hasMovedSignificantly = latDiff > 0.00005 || lngDiff > 0.00005;
+
   selectedLocation.latitude = newLoc.latitude;
   selectedLocation.longitude = newLoc.longitude;
   locationSource.value = 'manual';
 
-  // Limpa valores para não salvar com a cidade anterior em caso de clique rápido
-  currentCidade.value = '';
-  currentEstado.value = '';
-  addressText.value = 'Buscando endereço...';
+  // Só limpa cidade/estado se o pino realmente se moveu significativamente ou se ainda não tinham sido preenchidos
+  if (hasMovedSignificantly || !currentCidade.value || !currentEstado.value) {
+    if (hasMovedSignificantly) {
+      currentCidade.value = '';
+      currentEstado.value = '';
+      addressText.value = 'Buscando endereço...';
+    }
 
-  if (geocodeDebounceTimer) clearTimeout(geocodeDebounceTimer);
-  geocodeDebounceTimer = setTimeout(() => {
-    currentAddressPromise = updateAddress(newLoc.latitude, newLoc.longitude);
-  }, 300);
+    if (geocodeDebounceTimer) clearTimeout(geocodeDebounceTimer);
+    geocodeDebounceTimer = setTimeout(() => {
+      currentAddressPromise = updateAddress(newLoc.latitude, newLoc.longitude);
+    }, 250);
+  }
 };
 
 const handleSaveIncident = async () => {
@@ -898,9 +916,7 @@ const handleSaveIncident = async () => {
   if (geocodeDebounceTimer) {
     clearTimeout(geocodeDebounceTimer);
     geocodeDebounceTimer = null;
-    if (locationSource.value !== 'fallback') {
-      currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
-    }
+    currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
   }
 
   // 2. Se a busca de endereço estiver em andamento, aguarda finalizar
@@ -910,15 +926,24 @@ const handleSaveIncident = async () => {
     } catch {}
   }
 
-  // 3. Puxar cidade e estado diretamente do texto exibido no modal se não estiver no fallback
-  if (locationSource.value !== 'fallback' && addressText.value) {
-    const fromText = extractCityAndStateFromText(addressText.value);
-    if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
-    if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
+  // 3. Se ainda estiver no fallback (usuário não mexeu no mapa e foto sem EXIF), tenta pegar o GPS ao vivo
+  if (locationSource.value === 'fallback') {
+    gpsStatusIsError.value = false;
+    gpsStatusMessage.value = 'Solicitando autorização do GPS para confirmar localização...';
+    try {
+      const gpsCoords = await requestUserLocation();
+      selectedLocation.latitude = gpsCoords.latitude;
+      selectedLocation.longitude = gpsCoords.longitude;
+      locationSource.value = 'device';
+      gpsStatusMessage.value = 'GPS autorizado! Identificando Cidade e Estado...';
+      await updateAddress(gpsCoords.latitude, gpsCoords.longitude);
+    } catch (gpsErr) {
+      console.warn('[CreateIncidentModal] GPS indisponível no fallback, resolvendo endereço da coordenada selecionada:', gpsErr);
+    }
   }
 
-  // 4. Se for posição válida mas ainda faltar cidade ou estado, força uma tentativa direta
-  if (locationSource.value !== 'fallback' && (!currentCidade.value || !currentEstado.value)) {
+  // 4. Garantia de resolução: se Cidade ou Estado ainda estiverem vazios para a coordenada selecionada, busca diretamente
+  if (!currentCidade.value?.trim() || !currentEstado.value?.trim()) {
     try {
       const details = await getAddressDetailsFromCoords(selectedLocation.latitude, selectedLocation.longitude);
       if (details.cidade && !currentCidade.value) currentCidade.value = details.cidade;
@@ -929,47 +954,25 @@ const handleSaveIncident = async () => {
     } catch {}
   }
 
-  // 5. VERIFICAÇÃO ANTES DE SALVAR: se Cidade ou Estado não foram coletados (ou ainda está no fallback),
-  // solicita autorização do GPS ao usuário e coleta Cidade e Estado pelo GPS!
-  if (!currentCidade.value?.trim() || !currentEstado.value?.trim() || locationSource.value === 'fallback') {
-    gpsStatusIsError.value = false;
-    gpsStatusMessage.value = 'Solicitando autorização do GPS para coletar Cidade e Estado...';
-    try {
-      const gpsCoords = await requestUserLocation();
-      selectedLocation.latitude = gpsCoords.latitude;
-      selectedLocation.longitude = gpsCoords.longitude;
-      locationSource.value = 'device';
-      gpsStatusMessage.value = 'GPS autorizado! Identificando Cidade e Estado...';
-
-      const details = await updateAddress(gpsCoords.latitude, gpsCoords.longitude);
-      if (details?.cidade) currentCidade.value = details.cidade;
-      if (details?.estado) currentEstado.value = details.estado;
-
-      if (!currentCidade.value || !currentEstado.value) {
-        const fromText = extractCityAndStateFromText(addressText.value || '');
-        if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
-        if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
-      }
-    } catch (gpsErr) {
-      console.warn('[CreateIncidentModal] Permissão do GPS negada ao tentar salvar sem cidade/estado:', gpsErr);
-      if (locationSource.value === 'fallback') {
-        isSaving.value = false;
-        gpsStatusIsError.value = true;
-        gpsStatusMessage.value = 'Autorização do GPS necessária para identificar Cidade e Estado.';
-        saveError.value = 'Cidade e Estado não foram coletados. Por favor, autorize o uso do GPS no seu navegador para pegarmos sua localização antes de salvar.';
-        return;
-      }
-    }
+  // 5. Extração complementar do texto do endereço caso necessário
+  if ((!currentCidade.value?.trim() || !currentEstado.value?.trim()) && addressText.value) {
+    const fromText = extractCityAndStateFromText(addressText.value);
+    if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
+    if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
   }
 
   let finalCidade = (currentCidade.value || (addressText.value ? extractCityAndStateFromText(addressText.value).cidade : '') || '').trim();
   let finalEstado = (currentEstado.value || (addressText.value ? extractCityAndStateFromText(addressText.value).estado : '') || '').trim();
 
-  // Só bloqueia se não houver coordenadas válidas (ainda em fallback)
-  if (locationSource.value === 'fallback' && (!finalCidade || !finalEstado)) {
-    isSaving.value = false;
-    saveError.value = 'Não foi possível identificar a Cidade e o Estado. Autorize o uso do GPS ou ajuste o pino no mapa para prosseguir.';
-    return;
+  // Só bloqueia se realmente não houver coordenadas válidas nem cidade/estado após todas as tentativas
+  if (!finalCidade || !finalEstado) {
+    if (locationSource.value === 'fallback') {
+      isSaving.value = false;
+      gpsStatusIsError.value = true;
+      gpsStatusMessage.value = 'Autorização do GPS ou ajuste no mapa necessário.';
+      saveError.value = 'Não foi possível identificar a Cidade e o Estado. Autorize o uso do GPS ou escolha o local no mapa para prosseguir.';
+      return;
+    }
   }
 
   const newIncident = {

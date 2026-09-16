@@ -1,5 +1,5 @@
 import type { ReportedIncident } from '../types';
-import { getAddressDetailsFromCoords } from './geoService';
+import { getAddressDetailsFromCoords, extractCityAndStateFromText, normalizeState } from './geoService';
 
 export interface SheetRowPayload {
   id: string;
@@ -126,13 +126,18 @@ export async function saveIncidentToSheet(
   incident: SheetRowPayload
 ): Promise<{ success: boolean; cidade?: string; estado?: string }> {
   let resolvedCidade = (incident.cidade || '').trim();
-  let resolvedEstado = (incident.estado || '').trim();
+  let resolvedEstado = normalizeState((incident.estado || '').trim());
 
   if ((!resolvedCidade || !resolvedEstado) && Number.isFinite(incident.latitude) && Number.isFinite(incident.longitude)) {
     try {
       const geoDetails = await getAddressDetailsFromCoords(incident.latitude, incident.longitude);
-      if (!resolvedCidade && geoDetails.cidade) resolvedCidade = geoDetails.cidade;
-      if (!resolvedEstado && geoDetails.estado) resolvedEstado = geoDetails.estado;
+      if (!resolvedCidade && geoDetails.cidade) resolvedCidade = geoDetails.cidade.trim();
+      if (!resolvedEstado && geoDetails.estado) resolvedEstado = normalizeState(geoDetails.estado);
+      if ((!resolvedCidade || !resolvedEstado) && geoDetails.formattedAddress) {
+        const parsed = extractCityAndStateFromText(geoDetails.formattedAddress);
+        if (!resolvedCidade && parsed.cidade) resolvedCidade = parsed.cidade.trim();
+        if (!resolvedEstado && parsed.estado) resolvedEstado = normalizeState(parsed.estado);
+      }
     } catch {}
   }
 

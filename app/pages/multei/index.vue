@@ -115,7 +115,7 @@
     <!-- Modal para Inclusão de Nova Ocorrência com IA Gemini -->
     <MulteiCreateIncidentModal
       v-if="isCreateModalOpen"
-      :current-location="initialCenter"
+      :current-location="currentMapCenter || initialCenter"
       :apps-script-url="appsScriptUrl"
       @close="isCreateModalOpen = false"
       @incident-created="handleIncidentCreated"
@@ -153,7 +153,7 @@ const config = useRuntimeConfig();
 const appsScriptUrl = ref(
   (config.public.appsScriptUrl) || 
   (process.env.VITE_APPS_SCRIPT_URL) || 
-  'https://script.google.com/macros/s/AKfycbwGVAI7cZmvn9WTEhshd_5_tYo-DYHqw6EwE8_buh__dz1KzPAKaC3avd-56k7dvHKt/exec'
+  'https://script.google.com/macros/s/AKfycbzIPiQOC_sn1RhoZKEpWra7OPCa1z2uZn8lswINxZ578WmICrVHjX9ZCKjwJNyy275_/exec'
 );
 
 const isCreateModalOpen = ref(false);

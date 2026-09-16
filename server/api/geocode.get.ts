@@ -83,7 +83,7 @@ export default defineEventHandler(async (event) => {
   // Fallback BigDataCloud se Nominatim falhar ou não retornar cidade/estado
   if (!city || !state) {
     try {
-      const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}&localityLanguage=pt`;
+      const bdcUrl = `https://api-bdc.io/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}&localityLanguage=pt`;
       const bdcRes = await fetch(bdcUrl);
       if (bdcRes.ok) {
         const bdcData = await bdcRes.json();

@@ -73,12 +73,95 @@ const UF_MAP: Record<string, string> = {
   'sao paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO'
 };
 
-function normalizeState(stateStr: string): string {
+const CITY_TO_UF: Record<string, string> = {
+  'belo horizonte': 'MG', 'contagem': 'MG', 'betim': 'MG', 'uberlândia': 'MG', 'juiz de fora': 'MG',
+  'são paulo': 'SP', 'campinas': 'SP', 'guarulhos': 'SP', 'santos': 'SP', 'são bernardo do campo': 'SP',
+  'rio de janeiro': 'RJ', 'niterói': 'RJ', 'duque de caxias': 'RJ', 'são gonçalo': 'RJ',
+  'brasília': 'DF', 'curitiba': 'PR', 'londrina': 'PR', 'maringá': 'PR',
+  'porto alegre': 'RS', 'caxias do sul': 'RS', 'salvador': 'BA', 'feira de santana': 'BA',
+  'fortaleza': 'CE', 'recife': 'PE', 'olinda': 'PE', 'goiânia': 'GO', 'manaus': 'AM',
+  'belém': 'PA', 'florianópolis': 'SC', 'joinville': 'SC', 'vitória': 'ES', 'vila velha': 'ES',
+  'natal': 'RN', 'joão pessoa': 'PB', 'maceió': 'AL', 'teresina': 'PI', 'aracaju': 'SE',
+  'campo grande': 'MS', 'cuiabá': 'MT', 'porto velho': 'RO', 'macapá': 'AP', 'palmas': 'TO',
+  'boa vista': 'RR', 'rio branco': 'AC'
+};
+
+export function normalizeState(stateStr: string): string {
   if (!stateStr) return '';
   const s = String(stateStr).trim();
   if (s.length === 2) return s.toUpperCase();
   const lower = s.toLowerCase();
   return UF_MAP[lower] || s;
+}
+
+export function extractCityAndStateFromText(text?: string | null): { cidade: string; estado: string } {
+  if (!text || typeof text !== 'string') return { cidade: '', estado: '' };
+  const clean = text.trim();
+  if (clean.startsWith('Lat:') || clean.startsWith('Buscando') || clean.startsWith('Localização')) {
+    return { cidade: '', estado: '' };
+  }
+
+  let cidade = '';
+  let estado = '';
+
+  const allUFs = new Set(Object.values(UF_MAP));
+
+  const ufPattern = /[\s,-]+([A-Z]{2})(?:[\s,–-]|$)/g;
+  let match;
+  while ((match = ufPattern.exec(clean)) !== null) {
+    const candidate = match[1].toUpperCase();
+    if (allUFs.has(candidate)) {
+      estado = candidate;
+      const beforeUf = clean.substring(0, match.index).trim();
+      const beforeParts = beforeUf.split(/[,–-]/).map(s => s.trim()).filter(Boolean);
+      if (beforeParts.length > 0) {
+        cidade = beforeParts[beforeParts.length - 1];
+      }
+      break;
+    }
+  }
+
+  if (!estado) {
+    const lower = clean.toLowerCase();
+    for (const [name, uf] of Object.entries(UF_MAP)) {
+      if (lower.includes(name)) {
+        estado = uf;
+        break;
+      }
+    }
+  }
+
+  if (!cidade) {
+    const s = clean.replace(/,\s*Brasil\s*$/i, '').replace(/,?\s*\d{5}-?\d{3}.*$/, '').trim();
+    const parts = s.split(/[,–-]/).map(p => p.trim()).filter(Boolean);
+    const nonStateParts = parts.filter(p => !allUFs.has(p.toUpperCase()) && !/^\d+$/.test(p));
+    if (nonStateParts.length > 0) {
+      cidade = nonStateParts[nonStateParts.length - 1];
+    }
+  }
+
+  if (cidade && UF_MAP[cidade.toLowerCase()]) {
+    const lower = clean.toLowerCase();
+    for (const city of Object.keys(CITY_TO_UF)) {
+      if (lower.includes(city)) {
+        cidade = city.replace(/(^\w|\s\w)/g, m => m.toUpperCase());
+        break;
+      }
+    }
+  }
+
+  if (cidade) {
+    cidade = cidade.replace(/\d{5}-?\d{3}/g, '').replace(/,\s*$/, '').trim();
+  }
+
+  if (cidade && !estado) {
+    const cityLower = cidade.toLowerCase();
+    if (CITY_TO_UF[cityLower]) {
+      estado = CITY_TO_UF[cityLower];
+    }
+  }
+
+  return { cidade, estado };
 }
 
 const detailsCache = new Map<string, GeoAddressDetails>();
@@ -250,7 +333,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
   // 4. Fallback final garantido: BigDataCloud Client Reverse Geocoding (sem rate-limit para cliente)
   if (!accCidade || !accEstado) {
     try {
-      const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&localityLanguage=pt`;
+      const bdcUrl = `https://api-bdc.io/data/reverse-geocode-client?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&localityLanguage=pt`;
       const bdcRes = await fetch(bdcUrl);
       if (bdcRes.ok) {
         const bdcData = await bdcRes.json();
@@ -283,6 +366,12 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     } catch (bdcErr) {
       console.warn('[geoService] Fallback BigDataCloud falhou:', bdcErr);
     }
+  }
+
+  if ((!accCidade || !accEstado) && accFormattedAddress) {
+    const parsed = extractCityAndStateFromText(accFormattedAddress);
+    if (!accCidade && parsed.cidade) accCidade = parsed.cidade;
+    if (!accEstado && parsed.estado) accEstado = parsed.estado;
   }
 
   const finalDetails: GeoAddressDetails = {
