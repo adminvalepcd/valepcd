@@ -121,6 +121,13 @@ useHead({
   title: 'Multei - Denúncia anônima de uso irregular de vagas para PcD',
   meta: [
     { name: 'description', content: 'Mapeamento colaborativo de vagas e infrações contra acessibilidade com proteção de privacidade por IA.' }
+  ],
+  // Preconnect apenas nesta página (é a única com mapa). Abre a conexão TLS
+  // enquanto o bundle ainda está sendo avaliado, reduzindo o atraso até o
+  // primeiro tile do mapa — que é justamente o elemento de LCP aqui.
+  link: [
+    { rel: 'preconnect', href: 'https://maps.googleapis.com', crossorigin: '' },
+    { rel: 'preconnect', href: 'https://maps.gstatic.com', crossorigin: '' }
   ]
 });
 

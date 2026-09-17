@@ -104,30 +104,27 @@ const isReady = computed(() => {
   return (props.isMapApiLoaded || isApiLoaded.value) && !!map.value;
 });
 
-const loadClustererScript = () => {
-  if (typeof window === 'undefined') return Promise.resolve();
-  if (window.markerClusterer?.MarkerClusterer) return Promise.resolve();
+// Biblioteca de agrupamento de marcadores, resolvida sob demanda.
+// Usa `import()` dinâmico (e não um import estático no topo) por dois motivos:
+// 1. Mantém o código fora do bundle inicial — só baixa quando o mapa monta.
+// 2. Evita que o módulo seja avaliado no SSR, onde `window`/`google` não existem.
+let clustererLib = null;
 
-  return new Promise((resolve) => {
-    const existing = document.querySelector('script[src*="markerclusterer"]');
-    if (existing) {
-      if (window.markerClusterer?.MarkerClusterer) {
-        resolve();
-      } else {
-        existing.addEventListener('load', () => resolve());
-        existing.addEventListener('error', () => resolve());
-      }
-      return;
-    }
+const loadClustererScript = async () => {
+  if (typeof window === 'undefined') return;
+  if (clustererLib) return;
 
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js';
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => resolve();
-    document.head.appendChild(script);
-  });
+  try {
+    clustererLib = await import('@googlemaps/markerclusterer');
+  } catch (err) {
+    // O agrupamento é um aprimoramento progressivo: sem ele os pins ainda
+    // aparecem individualmente, então a falha não deve quebrar o mapa.
+    console.warn('[MapDisplay] Não foi possível carregar o agrupador de marcadores:', err);
+    clustererLib = null;
+  }
 };
+
+const GOOGLE_MAPS_CALLBACK = '__valepcdInitGoogleMaps';
 
 const loadGoogleMapsScript = () => {
   if (typeof window === 'undefined') return Promise.resolve();
@@ -137,36 +134,36 @@ const loadGoogleMapsScript = () => {
     return Promise.resolve();
   }
 
-  return new Promise((resolve, reject) => {
-    const existing = document.getElementById('google-maps-script');
-    if (existing) {
-      if (window.google?.maps) {
-        isApiLoaded.value = true;
-        resolve();
-      } else {
-        existing.addEventListener('load', () => {
-          isApiLoaded.value = true;
-          resolve();
-        });
-        existing.addEventListener('error', (err) => reject(err));
-      }
-      return;
-    }
+  // O promise fica no `window` porque o MapDisplay pode ser montado mais de uma vez
+  // (mapa principal + modal), e o script só pode ser injetado uma única vez.
+  if (window.__googleMapsLoaderPromise) {
+    return window.__googleMapsLoaderPromise.then(() => {
+      isApiLoaded.value = true;
+    });
+  }
+
+  window.__googleMapsLoaderPromise = new Promise((resolve, reject) => {
+    // `loading=async` exige o padrão de callback: o `onload` do script dispara antes
+    // da API terminar de inicializar, então `google.maps` ainda não estaria disponível.
+    window[GOOGLE_MAPS_CALLBACK] = () => {
+      resolve();
+      delete window[GOOGLE_MAPS_CALLBACK];
+    };
 
     const script = document.createElement('script');
     script.id = 'google-maps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsApiKey}&libraries=places&v=weekly`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsApiKey}&libraries=places&v=weekly&loading=async&callback=${GOOGLE_MAPS_CALLBACK}`;
     script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      isApiLoaded.value = true;
-      resolve();
-    };
     script.onerror = (err) => {
+      window.__googleMapsLoaderPromise = null;
       mapError.value = 'Não foi possível carregar o Google Maps. Verifique sua conexão e a chave de API.';
       reject(err);
     };
     document.head.appendChild(script);
+  });
+
+  return window.__googleMapsLoaderPromise.then(() => {
+    isApiLoaded.value = true;
   });
 };
 
@@ -384,7 +381,7 @@ const initMap = () => {
       updateUserLocationDot(center.lat, center.lng);
     }
 
-    if (window.markerClusterer?.MarkerClusterer && !props.pinLocation) {
+    if (clustererLib?.MarkerClusterer && !props.pinLocation) {
       const clusterOptions = {
         map: map.value,
         markers: [],
@@ -416,14 +413,14 @@ const initMap = () => {
         }
       };
 
-      if (window.markerClusterer.SuperClusterAlgorithm) {
-        clusterOptions.algorithm = new window.markerClusterer.SuperClusterAlgorithm({
+      if (clustererLib.SuperClusterAlgorithm) {
+        clusterOptions.algorithm = new clustererLib.SuperClusterAlgorithm({
           maxZoom: 14, // A partir do zoom 15 desativa totalmente agrupamentos para mostrar pins individuais
           radius: 35
         });
       }
 
-      clusterer.value = new window.markerClusterer.MarkerClusterer(clusterOptions);
+      clusterer.value = new clustererLib.MarkerClusterer(clusterOptions);
     }
 
     if (zoomListenerRef) {

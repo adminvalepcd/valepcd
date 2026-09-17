@@ -69,9 +69,9 @@ export default defineNuxtConfig({
   i18n: {
     baseUrl: 'https://www.valepcd.com.br',
     locales: [
-      { code: 'pt', iso: 'pt-BR', name: 'Português', file: 'pt.json' },
-      { code: 'en', iso: 'en-US', name: 'English', file: 'en.json' },
-      { code: 'es', iso: 'es-ES', name: 'Español', file: 'es.json' }
+      { code: 'pt', language: 'pt-BR', name: 'Português', file: 'pt.json' },
+      { code: 'en', language: 'en-US', name: 'English', file: 'en.json' },
+      { code: 'es', language: 'es-ES', name: 'Español', file: 'es.json' }
     ],
     defaultLocale: 'pt',
     lazy: true,
@@ -110,8 +110,22 @@ export default defineNuxtConfig({
       link: [
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
-        { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap' },
+        // Carrega a fonte sem bloquear o primeiro render: o navegador baixa como `print`
+        // (mídia não aplicável, logo não bloqueia) e promove para `all` assim que chega.
+        { rel: 'preload', as: 'style', href: 'https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap' },
+        {
+          rel: 'stylesheet',
+          href: 'https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap',
+          media: 'print',
+          onload: "this.media='all';this.onload=null;"
+        },
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }
+      ],
+      noscript: [
+        {
+          tagPosition: 'head',
+          innerHTML: '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap">'
+        }
       ],
       script: [
         {
@@ -133,10 +147,11 @@ export default defineNuxtConfig({
             window.gtag('js', new Date());
             window.gtag('config', 'G-4QRMKWNJ8S', { send_page_view: false });
           `
-        },
-        { 
-          src: 'https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js' 
         }
+        // O @googlemaps/markerclusterer NÃO é carregado aqui de propósito.
+        // Ele só é usado na página /multei e é carregado sob demanda por
+        // `loadClustererScript()` em app/components/multei/MapDisplay.vue.
+        // Mantê-lo aqui bloqueava o render de TODAS as páginas do site.
       ]
     }
   },
