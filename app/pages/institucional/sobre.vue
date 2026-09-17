@@ -17,17 +17,17 @@
         
         <div class="info-box glass">
           <div class="info-item">
-            <h3>{{ $t('about.mission') }}</h3>
+            <h2>{{ $t('about.mission') }}</h2>
             <p>{{ $t('about.missionDesc') }}</p>
           </div>
           
           <div class="info-item">
-            <h3>{{ $t('about.vision') }}</h3>
+            <h2>{{ $t('about.vision') }}</h2>
             <p>{{ $t('about.visionDesc') }}</p>
           </div>
 
           <div class="info-item">
-            <h3>{{ $t('about.values') }}</h3>
+            <h2>{{ $t('about.values') }}</h2>
             <p>{{ $t('about.valuesDesc') }}</p>
           </div>
         </div>
@@ -173,7 +173,7 @@
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.info-item h3 {
+.info-item h2 {
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--primary);
