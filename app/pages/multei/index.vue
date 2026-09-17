@@ -69,8 +69,8 @@
         <span>Incluir</span>
       </button>
 
-      <NuxtLink to="/multei/orientacoes" class="btn-floating-help" title="Ver orientações e perguntas frequentes sobre o Multei">
-        <span class="btn-help-icon" aria-hidden="true">?</span>
+      <NuxtLink to="/multei/orientacoes" class="btn-floating-help"
+        title="Ver orientações e perguntas frequentes sobre o Multei">
         <span>Dúvidas?</span>
       </NuxtLink>
     </div>
@@ -671,7 +671,7 @@ onMounted(async () => {
   .btn-floating-report,
   .btn-floating-help {
     flex: 1;
-    max-width: 190px;
+    max-width: 125px;
     justify-content: center;
     padding: 0.8rem 1rem;
   }
