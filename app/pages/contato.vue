@@ -169,7 +169,7 @@
 
         <!-- Info box -->
         <div class="contact-info glass">
-          <h3>{{ $t('contact.infoTitle') }}</h3>
+          <h2>{{ $t('contact.infoTitle') }}</h2>
           <p class="text-muted">{{ $t('contact.infoSubtitle') }}</p>
           
           <div class="info-item">
@@ -433,7 +433,7 @@ const handleSubmit = () => {
   background: linear-gradient(135deg, rgba(109, 40, 217, 0.05), rgba(219, 39, 119, 0.05));
 }
 
-.contact-info h3 {
+.contact-info h2 {
   font-size: 1.3rem;
   color: var(--primary);
 }

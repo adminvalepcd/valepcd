@@ -25,7 +25,7 @@
           >
             <div class="header-main">
               <span class="document-date">{{ $t('institutional.dateLabel') }}: <strong>{{ formatDate(doc.date) }}</strong></span>
-              <h3 class="document-title">{{ doc.title }}</h3>
+              <h2 class="document-title">{{ doc.title }}</h2>
               <p class="document-desc text-muted">{{ doc.description }}</p>
             </div>
             
@@ -399,5 +399,20 @@ const parseMarkdownToHtml = (md) => {
 
 .markdown-content :deep(a:hover) {
   color: var(--primary-hover);
+}
+
+/* Mobile: empilha o cabeçalho para o título/descrição ocuparem a largura toda,
+   em vez de disputar espaço horizontal com o botão de ação. */
+@media (max-width: 768px) {
+  .document-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.5rem;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
 }
 </style>
