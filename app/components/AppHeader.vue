@@ -463,6 +463,8 @@ const changeFontSize = (direction) => {
 
 /* Dropdown Menu & Nested Navigation */
 .nav-item-dropdown {
+  align-items: center;
+  display: flex;
   position: relative;
 }
 
