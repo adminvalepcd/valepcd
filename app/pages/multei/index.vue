@@ -16,7 +16,6 @@
       </NuxtLink>
   
       <div class="top-bar-pills glass-panel">
-        <span class="badge-brand">Multei</span>
         <span v-if="isLoadingSheet" class="badge-status">Sincronizando...</span>
         <span 
           v-else 
