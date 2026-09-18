@@ -21,7 +21,7 @@
         </div>
 
         <p class="step-desc">
-          Tire uma foto ou envie uma imagem da infração para análise automática por IA.
+          Tire uma foto ou envie uma imagem da infração.
         </p>
 
         <div class="upload-actions">
@@ -50,7 +50,8 @@
         </div>
 
         <p class="privacy-note">
-          🔒 Suas fotos são analisadas por IA. Placas e rostos serão desfocados antes de qualquer gravação. Nenhum dado seu é armazenado
+          IMPORTANTE: Suas fotos são analisadas por IA. Placas e rostos serão desfocados antes de qualquer gravação. Nenhum dado
+          seu é armazenado
         </p>
       </div>
 
@@ -148,7 +149,7 @@
               <div class="loc-title-row">
                 <strong>Localização da Infração:</strong>
                 <span v-if="locationSource === 'exif'" class="source-badge is-exif" title="Coordenadas obtidas dos metadados da imagem">
-                  📷 Da foto (EXIF)
+                  📷 Da foto
                 </span>
                 <span v-else-if="locationSource === 'device'" class="source-badge is-gps" title="Coordenadas obtidas do GPS do navegador">
                   📡 GPS do dispositivo
@@ -164,10 +165,6 @@
                 <span v-if="isResolvingAddress" class="loc-loading">⏳ </span>
                 {{ addressText }}
               </p>
-              <div v-if="currentCidade || currentEstado" class="loc-city-pill">
-                📍 <span>{{ currentCidade }}</span><span v-if="currentEstado"> - {{ currentEstado }}</span>
-              </div>
-              <p class="loc-coords">Lat: {{ selectedLocation.latitude.toFixed(5) }}, Lng: {{ selectedLocation.longitude.toFixed(5) }}</p>
             </div>
           </div>
 
@@ -240,14 +237,7 @@
           <!-- Mini mapa para ajuste fino se acionado -->
           <div v-if="isAdjustingLocation" class="mini-map-container">
             <div class="mini-map-header-row">
-              <p class="mini-map-hint">Arraste o mapa para posicionar o pino vermelho exatamente no local da vaga/infração.</p>
-              <button 
-                type="button" 
-                class="btn-finish-adjust" 
-                @click="toggleAdjustLocation"
-              >
-                ✓ Concluir Escolha
-              </button>
+              <p class="mini-map-hint">Arraste o mapa para posicionar o pino vermelho exatamente no local da infração.</p>
             </div>
             <div class="mini-map-frame">
               <MulteiMapDisplay
@@ -266,7 +256,7 @@
 
         <div class="modal-actions">
           <button class="btn btn-secondary" @click="resetToUpload" :disabled="isSaving">
-            Trocar Foto
+            Recomeçar
           </button>
           <button 
             class="btn btn-primary btn-save-incident" 
@@ -275,7 +265,7 @@
           >
             <span v-if="isSaving">Processando...</span>
             <span v-else-if="isResolvingAddress">Obtendo endereço...</span>
-            <span v-else>Salvar Ocorrência</span>
+            <span v-else>Salvar denúncia</span>
           </button>
         </div>
       </div>
