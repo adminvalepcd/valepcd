@@ -28,12 +28,12 @@
             <ul class="footer-sub-links">
               <li>
                 <NuxtLink :to="localePath('/institucional')" class="footer-sub-link">
-                  — {{ $t('nav.documents') }}
+                  {{ $t('nav.documents') }}
                 </NuxtLink>
               </li>
               <li>
                 <NuxtLink :to="localePath('/institucional/sobre')" class="footer-sub-link">
-                  — {{ $t('nav.about') }}
+                  {{ $t('nav.about') }}
                 </NuxtLink>
               </li>
             </ul>
@@ -150,6 +150,7 @@ const currentYear = computed(() => new Date().getFullYear())
   font-size: 0.95rem;
   color: var(--text-muted);
   transition: color var(--transition-fast);
+  text-decoration: underline;
 }
 
 .footer-link:hover {
@@ -183,6 +184,7 @@ const currentYear = computed(() => new Date().getFullYear())
   font-size: 0.9rem;
   color: var(--text-muted);
   transition: all var(--transition-fast);
+  text-decoration: underline;
 }
 
 .footer-sub-link:hover {
