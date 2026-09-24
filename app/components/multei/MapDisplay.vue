@@ -152,7 +152,7 @@ const loadGoogleMapsScript = () => {
 
     const script = document.createElement('script');
     script.id = 'google-maps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsApiKey}&libraries=places&v=weekly&loading=async&callback=${GOOGLE_MAPS_CALLBACK}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsApiKey}&v=quarterly&loading=async&callback=${GOOGLE_MAPS_CALLBACK}`;
     script.async = true;
     script.onerror = (err) => {
       window.__googleMapsLoaderPromise = null;
@@ -352,6 +352,12 @@ const createMyLocationControl = (mapInstance, googleMaps) => {
   mapInstance.controls[googleMaps.ControlPosition.RIGHT_BOTTOM].push(controlDiv);
 };
 
+const isValidCoord = (lat, lng) => {
+  const nLat = Number(lat);
+  const nLng = Number(lng);
+  return Number.isFinite(nLat) && Number.isFinite(nLng) && nLat >= -90 && nLat <= 90 && nLng >= -180 && nLng <= 180;
+};
+
 const initMap = () => {
   if (!mapContainer.value || map.value || !window.google?.maps) {
     return;
@@ -359,10 +365,11 @@ const initMap = () => {
 
   try {
     const googleMaps = window.google.maps;
-    const center = {
-      lat: props.pinLocation?.latitude ?? props.initialCenter?.latitude ?? -23.55052,
-      lng: props.pinLocation?.longitude ?? props.initialCenter?.longitude ?? -46.633308
-    };
+    const rawLat = props.pinLocation?.latitude ?? props.initialCenter?.latitude ?? -23.55052;
+    const rawLng = props.pinLocation?.longitude ?? props.initialCenter?.longitude ?? -46.633308;
+    const center = isValidCoord(rawLat, rawLng)
+      ? { lat: Number(rawLat), lng: Number(rawLng) }
+      : { lat: -23.55052, lng: -46.633308 };
 
     map.value = markRaw(new googleMaps.Map(mapContainer.value, {
       center,
@@ -565,7 +572,7 @@ const updateMarkers = () => {
     clusterer.value.clearMarkers();
   }
 
-  const incidents = props.incidents || [];
+  const incidents = (props.incidents || []).filter(inc => isValidCoord(inc?.latitude, inc?.longitude));
   const { positions, multiGroups } = getCoordsWithSpiderOffset(incidents);
 
   const currentZoom = map.value?.getZoom() || 15;
