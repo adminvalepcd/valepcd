@@ -48,7 +48,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
+  import { ref, shallowRef, markRaw, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import LoadingSpinner from './LoadingSpinner.vue';
 import { requestUserLocation } from '~/services/geoService';
 
@@ -85,8 +85,8 @@ const config = useRuntimeConfig();
 const mapsApiKey = config.public.googleMapsApiKey || 'AIzaSyBE9MtDA7cziFHANDknpjvgP5jkAvXyguU';
 
 const mapContainer = ref(null);
-const map = ref(null);
-const clusterer = ref(null);
+  const map = shallowRef(null);
+  const clusterer = shallowRef(null);
 const mapError = ref(null);
 const isApiLoaded = ref(false);
 let listenerRef = null;
@@ -364,7 +364,7 @@ const initMap = () => {
       lng: props.pinLocation?.longitude ?? props.initialCenter?.longitude ?? -46.633308
     };
 
-    map.value = new googleMaps.Map(mapContainer.value, {
+    map.value = markRaw(new googleMaps.Map(mapContainer.value, {
       center,
       zoom: props.pinLocation ? 17 : props.initialZoom,
       disableDefaultUI: false,
@@ -372,7 +372,7 @@ const initMap = () => {
       streetViewControl: false,
       mapTypeControl: false,
       gestureHandling: 'greedy'
-    });
+    }));
 
     createMyLocationControl(map.value, googleMaps);
 
@@ -420,7 +420,7 @@ const initMap = () => {
         });
       }
 
-      clusterer.value = new clustererLib.MarkerClusterer(clusterOptions);
+      clusterer.value = markRaw(new clustererLib.MarkerClusterer(clusterOptions));
     }
 
     if (zoomListenerRef) {
@@ -633,12 +633,12 @@ const updateMarkers = () => {
 
   const newMarkers = incidents.map((incident, index) => {
     const pos = positions[index] || { lat: incident.latitude, lng: incident.longitude };
-    const marker = new googleMaps.Marker({
+    const marker = markRaw(new googleMaps.Marker({
       position: { lat: pos.lat, lng: pos.lng },
       title: incident.description || (incident.cidade ? `${incident.cidade} - ${incident.estado}` : `Infração registrada em ${new Date(incident.timestamp).toLocaleTimeString()}`),
       icon: pcdPinIcon,
       map: clusterer.value ? null : map.value
-    });
+    }));
 
     marker.addListener('click', () => {
       emit('markerClick', incident);
@@ -709,7 +709,7 @@ onMounted(async () => {
     await Promise.all([loadGoogleMapsScript(), loadClustererScript()]);
     initMap();
   } catch (e) {
-    console.error("Falha ao inicializar mapa no onMounted:", e);
+    console.error("Falha ao inicializar mapa:", e);
   }
 });
 

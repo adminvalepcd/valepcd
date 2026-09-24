@@ -379,7 +379,7 @@ watch(() => props.incident, () => {
   border: none;
   font-size: 1.25rem;
   cursor: pointer;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
   padding: 0.25rem 0.5rem;
   border-radius: 6px;
 }
@@ -407,7 +407,7 @@ watch(() => props.incident, () => {
 
 .image-loading-text {
   font-size: 0.88rem;
-  color: #64748b;
+  color: #475466;
   font-weight: 500;
 }
 
@@ -465,7 +465,7 @@ watch(() => props.incident, () => {
 
 .privacy-note {
   font-size: 0.8rem;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
   margin-top: 0.5rem;
   line-height: 1.4;
 }
@@ -511,7 +511,7 @@ watch(() => props.incident, () => {
 .info-label {
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
 }
 
 .info-val {
@@ -539,7 +539,7 @@ watch(() => props.incident, () => {
 
 .info-coords {
   font-size: 0.82rem;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
 }
 
 .modal-footer {
@@ -624,7 +624,7 @@ watch(() => props.incident, () => {
 
 .report-hint {
   font-size: 0.88rem;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
   margin-bottom: 0.75rem;
   line-height: 1.4;
 }

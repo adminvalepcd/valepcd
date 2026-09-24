@@ -287,6 +287,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+  import LoadingSpinner from './LoadingSpinner.vue';
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
 import { extractGpsData, blurSensitiveContentAndCompress, prepareImageForGemini } from '../../services/imageProcessor';
 import { saveIncidentToSheet } from '../../services/sheetsService';
@@ -1080,7 +1081,7 @@ const handleSaveIncident = async () => {
   border: none;
   font-size: 1.25rem;
   cursor: pointer;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
   border-radius: 8px;
   padding: 0.25rem 0.5rem;
 }
@@ -1136,7 +1137,7 @@ const handleSaveIncident = async () => {
 
 .privacy-note {
   font-size: 0.85rem;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
   line-height: 1.5;
   background: #f8fafc;
   padding: 0.75rem 1rem;
@@ -1374,7 +1375,7 @@ const handleSaveIncident = async () => {
 
 .analyzing-sub {
   font-size: 0.84rem;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
 }
 
 /* Keyframes de Animação */
@@ -1565,7 +1566,7 @@ const handleSaveIncident = async () => {
 
 .loc-coords {
   font-size: 0.85rem;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
 }
 
 .location-actions-bar {
@@ -1644,7 +1645,7 @@ const handleSaveIncident = async () => {
 
 .mini-map-hint {
   font-size: 0.8rem;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
   margin: 0;
   flex: 1;
 }
@@ -1898,7 +1899,7 @@ const handleSaveIncident = async () => {
 
 .btn-prominent-map:hover {
   background: #f1f5f9;
-  border-color: #64748b;
+  border-color: #475466;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
@@ -1917,7 +1918,7 @@ const handleSaveIncident = async () => {
 }
 
 .btn-prominent-map .btn-prominent-sub {
-  color: #64748b;
+  color: #475466;
 }
 
 .btn-save-incident.is-disabled-lock {

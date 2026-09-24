@@ -253,7 +253,7 @@ useHead({
 
 .page-subtitle {
   font-size: 1.08rem;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
   max-width: 720px;
   margin: 0 auto;
   line-height: 1.65;
@@ -327,7 +327,7 @@ useHead({
 
 .section-desc {
   font-size: 1rem;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
   line-height: 1.55;
 }
 
@@ -439,7 +439,7 @@ useHead({
 
 .step-text {
   font-size: 0.9rem;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
   line-height: 1.5;
   margin: 0;
 }

@@ -40,7 +40,7 @@
   --border-strong: rgba(0, 0, 0, 0.24);
   
   --text: hsl(224, 25%, 12%);
-  --text-muted: hsl(220, 15%, 45%);
+  --text-muted: #475466;
   
   /* Transitions */
   --transition-fast: 0.15s ease;

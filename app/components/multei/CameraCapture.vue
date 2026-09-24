@@ -53,6 +53,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue';
+import LoadingSpinner from './LoadingSpinner.vue';
 
 const emit = defineEmits(['photoTaken', 'cancel']);
 

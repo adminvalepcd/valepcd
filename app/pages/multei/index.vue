@@ -447,7 +447,7 @@ onMounted(async () => {
   font-weight: 600;
   padding: 0.2rem 0.55rem;
   border-radius: 9999px;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -486,7 +486,7 @@ onMounted(async () => {
 
 .badge-status {
   font-size: 0.76rem;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #475466);
   background: rgba(0, 0, 0, 0.05);
   padding: 0.18rem 0.55rem;
   border-radius: 9999px;

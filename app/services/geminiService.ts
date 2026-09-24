@@ -241,11 +241,9 @@ Analise a imagem enviada com atenção aos seguintes critérios:
     } catch (err) {
       lastError = err;
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.warn(`[geminiService] Modelo ${model} falhou, tentando próximo modelo na lista:`, errMsg);
     }
   }
 
-  console.error('[geminiService] Todos os modelos Gemini falharam:', lastError);
   return {
     ...defaultFailure,
     rejectionReason: 'Instabilidade temporária no serviço de IA (Google Gemini). Por favor, tente novamente em alguns instantes.',
