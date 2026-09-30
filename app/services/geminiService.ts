@@ -75,8 +75,8 @@ Analise a imagem enviada com atenção aos seguintes critérios:
 1. "hasVehicle": Defina como true se houver QUALQUER veículo automotor (carro, automóvel, caminhonete, SUV, van, caminhão, moto, micro-ônibus ou ônibus) visível na foto, mesmo que parcialmente enquadrado, em ângulo aberto ou fechado, estacionado ou em movimento. Apenas defina como false se comprovadamente não houver nenhum veículo na imagem.
 2. "isAppropriate": Defina como true se a imagem for segura para exibição pública em um aplicativo cívico (sem pornografia, nudez, violência extrema/sangue ou armas de fogo). Fotos cotidianas de vias públicas, estacionamentos, ruas e veículos automotores DEVEM ser sempre consideradas apropriadas (true).
 3. "rejectionReason": Se hasVehicle for false ou isAppropriate for false, retorne uma explicação concisa em português do motivo da rejeição. Se a foto for aprovada, retorne uma string vazia "".
-4. "plates": IMPORTANTE: Localize com precisão as caixas delimitadoras (bounding boxes) de TODAS as placas de veículos visíveis (dianteiras e traseiras de qualquer veículo na cena) para aplicação de desfoque de privacidade.
-5. "faces": IMPORTANTE: Localize com precisão as caixas delimitadoras de TODOS os rostos humanos visíveis para aplicação de desfoque de privacidade.
+4. "plates": IMPORTANTE: Localize com precisão as caixas delimitadoras (bounding boxes) de TODAS as placas de veículos visíveis (dianteiras e traseiras de qualquer veículo na cena), cobrindo toda a extensão da placa (incluindo moldura e caracteres), onde x e y são o canto superior esquerdo (xmin, ymin).
+5. "faces": IMPORTANTE: Localize com precisão as caixas delimitadoras de TODOS os rostos humanos visíveis para aplicação de desfoque de privacidade, onde x e y são o canto superior esquerdo (xmin, ymin).
 `;
 
   const { data, mimeType } = parseBase64Image(imageBase64);
@@ -108,10 +108,10 @@ Analise a imagem enviada com atenção aos seguintes critérios:
         items: {
           type: Type.OBJECT,
           properties: {
-            x: { type: Type.NUMBER, description: 'Coordenada horizontal x (0 a 1000 ou 0 a 1).' },
-            y: { type: Type.NUMBER, description: 'Coordenada vertical y (0 a 1000 ou 0 a 1).' },
-            width: { type: Type.NUMBER, description: 'Largura da caixa (0 a 1000 ou 0 a 1).' },
-            height: { type: Type.NUMBER, description: 'Altura da caixa (0 a 1000 ou 0 a 1).' }
+            x: { type: Type.NUMBER, description: 'Coordenada horizontal do canto superior esquerdo xmin (0 a 1000 ou 0 a 1).' },
+            y: { type: Type.NUMBER, description: 'Coordenada vertical do canto superior esquerdo ymin (0 a 1000 ou 0 a 1).' },
+            width: { type: Type.NUMBER, description: 'Largura total da caixa cobrindo toda a placa (0 a 1000 ou 0 a 1).' },
+            height: { type: Type.NUMBER, description: 'Altura total da caixa cobrindo toda a placa (0 a 1000 ou 0 a 1).' }
           },
           propertyOrdering: ['x', 'y', 'width', 'height']
         }
@@ -122,10 +122,10 @@ Analise a imagem enviada com atenção aos seguintes critérios:
         items: {
           type: Type.OBJECT,
           properties: {
-            x: { type: Type.NUMBER, description: 'Coordenada horizontal x (0 a 1000 ou 0 a 1).' },
-            y: { type: Type.NUMBER, description: 'Coordenada vertical y (0 a 1000 ou 0 a 1).' },
-            width: { type: Type.NUMBER, description: 'Largura da caixa (0 a 1000 ou 0 a 1).' },
-            height: { type: Type.NUMBER, description: 'Altura da caixa (0 a 1000 ou 0 a 1).' }
+            x: { type: Type.NUMBER, description: 'Coordenada horizontal do canto superior esquerdo xmin (0 a 1000 ou 0 a 1).' },
+            y: { type: Type.NUMBER, description: 'Coordenada vertical do canto superior esquerdo ymin (0 a 1000 ou 0 a 1).' },
+            width: { type: Type.NUMBER, description: 'Largura total da caixa (0 a 1000 ou 0 a 1).' },
+            height: { type: Type.NUMBER, description: 'Altura total da caixa (0 a 1000 ou 0 a 1).' }
           },
           propertyOrdering: ['x', 'y', 'width', 'height']
         }

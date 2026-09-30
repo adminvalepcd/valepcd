@@ -144,8 +144,8 @@ export function prepareImageForGemini(file: File, maxDim = 1200): Promise<string
 }
 
 /**
- * Aplica desfoque (blur de 12px) nas caixas delimitadoras de placas e rostos
- * e compacta a imagem em WebP com alta definição (~30% mais qualidade),
+ * Aplica desfoque pesado e irreversível (blur intenso + destruição de caracteres em múltiplos estágios)
+ * nas caixas delimitadoras de placas e rostos e compacta a imagem em WebP com alta definição,
  * respeitando o limite de 50.000 caracteres de célula do Google Sheets.
  */
 export function blurSensitiveContentAndCompress(
@@ -202,9 +202,9 @@ export function blurSensitiveContentAndCompress(
           bh /= 1000;
         }
 
-        const paddingRatio = 0.18; // 18% de margem de segurança para cobrir bordas de placas e rostos
-        const padW = bw * paddingRatio;
-        const padH = bh * paddingRatio;
+        // Margem de segurança ampliada (36% largura, 44% altura) para garantir cobertura total da placa/rosto
+        const padW = bw * 0.36;
+        const padH = bh * 0.44;
         const rawX = (bx - padW / 2) * targetW;
         const rawY = (by - padH / 2) * targetH;
         const rawW = (bw + padW) * targetW;
@@ -217,19 +217,64 @@ export function blurSensitiveContentAndCompress(
 
         if (w <= 2 || h <= 2) return;
 
-        // Desfoque híbrido universal (compatível com Safari, Chrome, Firefox e WebViews móveis):
-        // 1. Reduz a resolução da região em 10x para destruir caracteres de placas e traços faciais
-        const scale = 10;
-        const miniW = Math.max(2, Math.round(w / scale));
-        const miniH = Math.max(2, Math.round(h / scale));
+        // Desfoque pesado multi-estágio (compatível com Safari, Chrome, Firefox e WebViews móveis):
+        // Estágio 1: Redução intermediária para suavizar amostras antes da compressão extrema
+        const midW = Math.max(4, Math.round(w / 4));
+        const midH = Math.max(3, Math.round(h / 4));
+        const midCanvas = document.createElement('canvas');
+        midCanvas.width = midW;
+        midCanvas.height = midH;
+        const midCtx = midCanvas.getContext('2d');
 
+        // Estágio 2: Redução extrema (máx 5x3 pixels) para tornar matematicamente impossível
+        // distinguir os 7 caracteres de uma placa ou feições de um rosto, mesmo em fotos de perto
+        const miniW = Math.max(2, Math.min(5, Math.round(w / 28)));
+        const miniH = Math.max(2, Math.min(3, Math.round(h / 22)));
         const miniCanvas = document.createElement('canvas');
         miniCanvas.width = miniW;
         miniCanvas.height = miniH;
         const miniCtx = miniCanvas.getContext('2d');
 
-        if (miniCtx) {
-          miniCtx.drawImage(canvas, x, y, w, h, 0, 0, miniW, miniH);
+        if (midCtx && miniCtx) {
+          midCtx.imageSmoothingEnabled = true;
+          midCtx.imageSmoothingQuality = 'high';
+          midCtx.drawImage(canvas, x, y, w, h, 0, 0, midW, midH);
+
+          miniCtx.imageSmoothingEnabled = true;
+          miniCtx.imageSmoothingQuality = 'high';
+          miniCtx.drawImage(midCanvas, 0, 0, midW, midH, 0, 0, miniW, miniH);
+
+          // Estágio 3: Mistura de pixels (Box Blur 3x3 em 3 passadas direto no ImageData do miniCanvas)
+          // Garante homogeneização total do contraste entre letras pretas e fundo branco da placa
+          try {
+            const imgData = miniCtx.getImageData(0, 0, miniW, miniH);
+            const data = imgData.data;
+            for (let pass = 0; pass < 3; pass++) {
+              const copy = new Uint8ClampedArray(data);
+              for (let py = 0; py < miniH; py++) {
+                for (let px = 0; px < miniW; px++) {
+                  let r = 0, g = 0, b = 0, count = 0;
+                  for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                      const nx = Math.min(miniW - 1, Math.max(0, px + dx));
+                      const ny = Math.min(miniH - 1, Math.max(0, py + dy));
+                      const idx = (ny * miniW + nx) * 4;
+                      r += copy[idx];
+                      g += copy[idx + 1];
+                      b += copy[idx + 2];
+                      count++;
+                    }
+                  }
+                  const outIdx = (py * miniW + px) * 4;
+                  data[outIdx] = Math.round(r / count);
+                  data[outIdx + 1] = Math.round(g / count);
+                  data[outIdx + 2] = Math.round(b / count);
+                  data[outIdx + 3] = 255;
+                }
+              }
+            }
+            miniCtx.putImageData(imgData, 0, 0);
+          } catch {}
 
           ctx.save();
           ctx.beginPath();
@@ -240,16 +285,31 @@ export function blurSensitiveContentAndCompress(
           }
           ctx.clip();
 
-          // Aplica filtro blur nativo de 12px se suportado pelo navegador
-          try {
-            ctx.filter = 'blur(12px)';
-          } catch {}
-
-          // Redesenha com interpolação suave de alta qualidade
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(miniCanvas, 0, 0, miniW, miniH, x, y, w, h);
-          ctx.drawImage(miniCanvas, 0, 0, miniW, miniH, x, y, w, h);
+
+          // IMPORTANTE: Primeiro desenha uma camada 100% opaca SEM filtro para cobrir totalmente
+          // os pixels nítidos originais por baixo (evita que a transparência de borda do blur revele a placa!)
+          try {
+            ctx.filter = 'none';
+          } catch {}
+          ctx.drawImage(miniCanvas, 0, 0, miniW, miniH, x - 12, y - 12, w + 24, h + 24);
+
+          // Em seguida, aplica filtro blur pesado de 28px expandido além das bordas do clip
+          try {
+            ctx.filter = 'blur(28px)';
+          } catch {}
+          const bleed = 32;
+          ctx.drawImage(miniCanvas, 0, 0, miniW, miniH, x - bleed, y - bleed, w + bleed * 2, h + bleed * 2);
+          ctx.drawImage(miniCanvas, 0, 0, miniW, miniH, x - bleed, y - bleed, w + bleed * 2, h + bleed * 2);
+
+          // Camada translúcida fosca sutil (frosted glass) para quebrar qualquer resquício de contraste
+          try {
+            ctx.filter = 'none';
+          } catch {}
+          ctx.fillStyle = 'rgba(140, 140, 140, 0.22)';
+          ctx.fillRect(x, y, w, h);
+
           ctx.restore();
 
           // Contorno estético sutil para visualização da área protegida

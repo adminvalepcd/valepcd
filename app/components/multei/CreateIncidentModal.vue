@@ -837,8 +837,8 @@ const processSelectedImage = async (file) => {
       return;
     }
 
-    // 4. Se aprovado: queimar o blur de 12px no Canvas e comprimir em WebP de alta definição
-    analyzingStatusText.value = 'Aplicando desfoque de 12px nas placas e rostos...';
+    // 4. Se aprovado: queimar o blur pesado no Canvas e comprimir em WebP de alta definição
+    analyzingStatusText.value = 'Aplicando desfoque pesado nas placas e rostos...';
     const finalWebp = await blurSensitiveContentAndCompress(
       optimizedBase64,
       analysis.plates,
