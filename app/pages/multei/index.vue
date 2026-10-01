@@ -3,49 +3,86 @@
     <!-- Título H1 para SEO (atrás do mapa, indexável pelos motores de busca) -->
     <h1 class="seo-title">Multei - Denúncia anônima de uso irregular de vagas para PcD</h1>
 
-    <!-- Controles Flutuantes no Topo Esquerdo: Botão Voltar + Painel de Status/Filtros -->
-    <div class="top-left-controls">
-      <NuxtLink to="/" class="btn-back-home" title="Voltar para a página inicial do Vale PCD"
-        aria-label="Voltar para a Home do Vale PCD">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-          stroke-linecap="round" stroke-linejoin="round" class="back-icon">
-          <line x1="19" y1="12" x2="5" y2="12"></line>
-          <polyline points="12 19 5 12 12 5"></polyline>
-        </svg>
-        <span class="back-label">Voltar</span>
-      </NuxtLink>
-  
-      <div class="top-bar-pills glass-panel">
-        <span v-if="isLoadingSheet" class="badge-status">Sincronizando...</span>
-        <span 
-          v-else 
-          class="badge-status is-active"
-          :title="`Exibindo ${visibleIncidentsCount} de ${incidents.length} ocorrências carregadas`"
-        >
-          {{ visibleIncidentsCount }} na região
-        </span>
+    <!-- Barra Superior Flutuante: Botão Voltar + Busca de Endereço + Status/GPS -->
+    <div class="top-header-bar" ref="searchContainerRef">
+      <div class="top-left-controls">
+        <NuxtLink to="/" class="btn-back-home" title="Voltar para a página inicial do Vale PCD"
+          aria-label="Voltar para a Home do Vale PCD">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round" class="back-icon">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          <span class="back-label">Voltar</span>
+        </NuxtLink>
+    
+        <div class="top-bar-pills glass-panel">
+          <span v-if="isLoadingSheet" class="badge-status">Sincronizando...</span>
+          <span v-else class="badge-status is-active"
+            :title="`Exibindo ${visibleIncidentsCount} de ${incidents.length} ocorrências carregadas`">
+            {{ visibleIncidentsCount }} na região
+          </span>
 
-        <button 
-          v-if="locationState !== 'granted'" 
-          type="button" 
-          class="badge-location-btn" 
-          @click="requestLocation"
-          title="Clique para obter sua localização exata no mapa"
-        >
-          <span>📍</span>
-          <span>{{ locationState === 'denied' ? 'Ativar GPS' : 'Meu GPS' }}</span>
-        </button>
-        <button 
-          v-else 
-          type="button" 
-          class="badge-status is-gps is-clickable-gps"
-          @click="requestLocation"
-          title="Clique para voltar à sua localização GPS"
-        >
-          📍 GPS Ativo
-        </button>
+          <button v-if="locationState !== 'granted'" type="button" class="badge-location-btn" @click="requestLocation"
+            title="Clique para obter sua localização exata no mapa">
+            <span>📍</span>
+            <span>{{ locationState === 'denied' ? 'Ativar GPS' : 'Meu GPS' }}</span>
+          </button>
+          <button v-else type="button" class="badge-status is-gps is-clickable-gps" @click="requestLocation"
+            title="Clique para voltar à sua localização GPS">
+            📍 GPS Ativo
+          </button>
+          </div>
+          </div>
+
+      <!-- Barra de Busca de Endereços -->
+      <div class="address-search-wrapper">
+        <form class="address-search-box glass-panel" @submit.prevent="handleSearchSubmit" role="search">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round" class="search-icon" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+      
+          <input v-model="searchQuery" type="search" class="address-search-input"
+            placeholder="Buscar endereço, rua, bairro ou cidade..." aria-label="Buscar endereço no mapa" autocomplete="off"
+            @input="handleSearchInput" @focus="handleSearchFocus" @keydown.down.prevent="moveHighlight(1)"
+            @keydown.up.prevent="moveHighlight(-1)" @keydown.esc="closeSuggestions" />
+      
+          <span v-if="isSearchingAddress" class="search-spinner" aria-label="Buscando endereço"></span>
+      
+          <button v-if="searchQuery" type="button" class="btn-clear-search" @click="clearSearch" title="Limpar busca"
+            aria-label="Limpar busca">
+            ✕
+          </button>
+      
+          <button type="submit" class="btn-submit-search" :disabled="isSearchingAddress || searchQuery.trim().length < 2"
+            title="Buscar endereço">
+            Buscar
+          </button>
+        </form>
+      
+        <!-- Lista de Sugestões de Endereço -->
+        <Transition name="fade-slide">
+          <ul v-if="showSuggestions && (searchResults.length > 0 || searchNoResults)" class="address-suggestions-list"
+            role="listbox">
+            <li v-if="searchNoResults && searchResults.length === 0" class="suggestion-empty">
+              Nenhum endereço encontrado para "{{ searchQuery }}"
+            </li>
+            <li v-for="(item, index) in searchResults" :key="`${item.latitude}_${item.longitude}_${index}`"
+              class="suggestion-item" :class="{ 'is-highlighted': index === highlightedIndex }" role="option"
+              :aria-selected="index === highlightedIndex" @mousedown.prevent="selectSearchResult(item)"
+              @mouseenter="highlightedIndex = index">
+              <span class="suggestion-pin" aria-hidden="true">📍</span>
+              <div class="suggestion-texts">
+                <span class="suggestion-label">{{ item.label }}</span>
+                <span v-if="item.sublabel" class="suggestion-sublabel">{{ item.sublabel }}</span>
+              </div>
+            </li>
+          </ul>
+        </Transition>
       </div>
-    </div>
+      </div>
 
     <!-- Alerta sucinto flutuante quando o usuário move o mapa para outra região -->
     <Transition name="fade-slide">
@@ -68,10 +105,25 @@
         <span>Incluir</span>
       </button>
 
-      <NuxtLink to="/multei/orientacoes" class="btn-floating-help"
-        title="Ver orientações e perguntas frequentes sobre o Multei">
-        <span>Dúvidas?</span>
-      </NuxtLink>
+      <div class="help-menu-wrapper" ref="helpMenuRef">
+        <Transition name="help-menu-pop">
+          <div v-if="isHelpMenuOpen" class="help-upward-menu" role="menu" aria-label="Opções de ajuda">
+            <NuxtLink to="/multei/orientacoes" class="help-menu-item" role="menuitem" @click="isHelpMenuOpen = false">
+              <span class="help-menu-icon" aria-hidden="true">ℹ️</span>
+              <span>Sobre o Multei</span>
+            </NuxtLink>
+<button type="button" class="help-menu-item" role="menuitem" @click="openWhatToReportModal">
+  <span class="help-menu-icon" aria-hidden="true">📋</span>
+  <span>O que denunciar?</span>
+</button>
+</div>
+</Transition>
+
+<button type="button" class="btn-floating-help" :class="{ 'is-open': isHelpMenuOpen }" :aria-expanded="isHelpMenuOpen"
+  aria-haspopup="true" title="Ver opções de ajuda e orientações sobre o Multei" @click="toggleHelpMenu">
+  <span>Dúvidas?</span>
+</button>
+</div>
     </div>
 
     <!-- Mapa em Tela Cheia -->
@@ -86,6 +138,99 @@
         @user-location-found="handleUserLocationFound"
       />
     </div>
+
+    <!-- Modal Tela Cheia: O que posso denunciar? -->
+    <Transition name="fade-modal">
+      <div v-if="isWhatToReportModalOpen" class="what-to-report-fullscreen-modal" role="dialog" aria-modal="true"
+        aria-labelledby="what-to-report-title">
+        <div class="what-to-report-content">
+          <div class="what-to-report-topbar">
+            <span class="what-to-report-badge">Guia de Infrações</span>
+            <button type="button" class="what-to-report-close-btn" aria-label="Fechar janela"
+              @click="isWhatToReportModalOpen = false">
+              ✕ Fechar
+            </button>
+          </div>
+    
+          <header class="what-to-report-header">
+            <h2 id="what-to-report-title" class="what-to-report-title">O que posso denunciar?</h2>
+            <p class="what-to-report-intro">
+              Você pode usar este aplicativo para reportar veículos que desrespeitam o espaço e bloqueiam a mobilidade de
+              pessoas com deficiência. Veja o que é infração:
+            </p>
+          </header>
+    
+          <div class="what-to-report-accordion">
+            <details class="report-summary-card" open>
+              <summary class="report-summary-trigger">
+                <span class="report-summary-number">1</span>
+                <span class="report-summary-heading">1. Vaga exclusiva sem credencial</span>
+                <span class="report-summary-chevron" aria-hidden="true">▾</span>
+              </summary>
+              <div class="report-summary-body">
+                <p><strong>O que é:</strong> Veículos estacionados nas vagas reservadas sem exibir a credencial oficial no
+                  painel.</p>
+                <p><strong>Por que atrapalha:</strong> Tira o direito de quem realmente precisa de um espaço mais largo e
+                  próximo aos acessos.</p>
+                <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso XX do Código de Trânsito
+                  Brasileiro (CTB)</p>
+              </div>
+            </details>
+    
+            <details class="report-summary-card">
+              <summary class="report-summary-trigger">
+                <span class="report-summary-number">2</span>
+                <span class="report-summary-heading">2. Bloqueio de calçadas e faixas de pedestres</span>
+                <span class="report-summary-chevron" aria-hidden="true">▾</span>
+              </summary>
+              <div class="report-summary-body">
+                <p><strong>O que é:</strong> Carros ou motos parados sobre o passeio público ou em cima das faixas de
+                  travessia.</p>
+                <p><strong>Por que atrapalha:</strong> Interrompe a rota acessível e obriga pessoas que utilizam caideira de
+                  rodas, pessoas cegas ou com mobilidade reduzida a desviarem pelo asfalto, correndo risco de atropelamento.
+                </p>
+                <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso VIII do CTB</p>
+              </div>
+            </details>
+    
+            <details class="report-summary-card">
+              <summary class="report-summary-trigger">
+                <span class="report-summary-number">3</span>
+                <span class="report-summary-heading">3. Obstrução de rampas e esquinas</span>
+                <span class="report-summary-chevron" aria-hidden="true">▾</span>
+              </summary>
+              <div class="report-summary-body">
+                <p><strong>O que é:</strong> Veículos estacionados a menos de 5 metros do alinhamento da via (nas esquinas),
+                  onde ficam as rampas de acessibilidade.</p>
+                <p><strong>Por que atrapalha:</strong> Impede a transição segura entre a calçada e a rua.</p>
+                <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso I do CTB</p>
+              </div>
+            </details>
+    
+            <details class="report-summary-card">
+              <summary class="report-summary-trigger">
+                <span class="report-summary-number">4</span>
+                <span class="report-summary-heading">4. Invasão de ilhas e refúgios</span>
+                <span class="report-summary-chevron" aria-hidden="true">▾</span>
+              </summary>
+              <div class="report-summary-body">
+                <p><strong>O que é:</strong> Veículos parados nas áreas de segurança estruturadas no meio de avenidas e vias
+                  largas.</p>
+                <p><strong>Por que atrapalha:</strong> Elimina a área de descanso e proteção essencial para quem se locomove
+                  mais devagar e precisa fazer a travessia em duas etapas.</p>
+                <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso VIII do CTB</p>
+              </div>
+            </details>
+          </div>
+    
+          <div class="what-to-report-footer">
+            <button type="button" class="btn btn-primary what-to-report-cta" @click="isWhatToReportModalOpen = false">
+              Entendi, voltar ao mapa
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Modal para Inclusão de Nova Ocorrência com IA Gemini -->
     <MulteiCreateIncidentModal
@@ -108,9 +253,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+  import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { fetchIncidentsFromSheet, normalizeAppsScriptUrl } from '~/services/sheetsService';
-import { requestUserLocation } from '~/services/geoService';
+  import { requestUserLocation, searchAddresses } from '~/services/geoService';
 
 definePageMeta({
   layout: false
@@ -136,7 +281,7 @@ const appsScriptUrl = ref(
   normalizeAppsScriptUrl(
     (config.public.appsScriptUrl) || 
     (process.env.VITE_APPS_SCRIPT_URL) || 
-    'https://script.google.com/macros/s/AKfycbyICoKQagn4rYq2_38n4DZNBMi4kbZCg07zkHwdSuiNwU6Tk1ZIzETNUh368g3mvOHM/exec'
+    'https://script.google.com/macros/s/AKfycbw35ZrRvCYAGXbojYJLSfiDazZbAjUZ24ho1FiiXgCzqgLc4csFuaKLmotinUH-7Nyf/exec'
   )
 );
 
@@ -145,6 +290,30 @@ const selectedIncident = ref(null);
 const isLoadingSheet = ref(false);
 const locationState = ref('idle');
 const filterScope = ref('nearby'); // 'nearby' ou 'all'
+
+  // Menu flutuante "Dúvidas?" e modal "O que denunciar?"
+  const helpMenuRef = ref(null);
+  const isHelpMenuOpen = ref(false);
+  const isWhatToReportModalOpen = ref(false);
+
+  const toggleHelpMenu = () => {
+    isHelpMenuOpen.value = !isHelpMenuOpen.value;
+  };
+
+  const openWhatToReportModal = () => {
+    isHelpMenuOpen.value = false;
+    isWhatToReportModalOpen.value = true;
+  };
+
+  // Estado da Barra de Busca de Endereços
+  const searchContainerRef = ref(null);
+  const searchQuery = ref('');
+  const searchResults = ref([]);
+  const isSearchingAddress = ref(false);
+  const showSuggestions = ref(false);
+  const searchNoResults = ref(false);
+  const highlightedIndex = ref(-1);
+  let searchDebounceTimer = null;
 
 const initialCenter = ref({
   latitude: -23.55052,
@@ -163,6 +332,119 @@ const currentMapCenter = ref({
 
 const incidents = ref([]);
 const mapBounds = ref(null);
+
+  const runAddressSearch = async (queryText) => {
+    const clean = (queryText || '').trim();
+    if (clean.length < 2) {
+      searchResults.value = [];
+      searchNoResults.value = false;
+      isSearchingAddress.value = false;
+      return [];
+    }
+
+    isSearchingAddress.value = true;
+    searchNoResults.value = false;
+    try {
+      const results = await searchAddresses(clean);
+      searchResults.value = results;
+      searchNoResults.value = results.length === 0;
+      highlightedIndex.value = results.length > 0 ? 0 : -1;
+      showSuggestions.value = true;
+      return results;
+    } catch (err) {
+      console.warn('[multei] Erro ao buscar endereço:', err);
+      searchResults.value = [];
+      searchNoResults.value = true;
+      return [];
+    } finally {
+      isSearchingAddress.value = false;
+    }
+  };
+
+  const handleSearchInput = () => {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    const clean = searchQuery.value.trim();
+    if (clean.length < 2) {
+      searchResults.value = [];
+      searchNoResults.value = false;
+      showSuggestions.value = false;
+      isSearchingAddress.value = false;
+      return;
+    }
+    searchDebounceTimer = setTimeout(() => {
+      runAddressSearch(clean);
+    }, 320);
+  };
+
+  const handleSearchFocus = () => {
+    if (searchResults.value.length > 0 || searchNoResults.value) {
+      showSuggestions.value = true;
+    }
+  };
+
+  const closeSuggestions = () => {
+    showSuggestions.value = false;
+    highlightedIndex.value = -1;
+  };
+
+  const clearSearch = () => {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    searchQuery.value = '';
+    searchResults.value = [];
+    searchNoResults.value = false;
+    showSuggestions.value = false;
+    highlightedIndex.value = -1;
+  };
+
+  const moveHighlight = (delta) => {
+    if (!showSuggestions.value || searchResults.value.length === 0) return;
+    const total = searchResults.value.length;
+    highlightedIndex.value = (highlightedIndex.value + delta + total) % total;
+  };
+
+  const selectSearchResult = (item) => {
+    if (!item) return;
+    searchQuery.value = item.formattedAddress || item.label;
+    showSuggestions.value = false;
+    searchNoResults.value = false;
+
+    const targetCoords = {
+      latitude: item.latitude,
+      longitude: item.longitude,
+      zoom: 16,
+      isSearchResult: true
+    };
+    initialCenter.value = targetCoords;
+    currentMapCenter.value = {
+      latitude: item.latitude,
+      longitude: item.longitude
+    };
+    loadIncidents('nearby', {
+      latitude: item.latitude,
+      longitude: item.longitude
+    });
+  };
+
+  const handleSearchSubmit = async () => {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    if (showSuggestions.value && highlightedIndex.value >= 0 && searchResults.value[highlightedIndex.value]) {
+      selectSearchResult(searchResults.value[highlightedIndex.value]);
+      return;
+    }
+    const results = await runAddressSearch(searchQuery.value);
+    if (results.length > 0) {
+      selectSearchResult(results[0]);
+    }
+  };
+
+  const handleDocumentClick = (e) => {
+    if (searchContainerRef.value && !searchContainerRef.value.contains(e.target)) {
+      closeSuggestions();
+    }
+    if (helpMenuRef.value && !helpMenuRef.value.contains(e.target)) {
+      isHelpMenuOpen.value = false;
+    }
+  };
 
 const getDistanceKm = (lat1, lon1, lat2, lon2) => {
   const R = 6371;
@@ -321,9 +603,19 @@ const requestLocation = async () => {
 };
 
 onMounted(async () => {
+  if (typeof document !== 'undefined') {
+    document.addEventListener('mousedown', handleDocumentClick);
+  }
   requestLocation();
   loadIncidents();
 });
+
+  onBeforeUnmount(() => {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('mousedown', handleDocumentClick);
+    }
+  });
 </script>
 
 <style scoped>
@@ -366,16 +658,206 @@ onMounted(async () => {
   min-height: 100vh !important;
 }
 
-.top-left-controls {
+.top-header-bar {
   position: absolute;
-  top: 16px;
+  top: 14px;
   left: 16px;
-  z-index: 30;
+  right: 16px;
+  z-index: 35;
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
-  max-width: calc(100vw - 32px);
+  pointer-events: none;
+}
+
+.top-left-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  pointer-events: auto;
+}
+
+.address-search-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 260px;
+  max-width: 480px;
+  pointer-events: auto;
+}
+
+.address-search-box {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 0.45rem;
+  padding: 0.32rem 0.4rem 0.32rem 0.85rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  border: 1.5px solid rgba(134, 0, 125, 0.18);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.address-search-box:focus-within {
+  border-color: var(--primary, #86007D);
+  box-shadow: 0 6px 20px rgba(134, 0, 125, 0.26);
+}
+
+.search-icon {
+  width: 17px;
+  height: 17px;
+  color: var(--primary, #86007D);
+  flex-shrink: 0;
+}
+
+.address-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 0.88rem;
+  color: #1e293b;
+  font-weight: 500;
+}
+
+.address-search-input::placeholder {
+  color: #64748b;
+  font-weight: 400;
+}
+
+.address-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(134, 0, 125, 0.2);
+  border-top-color: var(--primary, #86007D);
+  border-radius: 50%;
+  animation: spinSearch 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spinSearch {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-clear-search {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.06);
+  color: #64748b;
+  font-size: 0.75rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.btn-clear-search:hover {
+  background: rgba(0, 0, 0, 0.12);
+  color: #1e293b;
+}
+
+.btn-submit-search {
+  background: var(--primary, #86007D);
+  color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  padding: 0.36rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.btn-submit-search:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.btn-submit-search:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.address-suggestions-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(16px);
+  border-radius: 16px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.24);
+  border: 1px solid rgba(134, 0, 125, 0.15);
+  max-height: 290px;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.suggestion-empty {
+  padding: 0.75rem 0.9rem;
+  font-size: 0.84rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.suggestion-item:hover,
+.suggestion-item.is-highlighted {
+  background: rgba(134, 0, 125, 0.09);
+}
+
+.suggestion-pin {
+  font-size: 0.95rem;
+  line-height: 1.3;
+  flex-shrink: 0;
+}
+
+.suggestion-texts {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.suggestion-label {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suggestion-sublabel {
+  font-size: 0.75rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .btn-back-home {
@@ -550,7 +1032,7 @@ onMounted(async () => {
 .fade-slide-enter-from,
 .fade-slide-leave-to {
   opacity: 0;
-  transform: translateX(-50%) translateY(-10px);
+  transform: translateY(-8px);
 }
 
 .badge-location-btn {
@@ -607,9 +1089,15 @@ onMounted(async () => {
   font-size: 1.15rem;
 }
 
+.help-menu-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
 .btn-floating-help {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.45rem;
   padding: 0.85rem 1.35rem;
   font-weight: 700;
@@ -625,7 +1113,8 @@ onMounted(async () => {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.btn-floating-help:hover {
+.btn-floating-help:hover,
+.btn-floating-help.is-open {
   background: #ffffff;
   color: var(--primary, #86007D);
   border-color: var(--primary, #86007D);
@@ -633,31 +1122,305 @@ onMounted(async () => {
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
 }
 
-.btn-help-icon {
+.help-upward-menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  min-width: 210px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(14px);
+  border-radius: 16px;
+  padding: 0.4rem;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.24);
+  border: 1px solid rgba(134, 0, 125, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  z-index: 45;
+}
+
+.help-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: #1e293b;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.help-menu-item:hover {
+  background: rgba(134, 0, 125, 0.09);
+  color: var(--primary, #86007D);
+}
+
+.help-menu-icon {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.help-menu-pop-enter-active,
+.help-menu-pop-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: bottom left;
+}
+
+.help-menu-pop-enter-from,
+.help-menu-pop-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.95);
+}
+
+/* Modal Tela Cheia: O que posso denunciar? */
+.what-to-report-fullscreen-modal {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 100;
+  background: #f8fafc;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.what-to-report-content {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  flex: 1;
+}
+
+.what-to-report-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.what-to-report-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.85rem;
+  border-radius: 9999px;
+  background: rgba(134, 0, 125, 0.1);
+  color: var(--primary, #86007D);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.what-to-report-close-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  color: #1e293b;
+  font-weight: 700;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.what-to-report-close-btn:hover {
+  border-color: var(--primary, #86007D);
+  color: var(--primary, #86007D);
+  background: rgba(134, 0, 125, 0.05);
+}
+
+.what-to-report-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.what-to-report-title {
+  font-size: clamp(1.55rem, 4vw, 2.1rem);
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.what-to-report-intro {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #475569;
+  margin: 0;
+}
+
+.what-to-report-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.report-summary-card {
+  background: #ffffff;
+  border: 1.5px solid rgba(15, 23, 42, 0.09);
+  border-radius: 16px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.report-summary-card[open] {
+  border-color: rgba(134, 0, 125, 0.35);
+  box-shadow: 0 8px 22px rgba(134, 0, 125, 0.1);
+}
+
+.report-summary-trigger {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 1rem 1.15rem;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 700;
+  color: #0f172a;
+  transition: background 0.18s ease;
+}
+
+.report-summary-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.report-summary-trigger:hover {
+  background: rgba(134, 0, 125, 0.04);
+}
+
+.report-summary-number {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: rgba(134, 0, 125, 0.12);
   color: var(--primary, #86007D);
+  font-size: 0.88rem;
   font-weight: 800;
+  flex-shrink: 0;
+}
+
+.report-summary-card[open] .report-summary-number {
+  background: var(--primary, #86007D);
+  color: #ffffff;
+}
+
+.report-summary-heading {
+  flex: 1;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.report-summary-chevron {
+  font-size: 1.1rem;
+  color: #64748b;
+  transition: transform 0.2s ease;
+}
+
+.report-summary-card[open] .report-summary-chevron {
+  transform: rotate(180deg);
+  color: var(--primary, #86007D);
+}
+
+.report-summary-body {
+  padding: 0 1.15rem 1.15rem 3.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  color: #334155;
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.report-summary-body p {
+  margin: 0;
+}
+
+.report-legal-base {
+  display: inline-block;
+  margin-top: 0.2rem !important;
+  padding: 0.45rem 0.75rem;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #0f172a;
   font-size: 0.85rem;
+  border-left: 3px solid var(--primary, #86007D);
+}
+
+.what-to-report-footer {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  display: flex;
+  justify-content: center;
+}
+
+.what-to-report-cta {
+  width: 100%;
+  max-width: 360px;
+  padding: 0.9rem 1.5rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  font-size: 0.98rem;
+  text-align: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.fade-modal-enter-active,
+.fade-modal-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.fade-modal-enter-from,
+.fade-modal-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
 }
 
 @media (max-width: 640px) {
+  .top-header-bar {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    gap: 0.45rem;
+  }
   .top-left-controls {
-    top: 12px;
-    left: 12px;
-    gap: 0.5rem;
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
+  .address-search-wrapper {
+    width: 100%;
+    max-width: 100%;
+    flex: 1 1 100%;
   }
   .btn-back-home {
-    padding: 0.45rem 0.8rem;
-    font-size: 0.82rem;
+    padding: 0.42rem 0.8rem;
+    font-size: 0.8rem;
   }
   .btn-floating-refresh {
-    top: 108px;
+    top: 112px;
   }
   .bottom-action-container {
     bottom: 20px;
@@ -668,11 +1431,22 @@ onMounted(async () => {
     gap: 0.65rem;
   }
   .btn-floating-report,
-  .btn-floating-help {
+  .help-menu-wrapper {
     flex: 1;
-    max-width: 125px;
+    max-width: 140px;
+  }
+  .btn-floating-report,
+  .btn-floating-help {
+    width: 100%;
     justify-content: center;
     padding: 0.8rem 1rem;
+  }
+  .help-upward-menu {
+    left: auto;
+    right: 0;
+  }
+  .report-summary-body {
+    padding: 0 1rem 1rem 1rem;
   }
 }
 </style>

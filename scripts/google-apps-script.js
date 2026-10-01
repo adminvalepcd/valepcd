@@ -1,7 +1,7 @@
 /**
  * GOOGLE APPS SCRIPT - VALE PCD (Multei)
  * Planilha: https://docs.google.com/spreadsheets/d/1884lKe9k5ANy-CGigLrWZR-5iDS9Tp_dnosT-ix4wiI/edit
- * Colunas: id | data | latitude | longitude | foto | ativo | motivo_denuncia
+ * Colunas: id | data | latitude | longitude | foto | ativo | motivo_denuncia | cidade | estado | rua | bairro
  *
  * COMO ATUALIZAR SUA IMPLANTAÇÃO NO APPS SCRIPT:
  * 1. Na planilha, clique em: Extensões > Apps Script
@@ -146,10 +146,10 @@ function doPost(e) {
   try {
     const sheet = getTargetSheet();
 
-    // 1. Garantir que os cabeçalhos existam na ordem padrão: id | data | latitude | longitude | foto | ativo | motivo_denuncia | cidade | estado
+    // 1. Garantir que os cabeçalhos existam na ordem padrão: id | data | latitude | longitude | foto | ativo | motivo_denuncia | cidade | estado | rua | bairro
     var headers = [];
     if (sheet.getLastRow() === 0) {
-      headers = ['id', 'data', 'latitude', 'longitude', 'foto', 'ativo', 'motivo_denuncia', 'cidade', 'estado'];
+      headers = ['id', 'data', 'latitude', 'longitude', 'foto', 'ativo', 'motivo_denuncia', 'cidade', 'estado', 'rua', 'bairro'];
       sheet.appendRow(headers);
       sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
     } else {
@@ -158,8 +158,8 @@ function doPost(e) {
         return String(h).trim().toLowerCase();
       });
 
-      // Se a planilha já tinha colunas antigas, adiciona as novas colunas que faltarem dinamicamente (cidade e estado no final após motivo_denuncia)
-      var requiredHeaders = ['foto', 'ativo', 'motivo_denuncia', 'cidade', 'estado'];
+      // Se a planilha já tinha colunas antigas, adiciona as novas colunas que faltarem dinamicamente no final da tabela
+      var requiredHeaders = ['foto', 'ativo', 'motivo_denuncia', 'cidade', 'estado', 'rua', 'bairro'];
       for (var r = 0; r < requiredHeaders.length; r++) {
         var req = requiredHeaders[r];
         if (headers.indexOf(req) === -1) {
@@ -227,15 +227,19 @@ function doPost(e) {
     const longitude = Number(payload.longitude) || 0;
     var cidade = String(payload.cidade || (e && e.parameter && e.parameter.cidade) || '').trim();
     var estado = String(payload.estado || (e && e.parameter && e.parameter.estado) || '').trim();
+    var rua = String(payload.rua || (e && e.parameter && e.parameter.rua) || '').trim();
+    var bairro = String(payload.bairro || (e && e.parameter && e.parameter.bairro) || '').trim();
     const foto = payload.foto || '';
     const ativo = payload.ativo !== undefined ? Boolean(payload.ativo) : true;
     const motivo = payload.motivo_denuncia || '';
 
-    // Se cidade ou estado vierem vazios, tenta resolver com busca multi-nível e fallbacks
-    if ((!cidade || !estado) && latitude && longitude) {
+    // Se algum dado de localização vier vazio, tenta resolver com busca multi-nível e fallbacks
+    if ((!cidade || !estado || !rua || !bairro) && latitude && longitude) {
       var resolved = resolveLocationCityAndState(latitude, longitude);
       if (!cidade && resolved.cidade) cidade = resolved.cidade;
       if (!estado && resolved.estado) estado = resolved.estado;
+      if (!rua && resolved.rua) rua = resolved.rua;
+      if (!bairro && resolved.bairro) bairro = resolved.bairro;
     }
 
     if (estado) {
@@ -255,6 +259,8 @@ function doPost(e) {
       else if (col === 'motivo_denuncia') newRow.push(motivo);
       else if (col === 'cidade') newRow.push(cidade);
       else if (col === 'estado') newRow.push(estado);
+      else if (col === 'rua') newRow.push(rua);
+      else if (col === 'bairro') newRow.push(bairro);
       else newRow.push(payload[col] || '');
     }
 
@@ -279,11 +285,19 @@ function doPost(e) {
 
     var colCidadeIdx = headers.indexOf('cidade') + 1;
     var colEstadoIdx = headers.indexOf('estado') + 1;
+    var colRuaIdx = headers.indexOf('rua') + 1;
+    var colBairroIdx = headers.indexOf('bairro') + 1;
     if (colCidadeIdx > 0 && cidade) {
       sheet.getRange(targetRow, colCidadeIdx).setValue(cidade);
     }
     if (colEstadoIdx > 0 && estado) {
       sheet.getRange(targetRow, colEstadoIdx).setValue(estado);
+    }
+    if (colRuaIdx > 0 && rua) {
+      sheet.getRange(targetRow, colRuaIdx).setValue(rua);
+    }
+    if (colBairroIdx > 0 && bairro) {
+      sheet.getRange(targetRow, colBairroIdx).setValue(bairro);
     }
     SpreadsheetApp.flush();
 
@@ -293,6 +307,8 @@ function doPost(e) {
       id: id,
       cidade: cidade,
       estado: estado,
+      rua: rua,
+      bairro: bairro,
       ativo: ativo,
       aba: sheet.getName(),
       linha: targetRow
@@ -332,13 +348,13 @@ function normalizeStateUF(stateStr) {
 }
 
 /**
- * Resolve cidade e estado a partir de coordenadas geográficas
+ * Resolve cidade, estado, rua e bairro a partir de coordenadas geográficas
  * 1. Varre TODOS os resultados do Maps.newGeocoder() do Google Apps Script
  * 2. Fallback resiliente via OpenStreetMap Nominatim usando UrlFetchApp
  * 3. Fallback BigDataCloud extraindo o município (adminLevel === 8)
  */
 function resolveLocationCityAndState(lat, lng) {
-  var result = { cidade: '', estado: '' };
+  var result = { cidade: '', estado: '', rua: '', bairro: '' };
   if (!lat || !lng) return result;
 
   // 1. Google Maps Geocoder Nativo do Google Apps Script
@@ -350,6 +366,16 @@ function resolveLocationCityAndState(lat, lng) {
         var comps = geo.results[r].address_components || [];
         for (var c = 0; c < comps.length; c++) {
           var types = comps[c].types || [];
+          if (!result.rua && types.indexOf('route') !== -1) {
+            result.rua = comps[c].long_name || comps[c].short_name || '';
+          }
+          if (!result.bairro && (
+            types.indexOf('sublocality_level_1') !== -1 ||
+            types.indexOf('sublocality') !== -1 ||
+            types.indexOf('neighborhood') !== -1
+          )) {
+            result.bairro = comps[c].long_name || comps[c].short_name || '';
+          }
           if (!result.estado && types.indexOf('administrative_area_level_1') !== -1) {
             result.estado = comps[c].short_name || comps[c].long_name || '';
           }
@@ -366,15 +392,15 @@ function resolveLocationCityAndState(lat, lng) {
             }
           }
         }
-        if (result.cidade && result.estado) break;
+        if (result.cidade && result.estado && result.rua && result.bairro) break;
       }
     }
   } catch (geoErr) {
     // Maps nativo indisponível ou cota atingida
   }
 
-  // 2. Fallback OpenStreetMap Nominatim via UrlFetchApp caso ainda falte cidade ou estado
-  if (!result.cidade || !result.estado) {
+  // 2. Fallback OpenStreetMap Nominatim via UrlFetchApp caso ainda falte algum campo
+  if (!result.cidade || !result.estado || !result.rua || !result.bairro) {
     try {
       var osmUrl = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lng) + '&zoom=18&addressdetails=1&email=contato@valepcd.com.br';
       var response = UrlFetchApp.fetch(osmUrl, {
@@ -388,6 +414,12 @@ function resolveLocationCityAndState(lat, lng) {
         var osmData = JSON.parse(response.getContentText());
         if (osmData && osmData.address) {
           var addr = osmData.address;
+          if (!result.rua) {
+            result.rua = addr.road || addr.pedestrian || addr.residential || addr.street || '';
+          }
+          if (!result.bairro) {
+            result.bairro = addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || '';
+          }
           if (!result.cidade) {
             result.cidade = addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || addr.hamlet || '';
           }
@@ -406,7 +438,7 @@ function resolveLocationCityAndState(lat, lng) {
   }
 
   // 3. Fallback BigDataCloud extraindo adminLevel 8 (Município brasileiro)
-  if (!result.cidade || !result.estado) {
+  if (!result.cidade || !result.estado || !result.bairro) {
     try {
       var bdcUrl = 'https://api-bdc.io/data/reverse-geocode-client?latitude=' + encodeURIComponent(lat) + '&longitude=' + encodeURIComponent(lng) + '&localityLanguage=pt';
       var bdcRes = UrlFetchApp.fetch(bdcUrl, { muteHttpExceptions: true });
@@ -426,6 +458,9 @@ function resolveLocationCityAndState(lat, lng) {
               result.cidade = String(cand).trim();
             }
           }
+        }
+        if (!result.bairro && bdcData.locality && bdcData.locality !== result.cidade) {
+          result.bairro = String(bdcData.locality).trim();
         }
         if (!result.estado) {
           var code = bdcData.principalSubdivisionCode ? String(bdcData.principalSubdivisionCode).replace(/^BR-/, '') : '';

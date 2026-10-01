@@ -55,6 +55,8 @@ export function requestUserLocation(): Promise<Geolocation> {
 
 export interface GeoAddressDetails {
   formattedAddress: string;
+  rua: string;
+  bairro: string;
   cidade: string;
   estado: string;
 }
@@ -94,13 +96,15 @@ export function normalizeState(stateStr: string): string {
   return UF_MAP[lower] || s;
 }
 
-export function extractCityAndStateFromText(text?: string | null): { cidade: string; estado: string } {
-  if (!text || typeof text !== 'string') return { cidade: '', estado: '' };
+export function extractCityAndStateFromText(text?: string | null): { rua: string; bairro: string; cidade: string; estado: string } {
+  if (!text || typeof text !== 'string') return { rua: '', bairro: '', cidade: '', estado: '' };
   const clean = text.trim();
   if (clean.startsWith('Lat:') || clean.startsWith('Buscando') || clean.startsWith('Localização')) {
-    return { cidade: '', estado: '' };
+    return { rua: '', bairro: '', cidade: '', estado: '' };
   }
 
+  let rua = '';
+  let bairro = '';
   let cidade = '';
   let estado = '';
 
@@ -161,18 +165,41 @@ export function extractCityAndStateFromText(text?: string | null): { cidade: str
     }
   }
 
-  return { cidade, estado };
+  // Extrair rua e bairro das partes anteriores à cidade
+  const dashSegments = clean
+    .replace(/,\s*Brasil\s*$/i, '')
+    .replace(/,?\s*\d{5}-?\d{3}.*$/, '')
+    .split(/\s+[–-]\s+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  if (dashSegments.length >= 3) {
+    rua = dashSegments[0];
+    bairro = dashSegments[1];
+  } else if (dashSegments.length === 2 && dashSegments[0].toLowerCase() !== cidade.toLowerCase()) {
+    const subParts = dashSegments[0].split(',').map(s => s.trim()).filter(Boolean);
+    if (subParts.length >= 2 && !/^\d+[A-Za-z]?$/.test(subParts[subParts.length - 1])) {
+      rua = subParts.slice(0, -1).join(', ');
+      bairro = subParts[subParts.length - 1];
+    } else {
+      rua = dashSegments[0];
+    }
+  }
+
+  return { rua, bairro, cidade, estado };
 }
 
 const detailsCache = new Map<string, GeoAddressDetails>();
 
 /**
- * Converte coordenadas (latitude, longitude) em detalhes completos de localização (rua, cidade, estado).
+ * Converte coordenadas (latitude, longitude) em detalhes completos de localização (rua, bairro, cidade, estado).
  */
 export async function getAddressDetailsFromCoords(latitude: number, longitude: number): Promise<GeoAddressDetails> {
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return {
       formattedAddress: 'Localização inválida',
+      rua: '',
+      bairro: '',
       cidade: '',
       estado: ''
     };
@@ -187,6 +214,8 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
   }
 
   let accFormattedAddress = '';
+  let accRua = '';
+  let accBairro = '';
   let accCidade = '';
   let accEstado = '';
 
@@ -199,12 +228,16 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         if (data.formattedAddress && !data.formattedAddress.startsWith('Lat:')) {
           accFormattedAddress = data.formattedAddress;
         }
-        if (data.cidade) accCidade = data.cidade;
+        if (data.rua) accRua = String(data.rua).trim();
+        if (data.bairro) accBairro = String(data.bairro).trim();
+        if (data.cidade) accCidade = String(data.cidade).trim();
         if (data.estado) accEstado = normalizeState(data.estado);
 
-        if (accCidade && accEstado) {
+        if (accCidade && accEstado && (accRua || accBairro)) {
           const details: GeoAddressDetails = {
-            formattedAddress: accFormattedAddress || `${accCidade} - ${accEstado}`,
+            formattedAddress: accFormattedAddress || [accRua, accBairro, accCidade, accEstado].filter(Boolean).join(' - '),
+            rua: accRua,
+            bairro: accBairro,
             cidade: accCidade,
             estado: accEstado
           };
@@ -240,23 +273,38 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
           accFormattedAddress = results[0].formatted_address;
         }
 
-        // Varre TODOS os resultados para encontrar cidade e estado mesmo se o primeiro for apenas a rua
+        let foundStreetName = '';
+        let foundStreetNum = '';
+
+        // Varre TODOS os resultados para encontrar rua, bairro, cidade e estado
         for (const res of results) {
           if (Array.isArray(res.address_components)) {
             for (const comp of res.address_components) {
               const types: string[] = comp.types || [];
+              if (!foundStreetName && types.includes('route')) {
+                foundStreetName = comp.long_name || comp.short_name || '';
+              }
+              if (!foundStreetNum && types.includes('street_number')) {
+                foundStreetNum = comp.long_name || comp.short_name || '';
+              }
+              if (!accBairro && (types.includes('sublocality_level_1') || types.includes('sublocality') || types.includes('neighborhood'))) {
+                accBairro = comp.long_name || comp.short_name || '';
+              }
               if (!accEstado && types.includes('administrative_area_level_1')) {
                 accEstado = normalizeState(comp.short_name || comp.long_name || '');
               }
               if (!accCidade && types.includes('administrative_area_level_2')) {
                 accCidade = comp.long_name || comp.short_name || '';
               }
-              if (!accCidade && (types.includes('locality') || types.includes('sublocality_level_1'))) {
+              if (!accCidade && types.includes('locality')) {
                 accCidade = comp.long_name || comp.short_name || '';
               }
             }
           }
-          if (accCidade && accEstado) break;
+        }
+
+        if (!accRua && foundStreetName) {
+          accRua = foundStreetNum ? `${foundStreetName}, ${foundStreetNum}` : foundStreetName;
         }
 
         if (accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
@@ -265,7 +313,9 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
 
         if (accCidade && accEstado) {
           const details: GeoAddressDetails = {
-            formattedAddress: accFormattedAddress || `${accCidade} - ${accEstado}`,
+            formattedAddress: accFormattedAddress || [accRua, accBairro, accCidade, accEstado].filter(Boolean).join(' - '),
+            rua: accRua,
+            bairro: accBairro,
             cidade: accCidade,
             estado: accEstado
           };
@@ -280,7 +330,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
   }
 
   // 3. Fallback: OpenStreetMap Nominatim
-  if (!accCidade || !accEstado) {
+  if (!accCidade || !accEstado || !accRua || !accBairro) {
     try {
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&zoom=18&addressdetails=1&email=contato@valepcd.com.br`;
       const res = await fetch(url, {
@@ -295,7 +345,13 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
           const addr = data.address;
           const street = addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || '';
           const number = addr.house_number ? `, ${addr.house_number}` : '';
-          const suburb = addr.suburb || addr.neighbourhood || addr.city_district || '';
+          const suburb = addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || '';
+          if (!accRua && street) {
+            accRua = `${street}${number}`;
+          }
+          if (!accBairro && suburb) {
+            accBairro = suburb;
+          }
           if (!accCidade) {
             accCidade = addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || addr.hamlet || addr.state_district || '';
           }
@@ -314,8 +370,8 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
           }
 
           const parts = [
-            street ? `${street}${number}` : '',
-            suburb,
+            accRua,
+            accBairro,
             accCidade,
             accEstado
           ].filter(Boolean);
@@ -331,7 +387,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
   }
 
   // 4. Fallback final garantido: BigDataCloud Client Reverse Geocoding (sem rate-limit para cliente)
-  if (!accCidade || !accEstado) {
+  if (!accCidade || !accEstado || !accBairro) {
     try {
       const bdcUrl = `https://api-bdc.io/data/reverse-geocode-client?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&localityLanguage=pt`;
       const bdcRes = await fetch(bdcUrl);
@@ -349,6 +405,9 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
             }
           }
         }
+        if (!accBairro && bdcData.locality && String(bdcData.locality).trim().toLowerCase() !== accCidade.toLowerCase()) {
+          accBairro = String(bdcData.locality).trim();
+        }
         if (!accEstado) {
           const code = bdcData.principalSubdivisionCode ? String(bdcData.principalSubdivisionCode).replace(/^BR-/, '') : '';
           const stateObj = adminList.find((a: any) => a.adminLevel === 4 && (a.isoCode || a.name));
@@ -359,7 +418,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
           accCidade = 'Brasília';
         }
         if (!accFormattedAddress) {
-          const parts = [bdcData.locality, accCidade, accEstado].filter(Boolean);
+          const parts = [accRua, accBairro || bdcData.locality, accCidade, accEstado].filter(Boolean);
           accFormattedAddress = parts.join(' - ');
         }
       }
@@ -368,14 +427,18 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     }
   }
 
-  if ((!accCidade || !accEstado) && accFormattedAddress) {
+  if ((!accCidade || !accEstado || !accRua || !accBairro) && accFormattedAddress) {
     const parsed = extractCityAndStateFromText(accFormattedAddress);
+    if (!accRua && parsed.rua) accRua = parsed.rua;
+    if (!accBairro && parsed.bairro) accBairro = parsed.bairro;
     if (!accCidade && parsed.cidade) accCidade = parsed.cidade;
     if (!accEstado && parsed.estado) accEstado = parsed.estado;
   }
 
   const finalDetails: GeoAddressDetails = {
     formattedAddress: accFormattedAddress || `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
+    rua: accRua,
+    bairro: accBairro,
     cidade: accCidade,
     estado: accEstado
   };
@@ -395,3 +458,148 @@ export async function getAddressFromCoords(latitude: number, longitude: number):
   const details = await getAddressDetailsFromCoords(latitude, longitude);
   return details.formattedAddress;
 }
+
+export interface GeoSearchResult {
+  label: string;
+  sublabel: string;
+  formattedAddress: string;
+  latitude: number;
+  longitude: number;
+  cidade: string;
+  estado: string;
+}
+
+const searchCache = new Map<string, GeoSearchResult[]>();
+
+/**
+ * Busca endereços, ruas, bairros, cidades ou CEPs a partir de um texto digitado pelo usuário.
+ * Utiliza /api/geocode?q=... com fallback para Google Maps Geocoder e Nominatim.
+ */
+export async function searchAddresses(query: string): Promise<GeoSearchResult[]> {
+  const clean = (query || '').trim();
+  if (clean.length < 2) return [];
+
+  const cacheKey = clean.toLowerCase();
+  if (searchCache.has(cacheKey)) {
+    return searchCache.get(cacheKey)!;
+  }
+
+  // 1. Tentar rota do servidor Nuxt (/api/geocode?q=...)
+  try {
+    const res = await fetch(`/api/geocode?q=${encodeURIComponent(clean)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.results) && data.results.length > 0) {
+        searchCache.set(cacheKey, data.results);
+        return data.results;
+      }
+    }
+  } catch (err) {
+    console.warn('[geoService] /api/geocode?q falhou, tentando fallback:', err);
+  }
+
+  // 2. Fallback: Google Maps Geocoder no navegador
+  if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
+    try {
+      const geocoder = new (window as any).google.maps.Geocoder();
+      const gResults = await new Promise<any[]>((resolve, reject) => {
+        geocoder.geocode(
+          { address: clean, region: 'BR' },
+          (res: any[], status: string) => {
+            if (status === 'OK' && Array.isArray(res) && res.length > 0) {
+              resolve(res);
+            } else {
+              reject(new Error(`Google Geocoder search status: ${status}`));
+            }
+          }
+        );
+      });
+
+      if (gResults && gResults.length > 0) {
+        const mapped: GeoSearchResult[] = gResults
+          .slice(0, 5)
+          .map((item: any) => {
+            const lat = typeof item.geometry?.location?.lat === 'function'
+              ? item.geometry.location.lat()
+              : Number(item.geometry?.location?.lat);
+            const lng = typeof item.geometry?.location?.lng === 'function'
+              ? item.geometry.location.lng()
+              : Number(item.geometry?.location?.lng);
+
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+            const parsed = extractCityAndStateFromText(item.formatted_address || '');
+            const parts = String(item.formatted_address || clean).split(',');
+            const label = parts[0]?.trim() || clean;
+            const sublabel = parts.slice(1).join(',').trim() || [parsed.cidade, parsed.estado].filter(Boolean).join(' • ');
+
+            return {
+              label,
+              sublabel,
+              formattedAddress: item.formatted_address || label,
+              latitude: lat,
+              longitude: lng,
+              cidade: parsed.cidade,
+              estado: parsed.estado
+            };
+          })
+          .filter(Boolean) as GeoSearchResult[];
+
+        if (mapped.length > 0) {
+          searchCache.set(cacheKey, mapped);
+          return mapped;
+        }
+      }
+    } catch (gErr) {
+      console.warn('[geoService] Google Geocoder search falhou:', gErr);
+    }
+  }
+
+  // 3. Fallback direto Nominatim client-side
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(clean)}&countrycodes=br&addressdetails=1&limit=5&email=contato@valepcd.com.br`;
+    const res = await fetch(url, {
+      headers: {
+        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
+      }
+    });
+    if (res.ok) {
+      const items = await res.json();
+      if (Array.isArray(items) && items.length > 0) {
+        const mapped: GeoSearchResult[] = items
+          .map((item: any) => {
+            const lat = parseFloat(String(item.lat || ''));
+            const lng = parseFloat(String(item.lon || ''));
+            if (isNaN(lat) || isNaN(lng)) return null;
+            const addr = item.address || {};
+            const street = addr.road || addr.street || addr.pedestrian || addr.suburb || '';
+            const number = addr.house_number ? `, ${addr.house_number}` : '';
+            const city = addr.city || addr.town || addr.municipality || addr.village || '';
+            const state = normalizeState(addr['ISO3166-2-lvl4'] ? String(addr['ISO3166-2-lvl4']).replace(/^BR-/, '') : (addr.state || ''));
+            const label = street ? `${street}${number}` : (item.name || city || String(item.display_name || '').split(',')[0]);
+            const sublabel = [addr.suburb !== street ? addr.suburb : '', city, state].filter(Boolean).join(' • ') || String(item.display_name || '');
+            return {
+              label,
+              sublabel,
+              formattedAddress: [label, city, state].filter(Boolean).join(' - '),
+              latitude: lat,
+              longitude: lng,
+              cidade: city,
+              estado: state
+            };
+          })
+          .filter(Boolean) as GeoSearchResult[];
+
+        if (mapped.length > 0) {
+          searchCache.set(cacheKey, mapped);
+          return mapped;
+        }
+      }
+    }
+  } catch (osmErr) {
+    console.warn('[geoService] Nominatim search client fallback falhou:', osmErr);
+  }
+
+  return [];
+}
+

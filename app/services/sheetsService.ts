@@ -11,6 +11,8 @@ export interface SheetRowPayload {
   motivo_denuncia?: string;
   cidade?: string;
   estado?: string;
+  rua?: string;
+  bairro?: string;
 }
 
 export interface FetchIncidentsOptions {
@@ -20,7 +22,7 @@ export interface FetchIncidentsOptions {
   includePhoto?: boolean;
 }
 
-const ACTIVE_APPS_SCRIPT_DEPLOYMENT_ID = 'AKfycbyICoKQagn4rYq2_38n4DZNBMi4kbZCg07zkHwdSuiNwU6Tk1ZIzETNUh368g3mvOHM';
+const ACTIVE_APPS_SCRIPT_DEPLOYMENT_ID = 'AKfycbw35ZrRvCYAGXbojYJLSfiDazZbAjUZ24ho1FiiXgCzqgLc4csFuaKLmotinUH-7Nyf';
 const ACTIVE_APPS_SCRIPT_URL = `https://script.google.com/macros/s/${ACTIVE_APPS_SCRIPT_DEPLOYMENT_ID}/exec`;
 
 /**
@@ -98,15 +100,23 @@ export async function fetchIncidentsFromSheet(
 
         if (!isAtivo) return null; // Não exibe inativos no mapa
 
+        const ruaVal = row.rua ? String(row.rua).trim() : '';
+        const bairroVal = row.bairro ? String(row.bairro).trim() : '';
+        const cidadeVal = row.cidade ? String(row.cidade).trim() : '';
+        const estadoVal = row.estado ? String(row.estado).trim() : '';
+        const descParts = [ruaVal, bairroVal, cidadeVal, estadoVal].filter(Boolean);
+
         return {
           id: String(row.id || row.is || `row-${idx + 1}`),
           timestamp: row.data || row.timestamp || new Date().toISOString(),
           latitude: lat,
           longitude: lng,
-          cidade: row.cidade || '',
-          estado: row.estado || '',
+          rua: ruaVal,
+          bairro: bairroVal,
+          cidade: cidadeVal,
+          estado: estadoVal,
           maskedImageUrl: row.foto || row.image || '',
-          description: row.description || (row.cidade ? `${row.cidade}${row.estado ? ` - ${row.estado}` : ''}` : 'Infração registrada'),
+          description: row.description || (descParts.length > 0 ? descParts.join(' - ') : 'Infração registrada'),
           ativo: true,
           motivo_denuncia: row.motivo_denuncia || ''
         };
@@ -150,24 +160,30 @@ export async function fetchIncidentPhoto(
 export async function saveIncidentToSheet(
   appsScriptUrl: string,
   incident: SheetRowPayload
-): Promise<{ success: boolean; cidade?: string; estado?: string }> {
+): Promise<{ success: boolean; rua?: string; bairro?: string; cidade?: string; estado?: string }> {
+  let resolvedRua = (incident.rua || '').trim();
+  let resolvedBairro = (incident.bairro || '').trim();
   let resolvedCidade = (incident.cidade || '').trim();
   let resolvedEstado = normalizeState((incident.estado || '').trim());
 
-  if ((!resolvedCidade || !resolvedEstado) && Number.isFinite(incident.latitude) && Number.isFinite(incident.longitude)) {
+  if ((!resolvedCidade || !resolvedEstado || !resolvedRua || !resolvedBairro) && Number.isFinite(incident.latitude) && Number.isFinite(incident.longitude)) {
     try {
       const geoDetails = await getAddressDetailsFromCoords(incident.latitude, incident.longitude);
+      if (!resolvedRua && geoDetails.rua) resolvedRua = geoDetails.rua.trim();
+      if (!resolvedBairro && geoDetails.bairro) resolvedBairro = geoDetails.bairro.trim();
       if (!resolvedCidade && geoDetails.cidade) resolvedCidade = geoDetails.cidade.trim();
       if (!resolvedEstado && geoDetails.estado) resolvedEstado = normalizeState(geoDetails.estado);
-      if ((!resolvedCidade || !resolvedEstado) && geoDetails.formattedAddress) {
+      if ((!resolvedCidade || !resolvedEstado || !resolvedRua || !resolvedBairro) && geoDetails.formattedAddress) {
         const parsed = extractCityAndStateFromText(geoDetails.formattedAddress);
+        if (!resolvedRua && parsed.rua) resolvedRua = parsed.rua.trim();
+        if (!resolvedBairro && parsed.bairro) resolvedBairro = parsed.bairro.trim();
         if (!resolvedCidade && parsed.cidade) resolvedCidade = parsed.cidade.trim();
         if (!resolvedEstado && parsed.estado) resolvedEstado = normalizeState(parsed.estado);
       }
     } catch {}
   }
 
-  // Coloca cidade e estado antes da foto base64 para garantir parsing prioritário no JSON
+  // Coloca rua, bairro, cidade e estado antes da foto base64 para garantir parsing prioritário no JSON
   const fullIncident = {
     id: incident.id,
     data: incident.data,
@@ -175,6 +191,8 @@ export async function saveIncidentToSheet(
     longitude: incident.longitude,
     cidade: resolvedCidade,
     estado: resolvedEstado,
+    rua: resolvedRua,
+    bairro: resolvedBairro,
     ativo: incident.ativo !== undefined ? incident.ativo : true,
     motivo_denuncia: incident.motivo_denuncia || '',
     foto: incident.foto
@@ -186,10 +204,12 @@ export async function saveIncidentToSheet(
     timestamp: fullIncident.data,
     latitude: fullIncident.latitude,
     longitude: fullIncident.longitude,
+    rua: fullIncident.rua,
+    bairro: fullIncident.bairro,
     cidade: fullIncident.cidade,
     estado: fullIncident.estado,
     maskedImageUrl: fullIncident.foto,
-    description: 'Infração registrada',
+    description: [fullIncident.rua, fullIncident.bairro, fullIncident.cidade, fullIncident.estado].filter(Boolean).join(' - ') || 'Infração registrada',
     ativo: fullIncident.ativo,
     motivo_denuncia: fullIncident.motivo_denuncia
   });
@@ -197,7 +217,13 @@ export async function saveIncidentToSheet(
   const normalizedUrl = normalizeAppsScriptUrl(appsScriptUrl);
   if (!normalizedUrl) {
     // Se a URL do script ainda não foi configurada, considera gravado no cache local do MVP
-    return { success: true, cidade: fullIncident.cidade, estado: fullIncident.estado };
+    return {
+      success: true,
+      rua: fullIncident.rua,
+      bairro: fullIncident.bairro,
+      cidade: fullIncident.cidade,
+      estado: fullIncident.estado
+    };
   }
 
   try {
@@ -206,6 +232,8 @@ export async function saveIncidentToSheet(
       const urlObj = new URL(normalizedUrl);
       if (resolvedCidade) urlObj.searchParams.set('cidade', resolvedCidade);
       if (resolvedEstado) urlObj.searchParams.set('estado', resolvedEstado);
+      if (resolvedRua) urlObj.searchParams.set('rua', resolvedRua);
+      if (resolvedBairro) urlObj.searchParams.set('bairro', resolvedBairro);
       targetUrl = urlObj.toString();
     } catch {}
 
@@ -222,26 +250,32 @@ export async function saveIncidentToSheet(
     }
 
     const result = await response.json();
+    const finalRua = result?.rua || fullIncident.rua || '';
+    const finalBairro = result?.bairro || fullIncident.bairro || '';
     const finalCidade = result?.cidade || fullIncident.cidade || '';
     const finalEstado = result?.estado || fullIncident.estado || '';
 
     if (result && (result.success || result.status === 'ok')) {
-      if (finalCidade || finalEstado) {
+      if (finalCidade || finalEstado || finalRua || finalBairro) {
         saveIncidentToLocalCache({
           id: fullIncident.id,
           timestamp: fullIncident.data,
           latitude: fullIncident.latitude,
           longitude: fullIncident.longitude,
+          rua: finalRua,
+          bairro: finalBairro,
           cidade: finalCidade,
           estado: finalEstado,
           maskedImageUrl: fullIncident.foto,
-          description: 'Infração registrada',
+          description: [finalRua, finalBairro, finalCidade, finalEstado].filter(Boolean).join(' - ') || 'Infração registrada',
           ativo: fullIncident.ativo,
           motivo_denuncia: fullIncident.motivo_denuncia
         });
       }
       return {
         success: true,
+        rua: finalRua,
+        bairro: finalBairro,
         cidade: finalCidade,
         estado: finalEstado
       };

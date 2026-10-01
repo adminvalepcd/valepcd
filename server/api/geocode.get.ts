@@ -22,18 +22,99 @@ function normalizeState(stateStr: string): string {
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
+  const searchQuery = String(query.q || '').trim();
+
+  // Modo 1: Busca de endereços por texto (Forward Geocoding / Autocomplete)
+  if (searchQuery.length >= 2) {
+    try {
+      const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&countrycodes=br&addressdetails=1&limit=6&email=contato@valepcd.com.br`;
+      const res = await fetch(searchUrl, {
+        headers: {
+          'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+          'User-Agent': 'ValePCD-App/1.0 (contato@valepcd.com.br)'
+        }
+      });
+
+      if (res.ok) {
+        const items = await res.json();
+        if (Array.isArray(items)) {
+          const results = items
+            .map((item: any) => {
+              const itemLat = parseFloat(String(item.lat || ''));
+              const itemLng = parseFloat(String(item.lon || ''));
+              if (isNaN(itemLat) || isNaN(itemLng)) return null;
+
+              const addr = item.address || {};
+              const street = addr.road || addr.street || addr.pedestrian || addr.footway || addr.suburb || addr.amenity || addr.shop || '';
+              const number = addr.house_number ? `, ${addr.house_number}` : '';
+              const suburb = addr.suburb || addr.neighbourhood || addr.city_district || '';
+              let itemCity = addr.city || addr.town || addr.municipality || addr.village || addr.county || '';
+              let itemState = '';
+              if (addr['ISO3166-2-lvl4']) {
+                itemState = String(addr['ISO3166-2-lvl4']).replace(/^BR-/, '');
+              } else {
+                itemState = addr.state || '';
+              }
+              itemState = normalizeState(itemState);
+
+              if (itemState === 'DF' && (!itemCity || itemCity.toLowerCase().includes('plano piloto') || itemCity.toLowerCase().includes('distrito federal'))) {
+                itemCity = 'Brasília';
+              }
+
+              const primaryParts = [
+                street ? `${street}${number}` : (item.name || itemCity || item.display_name?.split(',')[0] || ''),
+                suburb && suburb !== street ? suburb : ''
+              ].filter(Boolean);
+
+              const secondaryParts = [
+                itemCity,
+                itemState,
+                addr.postcode || ''
+              ].filter(Boolean);
+
+              const label = primaryParts.join(' - ') || String(item.display_name || '').split(',')[0] || searchQuery;
+              const sublabel = secondaryParts.join(' • ') || String(item.display_name || '');
+
+              return {
+                label,
+                sublabel,
+                formattedAddress: [label, itemCity, itemState].filter(Boolean).join(' - '),
+                latitude: itemLat,
+                longitude: itemLng,
+                cidade: itemCity,
+                estado: itemState,
+                type: item.type || item.class || ''
+              };
+            })
+            .filter(Boolean);
+
+          return { results };
+        }
+      }
+    } catch (searchErr) {
+      console.warn('[server/api/geocode] Erro na busca de endereço por texto:', searchErr);
+    }
+
+    return { results: [] };
+  }
+
+  // Modo 2: Geocodificação reversa por coordenadas (lat, lng)
   const lat = parseFloat(String(query.lat || ''));
   const lng = parseFloat(String(query.lng || ''));
 
   if (isNaN(lat) || isNaN(lng)) {
     return {
       formattedAddress: 'Localização inválida',
+      rua: '',
+      bairro: '',
       cidade: '',
       estado: ''
     };
   }
 
   let formattedAddress = '';
+  let streetFull = '';
+  let suburb = '';
   let city = '';
   let state = '';
 
@@ -52,7 +133,8 @@ export default defineEventHandler(async (event) => {
         const addr = data.address;
         const street = addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || '';
         const number = addr.house_number ? `, ${addr.house_number}` : '';
-        const suburb = addr.suburb || addr.neighbourhood || addr.city_district || '';
+        streetFull = street ? `${street}${number}` : '';
+        suburb = addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || '';
         city = addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || addr.hamlet || addr.state_district || '';
         
         if (addr['ISO3166-2-lvl4']) {
@@ -67,7 +149,7 @@ export default defineEventHandler(async (event) => {
         }
 
         const parts = [
-          street ? `${street}${number}` : '',
+          streetFull,
           suburb,
           city,
           state
@@ -80,8 +162,8 @@ export default defineEventHandler(async (event) => {
     console.warn('[server/api/geocode] Nominatim falhou, tentando fallback:', err);
   }
 
-  // Fallback BigDataCloud se Nominatim falhar ou não retornar cidade/estado
-  if (!city || !state) {
+  // Fallback BigDataCloud se Nominatim falhar ou não retornar cidade/estado/bairro
+  if (!city || !state || !suburb) {
     try {
       const bdcUrl = `https://api-bdc.io/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}&localityLanguage=pt`;
       const bdcRes = await fetch(bdcUrl);
@@ -99,6 +181,9 @@ export default defineEventHandler(async (event) => {
             }
           }
         }
+        if (!suburb && bdcData.locality && String(bdcData.locality).trim().toLowerCase() !== city.toLowerCase()) {
+          suburb = String(bdcData.locality).trim();
+        }
         if (!state) {
           const code = bdcData.principalSubdivisionCode ? String(bdcData.principalSubdivisionCode).replace(/^BR-/, '') : '';
           const stateObj = adminList.find((a: any) => a.adminLevel === 4 && (a.isoCode || a.name));
@@ -109,7 +194,7 @@ export default defineEventHandler(async (event) => {
           city = 'Brasília';
         }
         if (!formattedAddress) {
-          const parts = [bdcData.locality, city, state].filter(Boolean);
+          const parts = [streetFull, suburb || bdcData.locality, city, state].filter(Boolean);
           formattedAddress = parts.join(' - ');
         }
       }
@@ -120,6 +205,8 @@ export default defineEventHandler(async (event) => {
 
   return {
     formattedAddress: formattedAddress || `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`,
+    rua: streetFull,
+    bairro: suburb,
     cidade: city,
     estado: state
   };

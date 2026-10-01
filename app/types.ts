@@ -33,6 +33,8 @@ export interface ReportedIncident {
   longitude: number;
   cidade?: string;
   estado?: string;
+  rua?: string;
+  bairro?: string;
   description?: string;
   ativo?: boolean;
   motivo_denuncia?: string;

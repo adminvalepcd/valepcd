@@ -73,13 +73,21 @@ const props = defineProps({
     type: Object,
     default: null
   },
+  anchorLocation: {
+    type: Object,
+    default: null
+  },
+  maxRadiusMeters: {
+    type: Number,
+    default: 0
+  },
   height: {
     type: String,
     default: '600px'
   }
 });
 
-const emit = defineEmits(['markerClick', 'pinLocationChange', 'boundsChange', 'userLocationFound']);
+const emit = defineEmits(['markerClick', 'pinLocationChange', 'boundsChange', 'userLocationFound', 'radiusLimitReached']);
 
 const config = useRuntimeConfig();
 const mapsApiKey = config.public.googleMapsApiKey || 'AIzaSyBE9MtDA7cziFHANDknpjvgP5jkAvXyguU';
@@ -99,6 +107,82 @@ let activeSpiderLines = [];
 let activeSpiderDots = [];
 let userLocationMarker = null;
 let userLocationHalo = null;
+let radiusBoundaryCircle = null;
+
+const clampToAnchorRadius = (targetLat, targetLng) => {
+  const maxMeters = Number(props.maxRadiusMeters || 0);
+  const anchor = props.anchorLocation;
+  if (
+    maxMeters <= 0 ||
+    !anchor ||
+    !Number.isFinite(anchor.latitude) ||
+    !Number.isFinite(anchor.longitude)
+  ) {
+    return { latitude: targetLat, longitude: targetLng, clamped: false, distance: 0 };
+  }
+
+  const R = 6371000;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(targetLat - anchor.latitude);
+  const dLng = toRad(targetLng - anchor.longitude);
+  const lat1 = toRad(anchor.latitude);
+  const lat2 = toRad(targetLat);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  if (distance <= maxMeters || distance === 0) {
+    return { latitude: targetLat, longitude: targetLng, clamped: false, distance: Math.round(distance) };
+  }
+
+  const ratio = maxMeters / distance;
+  return {
+    latitude: Number((anchor.latitude + (targetLat - anchor.latitude) * ratio).toFixed(6)),
+    longitude: Number((anchor.longitude + (targetLng - anchor.longitude) * ratio).toFixed(6)),
+    clamped: true,
+    distance: maxMeters
+  };
+};
+
+const updateRadiusBoundaryCircle = () => {
+  if (!map.value || !window.google?.maps) return;
+  const googleMaps = window.google.maps;
+  const maxMeters = Number(props.maxRadiusMeters || 0);
+  const anchor = props.anchorLocation;
+
+  if (
+    props.pinLocation &&
+    maxMeters > 0 &&
+    anchor &&
+    Number.isFinite(anchor.latitude) &&
+    Number.isFinite(anchor.longitude)
+  ) {
+    const centerPos = { lat: Number(anchor.latitude), lng: Number(anchor.longitude) };
+    if (!radiusBoundaryCircle) {
+      radiusBoundaryCircle = new googleMaps.Circle({
+        strokeColor: '#86007D',
+        strokeOpacity: 0.7,
+        strokeWeight: 2,
+        fillColor: '#86007D',
+        fillOpacity: 0.07,
+        map: map.value,
+        center: centerPos,
+        radius: maxMeters,
+        clickable: false,
+        zIndex: 5
+      });
+    } else {
+      radiusBoundaryCircle.setCenter(centerPos);
+      radiusBoundaryCircle.setRadius(maxMeters);
+      radiusBoundaryCircle.setMap(map.value);
+    }
+    updateUserLocationDot(centerPos.lat, centerPos.lng);
+  } else if (radiusBoundaryCircle) {
+    radiusBoundaryCircle.setMap(null);
+  }
+};
 
 const isReady = computed(() => {
   return (props.isMapApiLoaded || isApiLoaded.value) && !!map.value;
@@ -178,17 +262,40 @@ const setupPinListeners = () => {
   }
 
   if (map.value && props.pinLocation) {
+    updateRadiusBoundaryCircle();
+
     listenerRef = map.value.addListener('idle', () => {
       const currentCenter = map.value?.getCenter();
       if (currentCenter) {
-        emit('pinLocationChange', { latitude: currentCenter.lat(), longitude: currentCenter.lng() });
+        const rawLat = currentCenter.lat();
+        const rawLng = currentCenter.lng();
+        const checked = clampToAnchorRadius(rawLat, rawLng);
+        if (checked.clamped && map.value) {
+          map.value.panTo({ lat: checked.latitude, lng: checked.longitude });
+          emit('radiusLimitReached', checked.distance);
+        }
+        emit('pinLocationChange', {
+          latitude: checked.latitude,
+          longitude: checked.longitude,
+          clamped: checked.clamped,
+          distance: checked.distance
+        });
       }
     });
 
     clickListenerRef = map.value.addListener('click', (e) => {
       if (e.latLng && map.value) {
-        map.value.panTo(e.latLng);
-        emit('pinLocationChange', { latitude: e.latLng.lat(), longitude: e.latLng.lng() });
+        const checked = clampToAnchorRadius(e.latLng.lat(), e.latLng.lng());
+        map.value.panTo({ lat: checked.latitude, lng: checked.longitude });
+        if (checked.clamped) {
+          emit('radiusLimitReached', checked.distance);
+        }
+        emit('pinLocationChange', {
+          latitude: checked.latitude,
+          longitude: checked.longitude,
+          clamped: checked.clamped,
+          distance: checked.distance
+        });
       }
     });
   }
@@ -692,14 +799,20 @@ watch(() => props.isMapApiLoaded, (loaded) => {
 watch(() => props.initialCenter, (newCenter) => {
   if (map.value && newCenter && !props.pinLocation) {
     map.value.panTo({ lat: newCenter.latitude, lng: newCenter.longitude });
-    if ((map.value.getZoom() || 0) < props.initialZoom) {
+    if (typeof newCenter.zoom === 'number') {
+      map.value.setZoom(newCenter.zoom);
+    } else if ((map.value.getZoom() || 0) < props.initialZoom) {
       map.value.setZoom(props.initialZoom);
     }
     const isDefaultSP = Math.abs(newCenter.latitude - (-23.55052)) < 0.0001 && Math.abs(newCenter.longitude - (-46.633308)) < 0.0001;
-    if (!isDefaultSP) {
+    if (!isDefaultSP && !newCenter.isSearchResult) {
       updateUserLocationDot(newCenter.latitude, newCenter.longitude);
     }
   }
+}, { deep: true });
+
+watch(() => props.anchorLocation, () => {
+  updateRadiusBoundaryCircle();
 }, { deep: true });
 
 watch(() => props.incidents, () => {
@@ -734,6 +847,10 @@ onBeforeUnmount(() => {
   if (userLocationHalo) {
     userLocationHalo.setMap(null);
     userLocationHalo = null;
+  }
+  if (radiusBoundaryCircle) {
+    radiusBoundaryCircle.setMap(null);
+    radiusBoundaryCircle = null;
   }
   clearSpiderGraphics();
   if (listenerRef) {

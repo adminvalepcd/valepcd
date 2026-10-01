@@ -237,14 +237,20 @@
           <!-- Mini mapa para ajuste fino se acionado -->
           <div v-if="isAdjustingLocation" class="mini-map-container">
             <div class="mini-map-header-row">
-              <p class="mini-map-hint">Arraste o mapa para posicionar o pino vermelho exatamente no local da infração.</p>
+              <p class="mini-map-hint">
+                Arraste o mapa para posicionar o pino no local da infração (limite máximo de <strong>{{ MAX_ADJUST_RADIUS_METERS }}m</strong> do GPS).
+              </p>
             </div>
             <div class="mini-map-frame">
               <MulteiMapDisplay
                 :initial-center="selectedLocation"
                 :pin-location="selectedLocation"
+                :anchor-location="gpsAnchorLocation"
+                :max-radius-meters="MAX_ADJUST_RADIUS_METERS"
                 height="280px"
                 @pin-location-change="handlePinChange"
+                @radius-limit-reached="handleRadiusLimitReached"
+                @user-location-found="handleMiniMapGpsFound"
               />
             </div>
           </div>
@@ -318,6 +324,8 @@ const rawPreviewUrl = ref('');
 const saveError = ref('');
 const isAdjustingLocation = ref(false);
 const addressText = ref('');
+const currentRua = ref('');
+const currentBairro = ref('');
 const currentCidade = ref('');
 const currentEstado = ref('');
 const isResolvingAddress = ref(false);
@@ -329,11 +337,54 @@ const isRefreshingGps = ref(false);
 const gpsStatusMessage = ref('');
 const gpsStatusIsError = ref(false);
 
+const MAX_ADJUST_RADIUS_METERS = 200;
 const processedImageWebp = ref('');
 const selectedLocation = reactive({
   latitude: props.currentLocation.latitude,
   longitude: props.currentLocation.longitude
 });
+const gpsAnchorLocation = reactive({
+  latitude: props.currentLocation.latitude,
+  longitude: props.currentLocation.longitude
+});
+
+const setGpsAnchorLocation = (lat, lng) => {
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    gpsAnchorLocation.latitude = lat;
+    gpsAnchorLocation.longitude = lng;
+  }
+};
+
+const clampCoordsToAnchor = (targetLat, targetLng) => {
+  const anchorLat = gpsAnchorLocation.latitude;
+  const anchorLng = gpsAnchorLocation.longitude;
+  if (!Number.isFinite(anchorLat) || !Number.isFinite(anchorLng)) {
+    return { latitude: targetLat, longitude: targetLng, clamped: false };
+  }
+
+  const R = 6371000;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(targetLat - anchorLat);
+  const dLng = toRad(targetLng - anchorLng);
+  const lat1 = toRad(anchorLat);
+  const lat2 = toRad(targetLat);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  if (distance <= MAX_ADJUST_RADIUS_METERS || distance === 0) {
+    return { latitude: targetLat, longitude: targetLng, clamped: false };
+  }
+
+  const ratio = MAX_ADJUST_RADIUS_METERS / distance;
+  return {
+    latitude: Number((anchorLat + (targetLat - anchorLat) * ratio).toFixed(6)),
+    longitude: Number((anchorLng + (targetLng - anchorLng) * ratio).toFixed(6)),
+    clamped: true
+  };
+};
 
 // --- Trava de Segurança 1: Cidade e Estado Obrigatórios para Salvar ---
 const isLocationValid = computed(() => {
@@ -562,7 +613,29 @@ const extractCityAndStateFromText = (text) => {
     }
   }
 
-  return { cidade, estado };
+  let rua = '';
+  let bairro = '';
+  const dashSegments = clean
+    .replace(/,\s*Brasil\s*$/i, '')
+    .replace(/,?\s*\d{5}-?\d{3}.*$/, '')
+    .split(/\s+[–-]\s+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  if (dashSegments.length >= 3) {
+    rua = dashSegments[0];
+    bairro = dashSegments[1];
+  } else if (dashSegments.length === 2 && dashSegments[0].toLowerCase() !== cidade.toLowerCase()) {
+    const subParts = dashSegments[0].split(',').map(s => s.trim()).filter(Boolean);
+    if (subParts.length >= 2 && !/^\d+[A-Za-z]?$/.test(subParts[subParts.length - 1])) {
+      rua = subParts.slice(0, -1).join(', ');
+      bairro = subParts[subParts.length - 1];
+    } else {
+      rua = dashSegments[0];
+    }
+  }
+
+  return { rua, bairro, cidade, estado };
 };
 
 const config = useRuntimeConfig();
@@ -576,14 +649,18 @@ const updateAddress = async (lat, lng) => {
     if (details.formattedAddress && (!addressText.value || addressText.value.startsWith('Lat:') || !details.formattedAddress.startsWith('Lat:'))) {
       addressText.value = details.formattedAddress;
     }
+    if (details.rua) currentRua.value = details.rua;
+    if (details.bairro) currentBairro.value = details.bairro;
     if (details.cidade) currentCidade.value = details.cidade;
     if (details.estado) currentEstado.value = details.estado;
 
-    // Se o serviço não tiver separado cidade/estado mas o texto os contém, puxa direto do texto
-    if (!currentCidade.value || !currentEstado.value) {
+    // Se o serviço não tiver separado rua/bairro/cidade/estado mas o texto os contém, puxa direto do texto
+    if (!currentCidade.value || !currentEstado.value || !currentRua.value || !currentBairro.value) {
       const textToParse = details.formattedAddress || addressText.value;
       if (textToParse) {
         const fromText = extractCityAndStateFromText(textToParse);
+        if (fromText.rua && !currentRua.value) currentRua.value = fromText.rua;
+        if (fromText.bairro && !currentBairro.value) currentBairro.value = fromText.bairro;
         if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
         if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
       }
@@ -601,8 +678,10 @@ const updateAddress = async (lat, lng) => {
 };
 
 watch(addressText, (newText) => {
-  if (newText && (!currentCidade.value || !currentEstado.value)) {
+  if (newText && (!currentCidade.value || !currentEstado.value || !currentRua.value || !currentBairro.value)) {
     const fromText = extractCityAndStateFromText(newText);
+    if (fromText.rua && !currentRua.value) currentRua.value = fromText.rua;
+    if (fromText.bairro && !currentBairro.value) currentBairro.value = fromText.bairro;
     if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
     if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
   }
@@ -617,6 +696,7 @@ const handleRefreshGps = async () => {
     const coords = await requestUserLocation();
     selectedLocation.latitude = coords.latitude;
     selectedLocation.longitude = coords.longitude;
+    setGpsAnchorLocation(coords.latitude, coords.longitude);
     locationSource.value = 'device';
     gpsStatusMessage.value = 'Localização atualizada com sucesso!';
     await updateAddress(coords.latitude, coords.longitude);
@@ -641,6 +721,7 @@ onMounted(async () => {
   const isDefaultSP = Math.abs(props.currentLocation.latitude - (-23.55052)) < 0.0001 &&
                       Math.abs(props.currentLocation.longitude - (-46.633308)) < 0.0001;
   if (!isDefaultSP) {
+    setGpsAnchorLocation(selectedLocation.latitude, selectedLocation.longitude);
     locationSource.value = 'device';
     updateAddress(selectedLocation.latitude, selectedLocation.longitude);
   } else {
@@ -649,11 +730,14 @@ onMounted(async () => {
       const coords = await requestUserLocation();
       selectedLocation.latitude = coords.latitude;
       selectedLocation.longitude = coords.longitude;
+      setGpsAnchorLocation(coords.latitude, coords.longitude);
       locationSource.value = 'device';
       updateAddress(coords.latitude, coords.longitude);
     } catch {
       // Permissão ainda não concedida: mantém cidade e estado vazios para solicitar GPS antes de salvar
       locationSource.value = 'fallback';
+      currentRua.value = '';
+      currentBairro.value = '';
       currentCidade.value = '';
       currentEstado.value = '';
       addressText.value = 'Localização pendente (autorize o GPS ou escolha no mapa)';
@@ -684,6 +768,7 @@ watch(() => props.currentLocation, (newVal) => {
   if (locationSource.value === 'fallback' && !isDefaultSP) {
     selectedLocation.latitude = newVal.latitude;
     selectedLocation.longitude = newVal.longitude;
+    setGpsAnchorLocation(newVal.latitude, newVal.longitude);
     locationSource.value = 'device';
     updateAddress(newVal.latitude, newVal.longitude);
   }
@@ -765,7 +850,13 @@ const processSelectedImage = async (file) => {
     if (exifLocation) {
       selectedLocation.latitude = exifLocation.latitude;
       selectedLocation.longitude = exifLocation.longitude;
+      setGpsAnchorLocation(exifLocation.latitude, exifLocation.longitude);
       locationSource.value = 'exif';
+      // Tenta atualizar a âncora com o GPS ao vivo do aparelho se disponível, mantendo dentro da região real do usuário
+      try {
+        const liveGps = await requestUserLocation();
+        setGpsAnchorLocation(liveGps.latitude, liveGps.longitude);
+      } catch {}
     } else {
       // Foto sem metadados GPS (câmera HTML5 ou upload do WhatsApp/Galeria):
       // Tentar capturar o GPS do dispositivo ao vivo
@@ -773,11 +864,13 @@ const processSelectedImage = async (file) => {
         const liveGps = await requestUserLocation();
         selectedLocation.latitude = liveGps.latitude;
         selectedLocation.longitude = liveGps.longitude;
+        setGpsAnchorLocation(liveGps.latitude, liveGps.longitude);
         locationSource.value = 'device';
       } catch (gpsErr) {
         console.warn('[CreateIncidentModal] GPS ao vivo indisponível, usando localização atual:', gpsErr);
         selectedLocation.latitude = props.currentLocation.latitude;
         selectedLocation.longitude = props.currentLocation.longitude;
+        setGpsAnchorLocation(props.currentLocation.latitude, props.currentLocation.longitude);
         const isDefaultSP = Math.abs(props.currentLocation.latitude - (-23.55052)) < 0.0001 &&
                             Math.abs(props.currentLocation.longitude - (-46.633308)) < 0.0001;
         locationSource.value = isDefaultSP ? 'fallback' : 'device';
@@ -786,6 +879,8 @@ const processSelectedImage = async (file) => {
 
     // Iniciar busca pelo nome da rua apenas se não for fallback sem localização real
     if (locationSource.value === 'fallback') {
+      currentRua.value = '';
+      currentBairro.value = '';
       currentCidade.value = '';
       currentEstado.value = '';
       addressText.value = 'Localização pendente (autorize o GPS ou ajuste no mapa)';
@@ -880,18 +975,47 @@ const toggleAdjustLocation = () => {
   }
 };
 
+let radiusNoticeTimer = null;
+
+const handleRadiusLimitReached = () => {
+  gpsStatusIsError.value = false;
+  gpsStatusMessage.value = `Limite máximo de ${MAX_ADJUST_RADIUS_METERS}m da localização GPS atingido.`;
+  if (radiusNoticeTimer) clearTimeout(radiusNoticeTimer);
+  radiusNoticeTimer = setTimeout(() => {
+    if (gpsStatusMessage.value.includes('Limite máximo')) {
+      gpsStatusMessage.value = '';
+    }
+  }, 3500);
+};
+
+const handleMiniMapGpsFound = (coords) => {
+  if (!coords) return;
+  setGpsAnchorLocation(coords.latitude, coords.longitude);
+  selectedLocation.latitude = coords.latitude;
+  selectedLocation.longitude = coords.longitude;
+  locationSource.value = 'device';
+  updateAddress(coords.latitude, coords.longitude);
+};
+
 const handlePinChange = (newLoc) => {
-  const latDiff = Math.abs(newLoc.latitude - selectedLocation.latitude);
-  const lngDiff = Math.abs(newLoc.longitude - selectedLocation.longitude);
+  const checked = clampCoordsToAnchor(newLoc.latitude, newLoc.longitude);
+  if (checked.clamped || newLoc.clamped) {
+    handleRadiusLimitReached();
+  }
+
+  const latDiff = Math.abs(checked.latitude - selectedLocation.latitude);
+  const lngDiff = Math.abs(checked.longitude - selectedLocation.longitude);
   const hasMovedSignificantly = latDiff > 0.00005 || lngDiff > 0.00005;
 
-  selectedLocation.latitude = newLoc.latitude;
-  selectedLocation.longitude = newLoc.longitude;
+  selectedLocation.latitude = checked.latitude;
+  selectedLocation.longitude = checked.longitude;
   locationSource.value = 'manual';
 
-  // Só limpa cidade/estado se o pino realmente se moveu significativamente ou se ainda não tinham sido preenchidos
+  // Só limpa rua/bairro/cidade/estado se o pino realmente se moveu significativamente ou se ainda não tinham sido preenchidos
   if (hasMovedSignificantly || !currentCidade.value || !currentEstado.value) {
     if (hasMovedSignificantly) {
+      currentRua.value = '';
+      currentBairro.value = '';
       currentCidade.value = '';
       currentEstado.value = '';
       addressText.value = 'Buscando endereço...';
@@ -899,7 +1023,7 @@ const handlePinChange = (newLoc) => {
 
     if (geocodeDebounceTimer) clearTimeout(geocodeDebounceTimer);
     geocodeDebounceTimer = setTimeout(() => {
-      currentAddressPromise = updateAddress(newLoc.latitude, newLoc.longitude);
+      currentAddressPromise = updateAddress(checked.latitude, checked.longitude);
     }, 250);
   }
 };
@@ -908,6 +1032,8 @@ const handleSaveIncident = async () => {
   isSaving.value = true;
   saveError.value = '';
 
+  const screenRua = (currentRua.value || '').trim();
+  const screenBairro = (currentBairro.value || '').trim();
   const screenCidade = (currentCidade.value || '').trim();
   const screenEstado = (currentEstado.value || '').trim();
   const screenAddress = (addressText.value || '').trim();
@@ -942,10 +1068,12 @@ const handleSaveIncident = async () => {
     }
   }
 
-  // 4. Garantia de resolução: se Cidade ou Estado ainda estiverem vazios para a coordenada selecionada, busca diretamente
-  if (!currentCidade.value?.trim() || !currentEstado.value?.trim()) {
+  // 4. Garantia de resolução: se Rua, Bairro, Cidade ou Estado ainda estiverem vazios para a coordenada selecionada, busca diretamente
+  if (!currentCidade.value?.trim() || !currentEstado.value?.trim() || !currentRua.value?.trim() || !currentBairro.value?.trim()) {
     try {
       const details = await getAddressDetailsFromCoords(selectedLocation.latitude, selectedLocation.longitude);
+      if (details.rua && !currentRua.value) currentRua.value = details.rua;
+      if (details.bairro && !currentBairro.value) currentBairro.value = details.bairro;
       if (details.cidade && !currentCidade.value) currentCidade.value = details.cidade;
       if (details.estado && !currentEstado.value) currentEstado.value = details.estado;
       if (details.formattedAddress && (!addressText.value || addressText.value.startsWith('Lat:'))) {
@@ -955,12 +1083,28 @@ const handleSaveIncident = async () => {
   }
 
   // 5. Extração complementar do texto do endereço caso necessário
-  if ((!currentCidade.value?.trim() || !currentEstado.value?.trim()) && (addressText.value || screenAddress)) {
+  if ((!currentCidade.value?.trim() || !currentEstado.value?.trim() || !currentRua.value?.trim() || !currentBairro.value?.trim()) && (addressText.value || screenAddress)) {
     const fromText = extractCityAndStateFromText(addressText.value || screenAddress);
+    if (fromText.rua && !currentRua.value) currentRua.value = fromText.rua;
+    if (fromText.bairro && !currentBairro.value) currentBairro.value = fromText.bairro;
     if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
     if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
   }
 
+  let finalRua = (
+    currentRua.value ||
+    screenRua ||
+    (addressText.value ? extractCityAndStateFromText(addressText.value).rua : '') ||
+    (screenAddress ? extractCityAndStateFromText(screenAddress).rua : '') ||
+    ''
+  ).trim();
+  let finalBairro = (
+    currentBairro.value ||
+    screenBairro ||
+    (addressText.value ? extractCityAndStateFromText(addressText.value).bairro : '') ||
+    (screenAddress ? extractCityAndStateFromText(screenAddress).bairro : '') ||
+    ''
+  ).trim();
   let finalCidade = (
     currentCidade.value ||
     screenCidade ||
@@ -976,6 +1120,8 @@ const handleSaveIncident = async () => {
     ''
   ).trim();
 
+  if (finalRua) currentRua.value = finalRua;
+  if (finalBairro) currentBairro.value = finalBairro;
   if (finalCidade) currentCidade.value = finalCidade;
   if (finalEstado) currentEstado.value = finalEstado;
 
@@ -995,14 +1141,16 @@ const handleSaveIncident = async () => {
     timestamp: new Date().toISOString(),
     latitude: selectedLocation.latitude,
     longitude: selectedLocation.longitude,
+    rua: finalRua,
+    bairro: finalBairro,
     cidade: finalCidade,
     estado: finalEstado,
     maskedImageUrl: processedImageWebp.value,
-    description: addressText.value || (finalCidade ? `${finalCidade}${finalEstado ? ` - ${finalEstado}` : ''}` : 'Infração registrada via colaboração cidadã')
+    description: addressText.value || ([finalRua, finalBairro, finalCidade, finalEstado].filter(Boolean).join(' - ') || 'Infração registrada via colaboração cidadã')
   };
 
   try {
-    // Gravar na planilha através do serviço (respeitando ordem das colunas: id, data, latitude, longitude, foto, ativo, motivo_denuncia, cidade, estado)
+    // Gravar na planilha através do serviço (respeitando ordem das colunas: id, data, latitude, longitude, foto, ativo, motivo_denuncia, cidade, estado, rua, bairro)
     const saveResult = await saveIncidentToSheet(props.appsScriptUrl || '', {
       id: newIncident.id,
       data: String(newIncident.timestamp),
@@ -1012,9 +1160,19 @@ const handleSaveIncident = async () => {
       ativo: true,
       motivo_denuncia: '',
       cidade: newIncident.cidade,
-      estado: newIncident.estado
+      estado: newIncident.estado,
+      rua: newIncident.rua,
+      bairro: newIncident.bairro
     });
 
+    if (saveResult && saveResult.rua) {
+      newIncident.rua = saveResult.rua;
+      currentRua.value = saveResult.rua;
+    }
+    if (saveResult && saveResult.bairro) {
+      newIncident.bairro = saveResult.bairro;
+      currentBairro.value = saveResult.bairro;
+    }
     if (saveResult && saveResult.cidade) {
       newIncident.cidade = saveResult.cidade;
       currentCidade.value = saveResult.cidade;
@@ -1024,7 +1182,7 @@ const handleSaveIncident = async () => {
       currentEstado.value = saveResult.estado;
     }
     if ((!addressText.value || addressText.value.startsWith('Lat:')) && newIncident.cidade) {
-      newIncident.description = `${newIncident.cidade}${newIncident.estado ? ` - ${newIncident.estado}` : ''}`;
+      newIncident.description = [newIncident.rua, newIncident.bairro, newIncident.cidade, newIncident.estado].filter(Boolean).join(' - ');
     }
 
     emit('incidentCreated', newIncident);
