@@ -219,6 +219,8 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
   let accCidade = '';
   let accEstado = '';
 
+  const hasStreetNumber = (s: string) => /,\s*\d+/.test(s);
+
   // 1. Tentar endpoint interno do servidor Nuxt /api/geocode (sem problemas de CORS ou bloqueio 403)
   try {
     const res = await fetch(`/api/geocode?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`);
@@ -233,7 +235,8 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         if (data.cidade) accCidade = String(data.cidade).trim();
         if (data.estado) accEstado = normalizeState(data.estado);
 
-        if (accCidade && accEstado && (accRua || accBairro)) {
+        const canTryGoogleForNumber = typeof window !== 'undefined' && Boolean((window as any).google?.maps?.Geocoder);
+        if (accCidade && accEstado && accBairro && (hasStreetNumber(accRua) || !canTryGoogleForNumber)) {
           const details: GeoAddressDetails = {
             formattedAddress: accFormattedAddress || [accRua, accBairro, accCidade, accEstado].filter(Boolean).join(' - '),
             rua: accRua,
@@ -251,7 +254,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     console.warn('[geoService] /api/geocode falhou, tentando alternativas:', apiErr);
   }
 
-  // 2. Tentar Google Maps Geocoder se a API estiver carregada no navegador
+  // 2. Tentar Google Maps Geocoder se a API estiver carregada no navegador (excelente para obter o número aproximado da via)
   if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
     try {
       const geocoder = new (window as any).google.maps.Geocoder();
@@ -269,23 +272,21 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
       });
 
       if (results && results.length > 0) {
-        if (!accFormattedAddress && results[0]?.formatted_address) {
-          accFormattedAddress = results[0].formatted_address;
-        }
-
         let foundStreetName = '';
         let foundStreetNum = '';
 
-        // Varre TODOS os resultados para encontrar rua, bairro, cidade e estado
+        // Varre TODOS os resultados para encontrar rua, número aproximado, bairro, cidade e estado
         for (const res of results) {
           if (Array.isArray(res.address_components)) {
+            let resRoute = '';
+            let resNum = '';
             for (const comp of res.address_components) {
               const types: string[] = comp.types || [];
-              if (!foundStreetName && types.includes('route')) {
-                foundStreetName = comp.long_name || comp.short_name || '';
+              if (!resRoute && types.includes('route')) {
+                resRoute = comp.long_name || comp.short_name || '';
               }
-              if (!foundStreetNum && types.includes('street_number')) {
-                foundStreetNum = comp.long_name || comp.short_name || '';
+              if (!resNum && types.includes('street_number')) {
+                resNum = comp.long_name || comp.short_name || '';
               }
               if (!accBairro && (types.includes('sublocality_level_1') || types.includes('sublocality') || types.includes('neighborhood'))) {
                 accBairro = comp.long_name || comp.short_name || '';
@@ -300,20 +301,49 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
                 accCidade = comp.long_name || comp.short_name || '';
               }
             }
+            if (!foundStreetName && resRoute) {
+              foundStreetName = resRoute;
+            }
+            if (!foundStreetNum && resNum) {
+              foundStreetNum = resNum;
+            }
+          }
+
+          // Fallback: extrair número aproximado de formatted_address caso venha no texto (ex: "Rua X, 120 - Bairro...")
+          if (!foundStreetNum && typeof res.formatted_address === 'string') {
+            const firstSegment = res.formatted_address.split(/\s+[–-]\s+/)[0] || '';
+            const numMatch = firstSegment.match(/,\s*(\d+[A-Za-z0-9\/-]*)/);
+            if (numMatch && numMatch[1]) {
+              foundStreetNum = numMatch[1].trim();
+              if (!foundStreetName) {
+                foundStreetName = firstSegment.substring(0, numMatch.index).trim();
+              }
+            }
           }
         }
 
-        if (!accRua && foundStreetName) {
-          accRua = foundStreetNum ? `${foundStreetName}, ${foundStreetNum}` : foundStreetName;
+        if (foundStreetName && foundStreetNum) {
+          accRua = `${foundStreetName}, ${foundStreetNum}`;
+        } else if (!hasStreetNumber(accRua) && accRua && foundStreetNum) {
+          accRua = `${accRua.replace(/,\s*$/, '').trim()}, ${foundStreetNum}`;
+        } else if (!accRua && foundStreetName) {
+          accRua = foundStreetName;
         }
 
         if (accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
           accCidade = 'Brasília';
         }
 
+        const composedFormatted = [accRua, accBairro, accCidade, accEstado].filter(Boolean).join(' - ');
+        if (composedFormatted) {
+          accFormattedAddress = composedFormatted;
+        } else if (!accFormattedAddress && results[0]?.formatted_address) {
+          accFormattedAddress = results[0].formatted_address;
+        }
+
         if (accCidade && accEstado) {
           const details: GeoAddressDetails = {
-            formattedAddress: accFormattedAddress || [accRua, accBairro, accCidade, accEstado].filter(Boolean).join(' - '),
+            formattedAddress: accFormattedAddress,
             rua: accRua,
             bairro: accBairro,
             cidade: accCidade,

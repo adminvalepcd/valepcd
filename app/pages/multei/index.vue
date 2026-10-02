@@ -254,7 +254,7 @@
 
 <script setup>
   import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { fetchIncidentsFromSheet, normalizeAppsScriptUrl } from '~/services/sheetsService';
+import { fetchIncidentsFromSheet, ACTIVE_APPS_SCRIPT_URL } from '~/services/sheetsService';
   import { requestUserLocation, searchAddresses } from '~/services/geoService';
 
 definePageMeta({
@@ -276,14 +276,8 @@ useHead({
 });
 
 const config = useRuntimeConfig();
-// URL do Google Apps Script configurável via env ou fallback
-const appsScriptUrl = ref(
-  normalizeAppsScriptUrl(
-    (config.public.appsScriptUrl) || 
-    (process.env.VITE_APPS_SCRIPT_URL) || 
-    'https://script.google.com/macros/s/AKfycbytJGM8-APBiktc39bWOGXjjCseq5BpOtSy_ggvSmCGNe_LeAQv2ByKRXS2DvLSUpU/exec'
-  )
-);
+// Lê NUXT_PUBLIC_APPS_SCRIPT_URL do .env (com fallback em sheetsService.ts)
+const appsScriptUrl = ref(config.public.appsScriptUrl || ACTIVE_APPS_SCRIPT_URL);
 
 const isCreateModalOpen = ref(false);
 const selectedIncident = ref(null);

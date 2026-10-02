@@ -237,12 +237,15 @@ function doPost(e) {
     const ativo = payload.ativo !== undefined ? Boolean(payload.ativo) : true;
     const motivo = payload.motivo_denuncia || '';
 
-    // Se algum dado de localização vier vazio, tenta resolver com busca multi-nível e fallbacks
-    if ((!cidade || !estado || !rua || !bairro) && latitude && longitude) {
+    // Se algum dado de localização vier vazio ou a rua vier sem número aproximado, tenta resolver com busca multi-nível e fallbacks
+    var ruaHasNum = /,\s*\d+/.test(rua);
+    if ((!cidade || !estado || !rua || !bairro || !ruaHasNum) && latitude && longitude) {
       var resolved = resolveLocationCityAndState(latitude, longitude);
       if (!cidade && resolved.cidade) cidade = resolved.cidade;
       if (!estado && resolved.estado) estado = resolved.estado;
-      if (!rua && resolved.rua) rua = resolved.rua;
+      if ((!rua || (!ruaHasNum && /,\s*\d+/.test(resolved.rua))) && resolved.rua) {
+        rua = resolved.rua;
+      }
       if (!bairro && resolved.bairro) bairro = resolved.bairro;
     }
 
@@ -358,7 +361,7 @@ function normalizeStateUF(stateStr) {
 }
 
 /**
- * Resolve cidade, estado, rua e bairro a partir de coordenadas geográficas
+ * Resolve cidade, estado, rua (com número aproximado) e bairro a partir de coordenadas geográficas
  * 1. Varre TODOS os resultados do Maps.newGeocoder() do Google Apps Script
  * 2. Fallback resiliente via OpenStreetMap Nominatim usando UrlFetchApp
  * 3. Fallback BigDataCloud extraindo o município (adminLevel === 8)
@@ -367,17 +370,23 @@ function resolveLocationCityAndState(lat, lng) {
   var result = { cidade: '', estado: '', rua: '', bairro: '' };
   if (!lat || !lng) return result;
 
+  var streetName = '';
+  var streetNumber = '';
+
   // 1. Google Maps Geocoder Nativo do Google Apps Script
   try {
     var geo = Maps.newGeocoder().setLanguage('pt-BR').reverseGeocode(lat, lng);
     if (geo && geo.status === 'OK' && geo.results && geo.results.length > 0) {
-      // Varre TODOS os resultados (rua, bairro, localidade, município)
+      // Varre TODOS os resultados (rua, número, bairro, localidade, município)
       for (var r = 0; r < geo.results.length; r++) {
         var comps = geo.results[r].address_components || [];
         for (var c = 0; c < comps.length; c++) {
           var types = comps[c].types || [];
-          if (!result.rua && types.indexOf('route') !== -1) {
-            result.rua = comps[c].long_name || comps[c].short_name || '';
+          if (!streetName && types.indexOf('route') !== -1) {
+            streetName = comps[c].long_name || comps[c].short_name || '';
+          }
+          if (!streetNumber && types.indexOf('street_number') !== -1) {
+            streetNumber = comps[c].long_name || comps[c].short_name || '';
           }
           if (!result.bairro && (
             types.indexOf('sublocality_level_1') !== -1 ||
@@ -402,7 +411,22 @@ function resolveLocationCityAndState(lat, lng) {
             }
           }
         }
-        if (result.cidade && result.estado && result.rua && result.bairro) break;
+
+        // Fallback: extrair número aproximado de formatted_address caso venha no texto
+        if (!streetNumber && geo.results[r].formatted_address) {
+          var firstSeg = String(geo.results[r].formatted_address).split(/\s+[–-]\s+/)[0] || '';
+          var numMatch = firstSeg.match(/,\s*(\d+[A-Za-z0-9\/-]*)/);
+          if (numMatch && numMatch[1]) {
+            streetNumber = numMatch[1].trim();
+            if (!streetName) {
+              streetName = firstSeg.substring(0, numMatch.index).trim();
+            }
+          }
+        }
+      }
+
+      if (streetName) {
+        result.rua = streetNumber ? (streetName + ', ' + streetNumber) : streetName;
       }
     }
   } catch (geoErr) {
@@ -424,8 +448,12 @@ function resolveLocationCityAndState(lat, lng) {
         var osmData = JSON.parse(response.getContentText());
         if (osmData && osmData.address) {
           var addr = osmData.address;
-          if (!result.rua) {
-            result.rua = addr.road || addr.pedestrian || addr.residential || addr.street || '';
+          var osmStreet = addr.road || addr.pedestrian || addr.residential || addr.street || '';
+          var osmNumber = addr.house_number ? String(addr.house_number).trim() : '';
+          if (!result.rua && osmStreet) {
+            result.rua = osmNumber ? (osmStreet + ', ' + osmNumber) : osmStreet;
+          } else if (result.rua && !/,\s*\d+/.test(result.rua) && osmNumber) {
+            result.rua = result.rua + ', ' + osmNumber;
           }
           if (!result.bairro) {
             result.bairro = addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || '';
