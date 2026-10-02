@@ -1,17 +1,79 @@
 import type { Geolocation, BoundingBox } from '../types';
 
+export interface PhotoMetadata {
+  location: Geolocation | null;
+  capturedAt: Date | null;
+}
+
+function readExifAscii(
+  view: DataView,
+  tiffStart: number,
+  entryOffset: number,
+  isLittleEndian: boolean,
+  length: number
+): string {
+  const count = view.getUint32(entryOffset + 4, isLittleEndian);
+  if (count === 0 || count > 128) return '';
+  const dataOffset = count <= 4
+    ? entryOffset + 8
+    : tiffStart + view.getUint32(entryOffset + 8, isLittleEndian);
+
+  if (dataOffset < 0 || dataOffset + count > length) return '';
+
+  let out = '';
+  for (let i = 0; i < count; i++) {
+    const code = view.getUint8(dataOffset + i);
+    if (code === 0) break;
+    out += String.fromCharCode(code);
+  }
+  return out.trim();
+}
+
+function parseExifDateString(dateStr: string, offsetStr?: string): Date | null {
+  if (!dateStr) return null;
+  // Formato EXIF padrão: "YYYY:MM:DD HH:MM:SS"
+  const match = dateStr.trim().match(/^(\d{4})[:\-](\d{2})[:\-](\d{2})[T\s]+(\d{2}):(\d{2}):(\d{2})/);
+  if (!match) return null;
+
+  const [, yearStr, monthStr, dayStr, hourStr, minStr, secStr] = match;
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  const hour = Number(hourStr);
+  const minute = Number(minStr);
+  const second = Number(secStr);
+
+  if (year < 1990 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  if (offsetStr && /^[+-]\d{2}:\d{2}$/.test(offsetStr.trim())) {
+    const iso = `${yearStr}-${monthStr}-${dayStr}T${hourStr}:${minStr}:${secStr}${offsetStr.trim()}`;
+    const parsedIso = new Date(iso);
+    if (!isNaN(parsedIso.getTime())) {
+      return parsedIso;
+    }
+  }
+
+  const localDate = new Date(year, month - 1, day, hour, minute, second);
+  return isNaN(localDate.getTime()) ? null : localDate;
+}
+
 /**
- * Parser nativo e leve de coordenadas GPS a partir dos metadados EXIF do arquivo JPEG/HEIC.
+ * Parser nativo e leve de metadados EXIF (coordenadas GPS + data/hora de captura) do arquivo JPEG.
  * Não utiliza dependências externas como exif-js, evitando incompatibilidades de bundling e travamentos.
  */
-export async function extractGpsData(imageFile: File): Promise<Geolocation | null> {
+export async function extractPhotoMetadata(imageFile: File): Promise<PhotoMetadata> {
+  const result: PhotoMetadata = {
+    location: null,
+    capturedAt: null
+  };
+
   try {
     const buffer = await imageFile.arrayBuffer();
     const view = new DataView(buffer);
 
     // Verificar assinatura JPEG (SOI 0xFFD8)
     if (view.byteLength < 16 || view.getUint16(0, false) !== 0xFFD8) {
-      return null;
+      return result;
     }
 
     let offset = 2;
@@ -23,33 +85,71 @@ export async function extractGpsData(imageFile: File): Promise<Geolocation | nul
 
       if (marker === 0xFFE1) { // Marcador APP1 (EXIF)
         const app1Length = view.getUint16(offset, false);
-        offset += 2;
+        const segmentStart = offset + 2;
 
         // Verificar assinatura 'Exif\0\0' (0x45786966 e 0x0000)
-        if (view.getUint32(offset, false) === 0x45786966 && view.getUint16(offset + 4, false) === 0x0000) {
-          const tiffStart = offset + 6;
+        if (
+          segmentStart + 14 <= length &&
+          view.getUint32(segmentStart, false) === 0x45786966 &&
+          view.getUint16(segmentStart + 4, false) === 0x0000
+        ) {
+          const tiffStart = segmentStart + 6;
           const isLittleEndian = view.getUint16(tiffStart, false) === 0x4949; // 'II' (Intel)
 
           const ifd0Offset = view.getUint32(tiffStart + 4, isLittleEndian);
           let dirOffset = tiffStart + ifd0Offset;
-          if (dirOffset + 2 > length) return null;
+          if (dirOffset + 2 > length) return result;
 
           const entriesCount = view.getUint16(dirOffset, isLittleEndian);
           dirOffset += 2;
 
           let gpsOffset = 0;
+          let exifSubIfdOffset = 0;
+          let ifd0DateTime = '';
+
           for (let i = 0; i < entriesCount; i++) {
-            if (dirOffset + (i * 12) + 12 > length) break;
-            const tag = view.getUint16(dirOffset + (i * 12), isLittleEndian);
-            if (tag === 0x8825) { // Ponteiro para GPS IFD
-              gpsOffset = tiffStart + view.getUint32(dirOffset + (i * 12) + 8, isLittleEndian);
-              break;
+            const entryOffset = dirOffset + (i * 12);
+            if (entryOffset + 12 > length) break;
+            const tag = view.getUint16(entryOffset, isLittleEndian);
+            if (tag === 0x0132) { // DateTime (IFD0)
+              ifd0DateTime = readExifAscii(view, tiffStart, entryOffset, isLittleEndian, length);
+            } else if (tag === 0x8769) { // Ponteiro para Exif SubIFD
+              exifSubIfdOffset = tiffStart + view.getUint32(entryOffset + 8, isLittleEndian);
+            } else if (tag === 0x8825) { // Ponteiro para GPS IFD
+              gpsOffset = tiffStart + view.getUint32(entryOffset + 8, isLittleEndian);
             }
           }
 
+          let dateTimeOriginal = '';
+          let dateTimeDigitized = '';
+          let offsetTimeOriginal = '';
+
+          // Ler Exif SubIFD (DateTimeOriginal, DateTimeDigitized, OffsetTimeOriginal)
+          if (exifSubIfdOffset > 0 && exifSubIfdOffset + 2 < length) {
+            const exifCount = view.getUint16(exifSubIfdOffset, isLittleEndian);
+            const eOffset = exifSubIfdOffset + 2;
+            for (let i = 0; i < exifCount; i++) {
+              const entryOffset = eOffset + (i * 12);
+              if (entryOffset + 12 > length) break;
+              const tag = view.getUint16(entryOffset, isLittleEndian);
+              if (tag === 0x9003) { // DateTimeOriginal
+                dateTimeOriginal = readExifAscii(view, tiffStart, entryOffset, isLittleEndian, length);
+              } else if (tag === 0x9004) { // DateTimeDigitized
+                dateTimeDigitized = readExifAscii(view, tiffStart, entryOffset, isLittleEndian, length);
+              } else if (tag === 0x9011 || tag === 0x9010) { // OffsetTimeOriginal / OffsetTime
+                const offVal = readExifAscii(view, tiffStart, entryOffset, isLittleEndian, length);
+                if (offVal && !offsetTimeOriginal) offsetTimeOriginal = offVal;
+              }
+            }
+          }
+
+          let gpsDateStamp = '';
+          let gpsTimeUtc: [number, number, number] | null = null;
+
+          // Ler GPS IFD (Coordenadas + GPSDateStamp/GPSTimeStamp)
           if (gpsOffset > 0 && gpsOffset + 2 < length) {
             const gpsCount = view.getUint16(gpsOffset, isLittleEndian);
-            let pOffset = gpsOffset + 2;
+            const pOffset = gpsOffset + 2;
 
             let latRef = 'N';
             let lonRef = 'E';
@@ -57,14 +157,15 @@ export async function extractGpsData(imageFile: File): Promise<Geolocation | nul
             let lonValues: number | null = null;
 
             for (let i = 0; i < gpsCount; i++) {
-              if (pOffset + (i * 12) + 12 > length) break;
-              const tag = view.getUint16(pOffset + (i * 12), isLittleEndian);
-              const valOffset = tiffStart + view.getUint32(pOffset + (i * 12) + 8, isLittleEndian);
+              const entryOffset = pOffset + (i * 12);
+              if (entryOffset + 12 > length) break;
+              const tag = view.getUint16(entryOffset, isLittleEndian);
+              const valOffset = tiffStart + view.getUint32(entryOffset + 8, isLittleEndian);
 
               if (tag === 0x0001) { // GPSLatitudeRef
-                latRef = String.fromCharCode(view.getUint8(pOffset + (i * 12) + 8));
+                latRef = String.fromCharCode(view.getUint8(entryOffset + 8));
               } else if (tag === 0x0003) { // GPSLongitudeRef
-                lonRef = String.fromCharCode(view.getUint8(pOffset + (i * 12) + 8));
+                lonRef = String.fromCharCode(view.getUint8(entryOffset + 8));
               } else if (tag === 0x0002 && valOffset + 24 <= length) { // GPSLatitude (3 racionais)
                 const d = view.getUint32(valOffset, isLittleEndian) / (view.getUint32(valOffset + 4, isLittleEndian) || 1);
                 const m = view.getUint32(valOffset + 8, isLittleEndian) / (view.getUint32(valOffset + 12, isLittleEndian) || 1);
@@ -75,17 +176,47 @@ export async function extractGpsData(imageFile: File): Promise<Geolocation | nul
                 const m = view.getUint32(valOffset + 8, isLittleEndian) / (view.getUint32(valOffset + 12, isLittleEndian) || 1);
                 const s = view.getUint32(valOffset + 16, isLittleEndian) / (view.getUint32(valOffset + 20, isLittleEndian) || 1);
                 lonValues = d + (m / 60) + (s / 3600);
+              } else if (tag === 0x0007 && valOffset + 24 <= length) { // GPSTimeStamp (3 racionais UTC)
+                const hh = view.getUint32(valOffset, isLittleEndian) / (view.getUint32(valOffset + 4, isLittleEndian) || 1);
+                const mm = view.getUint32(valOffset + 8, isLittleEndian) / (view.getUint32(valOffset + 12, isLittleEndian) || 1);
+                const ss = view.getUint32(valOffset + 16, isLittleEndian) / (view.getUint32(valOffset + 20, isLittleEndian) || 1);
+                gpsTimeUtc = [Math.floor(hh), Math.floor(mm), Math.floor(ss)];
+              } else if (tag === 0x001D) { // GPSDateStamp ("YYYY:MM:DD")
+                gpsDateStamp = readExifAscii(view, tiffStart, entryOffset, isLittleEndian, length);
               }
             }
 
-            if (latValues !== null && lonValues !== null) {
+            if (latValues !== null && lonValues !== null && !isNaN(latValues) && !isNaN(lonValues)) {
               if (latRef === 'S') latValues = -latValues;
               if (lonRef === 'W') lonValues = -lonValues;
-              return { latitude: latValues, longitude: lonValues };
+              result.location = { latitude: latValues, longitude: lonValues };
             }
           }
+
+          // Resolver data/hora de captura por ordem de prioridade: DateTimeOriginal > DateTimeDigitized > IFD0 DateTime > GPS UTC
+          const chosenDateStr = dateTimeOriginal || dateTimeDigitized || ifd0DateTime;
+          if (chosenDateStr) {
+            result.capturedAt = parseExifDateString(chosenDateStr, offsetTimeOriginal);
+          } else if (gpsDateStamp && gpsTimeUtc) {
+            const m = gpsDateStamp.match(/^(\d{4})[:\-](\d{2})[:\-](\d{2})/);
+            if (m) {
+              const utcMs = Date.UTC(
+                Number(m[1]),
+                Number(m[2]) - 1,
+                Number(m[3]),
+                gpsTimeUtc[0],
+                gpsTimeUtc[1],
+                gpsTimeUtc[2]
+              );
+              if (!isNaN(utcMs)) {
+                result.capturedAt = new Date(utcMs);
+              }
+            }
+          }
+
+          return result;
         }
-        break;
+        offset += app1Length;
       } else if ((marker & 0xFF00) === 0xFF00 && marker !== 0xFFD8 && marker !== 0xFFD9) {
         const segLength = view.getUint16(offset, false);
         offset += segLength;
@@ -94,9 +225,14 @@ export async function extractGpsData(imageFile: File): Promise<Geolocation | nul
       }
     }
   } catch (err) {
-    console.warn('[imageProcessor] Metadados GPS não encontrados na foto ou formato não suportado:', err);
+    console.warn('[imageProcessor] Metadados EXIF não encontrados na foto ou formato não suportado:', err);
   }
-  return null;
+  return result;
+}
+
+export async function extractGpsData(imageFile: File): Promise<Geolocation | null> {
+  const metadata = await extractPhotoMetadata(imageFile);
+  return metadata.location;
 }
 
 /**

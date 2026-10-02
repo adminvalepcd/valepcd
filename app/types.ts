@@ -35,6 +35,7 @@ export interface ReportedIncident {
   estado?: string;
   rua?: string;
   bairro?: string;
+  classificacao?: 'A' | 'B' | 'C' | string;
   description?: string;
   ativo?: boolean;
   motivo_denuncia?: string;

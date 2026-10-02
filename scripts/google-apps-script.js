@@ -1,7 +1,7 @@
 /**
  * GOOGLE APPS SCRIPT - VALE PCD (Multei)
  * Planilha: https://docs.google.com/spreadsheets/d/1884lKe9k5ANy-CGigLrWZR-5iDS9Tp_dnosT-ix4wiI/edit
- * Colunas: id | data | latitude | longitude | foto | ativo | motivo_denuncia | cidade | estado | rua | bairro
+ * Colunas: id | data | latitude | longitude | foto | ativo | motivo_denuncia | cidade | estado | rua | bairro | classificacao
  *
  * COMO ATUALIZAR SUA IMPLANTAÇÃO NO APPS SCRIPT:
  * 1. Na planilha, clique em: Extensões > Apps Script
@@ -146,10 +146,10 @@ function doPost(e) {
   try {
     const sheet = getTargetSheet();
 
-    // 1. Garantir que os cabeçalhos existam na ordem padrão: id | data | latitude | longitude | foto | ativo | motivo_denuncia | cidade | estado | rua | bairro
+    // 1. Garantir que os cabeçalhos existam na ordem padrão: id | data | latitude | longitude | foto | ativo | motivo_denuncia | cidade | estado | rua | bairro | classificacao
     var headers = [];
     if (sheet.getLastRow() === 0) {
-      headers = ['id', 'data', 'latitude', 'longitude', 'foto', 'ativo', 'motivo_denuncia', 'cidade', 'estado', 'rua', 'bairro'];
+      headers = ['id', 'data', 'latitude', 'longitude', 'foto', 'ativo', 'motivo_denuncia', 'cidade', 'estado', 'rua', 'bairro', 'classificacao'];
       sheet.appendRow(headers);
       sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
     } else {
@@ -159,7 +159,7 @@ function doPost(e) {
       });
 
       // Se a planilha já tinha colunas antigas, adiciona as novas colunas que faltarem dinamicamente no final da tabela
-      var requiredHeaders = ['foto', 'ativo', 'motivo_denuncia', 'cidade', 'estado', 'rua', 'bairro'];
+      var requiredHeaders = ['foto', 'ativo', 'motivo_denuncia', 'cidade', 'estado', 'rua', 'bairro', 'classificacao'];
       for (var r = 0; r < requiredHeaders.length; r++) {
         var req = requiredHeaders[r];
         if (headers.indexOf(req) === -1) {
@@ -229,6 +229,10 @@ function doPost(e) {
     var estado = String(payload.estado || (e && e.parameter && e.parameter.estado) || '').trim();
     var rua = String(payload.rua || (e && e.parameter && e.parameter.rua) || '').trim();
     var bairro = String(payload.bairro || (e && e.parameter && e.parameter.bairro) || '').trim();
+    var classificacao = String(payload.classificacao || (e && e.parameter && e.parameter.classificacao) || 'C').trim().toUpperCase();
+    if (['A', 'B', 'C'].indexOf(classificacao) === -1) {
+      classificacao = 'C';
+    }
     const foto = payload.foto || '';
     const ativo = payload.ativo !== undefined ? Boolean(payload.ativo) : true;
     const motivo = payload.motivo_denuncia || '';
@@ -261,6 +265,7 @@ function doPost(e) {
       else if (col === 'estado') newRow.push(estado);
       else if (col === 'rua') newRow.push(rua);
       else if (col === 'bairro') newRow.push(bairro);
+      else if (col === 'classificacao') newRow.push(classificacao);
       else newRow.push(payload[col] || '');
     }
 
@@ -287,6 +292,7 @@ function doPost(e) {
     var colEstadoIdx = headers.indexOf('estado') + 1;
     var colRuaIdx = headers.indexOf('rua') + 1;
     var colBairroIdx = headers.indexOf('bairro') + 1;
+    var colClassificacaoIdx = headers.indexOf('classificacao') + 1;
     if (colCidadeIdx > 0 && cidade) {
       sheet.getRange(targetRow, colCidadeIdx).setValue(cidade);
     }
@@ -299,6 +305,9 @@ function doPost(e) {
     if (colBairroIdx > 0 && bairro) {
       sheet.getRange(targetRow, colBairroIdx).setValue(bairro);
     }
+    if (colClassificacaoIdx > 0 && classificacao) {
+      sheet.getRange(targetRow, colClassificacaoIdx).setValue(classificacao);
+    }
     SpreadsheetApp.flush();
 
     return jsonResponse({
@@ -309,6 +318,7 @@ function doPost(e) {
       estado: estado,
       rua: rua,
       bairro: bairro,
+      classificacao: classificacao,
       ativo: ativo,
       aba: sheet.getName(),
       linha: targetRow

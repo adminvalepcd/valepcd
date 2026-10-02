@@ -295,7 +295,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue';
   import LoadingSpinner from './LoadingSpinner.vue';
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
-import { extractGpsData, blurSensitiveContentAndCompress, prepareImageForGemini } from '../../services/imageProcessor';
+import { extractPhotoMetadata, blurSensitiveContentAndCompress, prepareImageForGemini } from '../../services/imageProcessor';
 import { saveIncidentToSheet } from '../../services/sheetsService';
 import { getAddressDetailsFromCoords, requestUserLocation } from '../../services/geoService';
 
@@ -331,6 +331,68 @@ const currentEstado = ref('');
 const isResolvingAddress = ref(false);
 let geocodeDebounceTimer = null;
 let currentAddressPromise = null;
+
+// Origem da foto ('camera' | 'gallery') e metadados EXIF extraídos para classificação de qualidade (A, B, C)
+const photoOrigin = ref('gallery');
+const photoExifLocation = ref(null);
+const photoExifDate = ref(null);
+const CLASSIFICATION_MAX_RADIUS_METERS = 300;
+const CLASSIFICATION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hora
+
+const getDistanceMeters = (lat1, lon1, lat2, lon2) => {
+  const R = 6371000;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const computeIncidentClassification = () => {
+  // 1. Fotos tiradas diretamente pela câmera integrada do App ("Tirar Foto Agora") são classificadas como "A"
+  if (photoOrigin.value === 'camera') {
+    return 'A';
+  }
+
+  // 2. Fotos adicionadas da galeria: validar metadados EXIF (última 1h + raio de 300m de selectedLocation)
+  let isWithinLastHour = false;
+  if (photoExifDate.value instanceof Date && !isNaN(photoExifDate.value.getTime())) {
+    const diffMs = Date.now() - photoExifDate.value.getTime();
+    // Tolerância de 5 min para pequenos desvios de relógio do aparelho e limite máximo de 1 hora
+    if (diffMs >= -5 * 60 * 1000 && diffMs <= CLASSIFICATION_MAX_AGE_MS) {
+      isWithinLastHour = true;
+    }
+  }
+
+  let isWithin300m = false;
+  if (
+    photoExifLocation.value &&
+    Number.isFinite(photoExifLocation.value.latitude) &&
+    Number.isFinite(photoExifLocation.value.longitude) &&
+    Number.isFinite(selectedLocation.latitude) &&
+    Number.isFinite(selectedLocation.longitude)
+  ) {
+    const distMeters = getDistanceMeters(
+      photoExifLocation.value.latitude,
+      photoExifLocation.value.longitude,
+      selectedLocation.latitude,
+      selectedLocation.longitude
+    );
+    if (distMeters <= CLASSIFICATION_MAX_RADIUS_METERS) {
+      isWithin300m = true;
+    }
+  }
+
+  if (isWithinLastHour && isWithin300m) {
+    return 'A';
+  }
+  if (isWithinLastHour || isWithin300m) {
+    return 'B';
+  }
+  return 'C';
+};
 
 const locationSource = ref('fallback');
 const isRefreshingGps = ref(false);
@@ -788,6 +850,9 @@ const resetToUpload = () => {
   addressText.value = '';
   gpsStatusMessage.value = '';
   lastSelectedFile.value = null;
+  photoOrigin.value = 'gallery';
+  photoExifLocation.value = null;
+  photoExifDate.value = null;
 };
 
 const handleRetry = async () => {
@@ -805,6 +870,7 @@ const handleFileSelected = async (e) => {
   const target = e.target;
   const file = target.files?.[0];
   if (file) {
+    photoOrigin.value = 'gallery';
     if (rawPreviewUrl.value) {
       URL.revokeObjectURL(rawPreviewUrl.value);
     }
@@ -818,6 +884,7 @@ const handleFileSelected = async (e) => {
 const handlePhotoTaken = async (file) => {
   showCamera.value = false;
   if (file) {
+    photoOrigin.value = 'camera';
     if (rawPreviewUrl.value) {
       URL.revokeObjectURL(rawPreviewUrl.value);
     }
@@ -845,8 +912,12 @@ const processSelectedImage = async (file) => {
   analyzingStatusText.value = 'Identificando localização...';
 
   try {
-    // 1. Tentar obter coordenadas GPS gravadas no EXIF da foto
-    const exifLocation = await extractGpsData(file);
+    // 1. Tentar obter metadados EXIF da foto (coordenadas GPS + data/hora de captura)
+    const exifMetadata = await extractPhotoMetadata(file);
+    const exifLocation = exifMetadata.location;
+    photoExifLocation.value = exifLocation;
+    photoExifDate.value = exifMetadata.capturedAt;
+
     if (exifLocation) {
       selectedLocation.latitude = exifLocation.latitude;
       selectedLocation.longitude = exifLocation.longitude;
@@ -1136,6 +1207,8 @@ const handleSaveIncident = async () => {
     }
   }
 
+  const classificacao = computeIncidentClassification();
+
   const newIncident = {
     id: `inc-${Date.now()}`,
     timestamp: new Date().toISOString(),
@@ -1145,12 +1218,13 @@ const handleSaveIncident = async () => {
     bairro: finalBairro,
     cidade: finalCidade,
     estado: finalEstado,
+    classificacao,
     maskedImageUrl: processedImageWebp.value,
     description: addressText.value || ([finalRua, finalBairro, finalCidade, finalEstado].filter(Boolean).join(' - ') || 'Infração registrada via colaboração cidadã')
   };
 
   try {
-    // Gravar na planilha através do serviço (respeitando ordem das colunas: id, data, latitude, longitude, foto, ativo, motivo_denuncia, cidade, estado, rua, bairro)
+    // Gravar na planilha através do serviço (respeitando ordem das colunas: id, data, latitude, longitude, foto, ativo, motivo_denuncia, cidade, estado, rua, bairro, classificacao)
     const saveResult = await saveIncidentToSheet(props.appsScriptUrl || '', {
       id: newIncident.id,
       data: String(newIncident.timestamp),
@@ -1162,7 +1236,8 @@ const handleSaveIncident = async () => {
       cidade: newIncident.cidade,
       estado: newIncident.estado,
       rua: newIncident.rua,
-      bairro: newIncident.bairro
+      bairro: newIncident.bairro,
+      classificacao: newIncident.classificacao
     });
 
     if (saveResult && saveResult.rua) {
