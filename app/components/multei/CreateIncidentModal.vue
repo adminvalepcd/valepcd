@@ -478,6 +478,20 @@ const validateTypedAddressRadius = async () => {
   }
 
   const outOfRadiusMessage = 'O endereço digitado está fora do raio máximo permitido';
+  const isSemNumero = /^s\s*\/?\s*n$/i.test(sNum);
+  const typedDigits = !isSemNumero && sNum ? parseInt(sNum.replace(/\D/g, ''), 10) : NaN;
+  const gpsDigits = gpsResolvedStreetNumber.value
+    ? parseInt(gpsResolvedStreetNumber.value.replace(/\D/g, ''), 10)
+    : NaN;
+
+  // 1. Se permaneceu na mesma rua do GPS e o GPS identificou o número aproximado,
+  // qualquer número com diferença > 200 já excede o raio de 200m (ou a faixa real do quarteirão)
+  if (sameStreetAsGps && Number.isFinite(typedDigits) && Number.isFinite(gpsDigits)) {
+    if (Math.abs(typedDigits - gpsDigits) > MAX_ADJUST_RADIUS_METERS) {
+      addressEditError.value = outOfRadiusMessage;
+      return { valid: false, message: outOfRadiusMessage };
+    }
+  }
 
   isValidatingAddress.value = true;
   try {
@@ -498,22 +512,23 @@ const validateTypedAddressRadius = async () => {
       return { valid: false, message: outOfRadiusMessage };
     }
 
-    const withNumberPool = sNum ? candidates.filter(c => c.hasStreetNumber) : [];
-    const pool = withNumberPool.length > 0 ? withNumberPool : candidates;
+    const withNumberPool = sNum && !isSemNumero ? candidates.filter(c => c.hasStreetNumber) : [];
 
-    // Se o usuário digitou um número na mesma rua do GPS mas o mapa não possui números cadastrados nessa via,
-    // valida também pela diferença de numeração métrica (cada 100 números equivale a ~100m)
-    if (sNum && withNumberPool.length === 0 && sameStreetAsGps && gpsResolvedStreetNumber.value) {
-      const typedDigits = parseInt(sNum.replace(/\D/g, ''), 10);
-      const gpsDigits = parseInt(gpsResolvedStreetNumber.value.replace(/\D/g, ''), 10);
-      if (Number.isFinite(typedDigits) && Number.isFinite(gpsDigits)) {
-        const estimatedDiffMeters = Math.abs(typedDigits - gpsDigits);
-        if (estimatedDiffMeters > MAX_ADJUST_RADIUS_METERS) {
-          addressEditError.value = outOfRadiusMessage;
-          return { valid: false, message: outOfRadiusMessage };
-        }
+    // 2. Se o usuário digitou um número mas nenhuma fonte geográfica encontrou esse número na via
+    // (ex: número superior ao que existe na rua), só permite se for um ajuste fino próximo ao número do GPS
+    if (sNum && !isSemNumero && withNumberPool.length === 0) {
+      const isCloseToGpsNumber =
+        sameStreetAsGps &&
+        ((Number.isFinite(typedDigits) && Number.isFinite(gpsDigits) && Math.abs(typedDigits - gpsDigits) <= MAX_ADJUST_RADIUS_METERS) ||
+          (!Number.isFinite(gpsDigits) && Number.isFinite(typedDigits) && typedDigits <= MAX_ADJUST_RADIUS_METERS));
+
+      if (!isCloseToGpsNumber) {
+        addressEditError.value = outOfRadiusMessage;
+        return { valid: false, message: outOfRadiusMessage };
       }
     }
+
+    const pool = withNumberPool.length > 0 ? withNumberPool : candidates;
 
     let minDistance = Infinity;
     let bestCandidate = null;
@@ -532,9 +547,11 @@ const validateTypedAddressRadius = async () => {
 
     // Caso a rua seja a mesma localizada pelo GPS e o geocodificador tenha retornado apenas o centroide da via inteira (sem número específico)
     if (minDistance > MAX_ADJUST_RADIUS_METERS && withNumberPool.length === 0 && sameStreetAsGps && sameBairroAsGps) {
-      const typedDigits = parseInt(sNum.replace(/\D/g, ''), 10);
-      const gpsDigits = parseInt((gpsResolvedStreetNumber.value || '').replace(/\D/g, ''), 10);
-      if (!sNum || (Number.isFinite(typedDigits) && Number.isFinite(gpsDigits) && Math.abs(typedDigits - gpsDigits) <= MAX_ADJUST_RADIUS_METERS)) {
+      if (
+        !sNum ||
+        isSemNumero ||
+        (Number.isFinite(typedDigits) && Number.isFinite(gpsDigits) && Math.abs(typedDigits - gpsDigits) <= MAX_ADJUST_RADIUS_METERS)
+      ) {
         addressEditError.value = '';
         saveError.value = '';
         return { valid: true };

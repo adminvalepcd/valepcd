@@ -723,6 +723,8 @@ export async function geocodeAddressForValidation(params: {
         });
       });
 
+      const typedDigits = parseInt(sNum.replace(/\D/g, ''), 10);
+
       for (const item of gResults) {
         const lat = typeof item.geometry?.location?.lat === 'function'
           ? item.geometry.location.lat()
@@ -733,7 +735,7 @@ export async function geocodeAddressForValidation(params: {
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
 
         let routeName = '';
-        let hasNum = false;
+        let returnedNumStr = '';
         if (Array.isArray(item.address_components)) {
           for (const comp of item.address_components) {
             const types: string[] = comp.types || [];
@@ -741,7 +743,7 @@ export async function geocodeAddressForValidation(params: {
               routeName = `${comp.long_name || ''} ${comp.short_name || ''}`;
             }
             if (types.includes('street_number')) {
-              hasNum = true;
+              returnedNumStr = String(comp.long_name || comp.short_name || '').trim();
             }
           }
         }
@@ -749,11 +751,23 @@ export async function geocodeAddressForValidation(params: {
         const matchText = `${routeName} ${formatted}`;
         if (!candidateMatchesStreet(matchText, sName)) continue;
 
+        // Verifica se o número retornado pelo Google corresponde de fato ao número digitado
+        // (evita aceitar quando o Google trava no último número existente da rua para um número muito superior inexistente)
+        let hasValidStreetNumber = false;
+        if (sNum && Number.isFinite(typedDigits)) {
+          const returnedDigits = parseInt(returnedNumStr.replace(/\D/g, ''), 10);
+          if (Number.isFinite(returnedDigits)) {
+            hasValidStreetNumber = Math.abs(returnedDigits - typedDigits) <= 40;
+          } else {
+            hasValidStreetNumber = new RegExp(`,\\s*${typedDigits}\\b`).test(formatted);
+          }
+        }
+
         candidates.push({
           latitude: lat,
           longitude: lng,
           formattedAddress: formatted,
-          hasStreetNumber: hasNum || (!!sNum && new RegExp(`\\b${sNum.replace(/\D/g, '')}\\b`).test(formatted))
+          hasStreetNumber: hasValidStreetNumber
         });
       }
     } catch (err) {
@@ -764,11 +778,15 @@ export async function geocodeAddressForValidation(params: {
   // 2. Consulta complementar via searchAddresses (/api/geocode?q=... / Nominatim)
   try {
     const searchRes = await searchAddresses(fullQuery);
+    const typedDigits = parseInt(sNum.replace(/\D/g, ''), 10);
     for (const item of searchRes) {
       const matchText = `${item.label || ''} ${item.sublabel || ''} ${item.formattedAddress || ''}`;
       if (!candidateMatchesStreet(matchText, sName)) continue;
-      const numDigits = sNum.replace(/\D/g, '');
-      const hasNum = Boolean(numDigits && new RegExp(`\\b${numDigits}\\b`).test(matchText));
+      const hasNum = Boolean(
+        sNum &&
+        Number.isFinite(typedDigits) &&
+        new RegExp(`,\\s*${typedDigits}\\b`).test(matchText)
+      );
       candidates.push({
         latitude: item.latitude,
         longitude: item.longitude,
