@@ -633,3 +633,172 @@ export async function searchAddresses(query: string): Promise<GeoSearchResult[]>
   return [];
 }
 
+export interface AddressValidationCandidate {
+  latitude: number;
+  longitude: number;
+  formattedAddress: string;
+  hasStreetNumber: boolean;
+}
+
+const normalizeStreetTokens = (value: string): string[] => {
+  const stopWords = new Set([
+    'rua', 'r', 'avenida', 'av', 'alameda', 'al', 'travessa', 'tv',
+    'praca', 'pca', 'rodovia', 'rod', 'estrada', 'est', 'via', 'beco',
+    'largo', 'viela', 'de', 'da', 'do', 'das', 'dos', 'e'
+  ]);
+  return (value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map(t => t.trim())
+    .filter(t => t.length >= 2 && !stopWords.has(t));
+};
+
+const candidateMatchesStreet = (candidateText: string, typedStreet: string): boolean => {
+  const tokens = normalizeStreetTokens(typedStreet);
+  if (tokens.length === 0) return true;
+  const hay = (candidateText || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return tokens.every(token => hay.includes(token));
+};
+
+/**
+ * Geocodifica um endereço estruturado (rua, número, bairro, cidade, estado)
+ * retornando candidatos que correspondam ao logradouro informado para validação de distância.
+ */
+export async function geocodeAddressForValidation(params: {
+  streetName: string;
+  streetNumber?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
+  anchorCoords?: { latitude: number; longitude: number };
+}): Promise<AddressValidationCandidate[]> {
+  const sName = (params.streetName || '').trim();
+  const sNum = (params.streetNumber || '').trim();
+  const bairro = (params.bairro || '').trim();
+  const cidade = (params.cidade || '').trim();
+  const estado = (params.estado || '').trim();
+
+  if (!sName) return [];
+
+  const streetPart = sNum ? `${sName}, ${sNum}` : sName;
+  const fullQuery = [streetPart, bairro, cidade, estado, 'Brasil'].filter(Boolean).join(', ');
+  const candidates: AddressValidationCandidate[] = [];
+
+  // 1. Google Maps Geocoder no navegador (suporta interpolação de numeração da rua)
+  if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
+    try {
+      const googleMaps = (window as any).google.maps;
+      const geocoder = new googleMaps.Geocoder();
+      const request: any = {
+        address: fullQuery,
+        region: 'BR'
+      };
+      if (
+        params.anchorCoords &&
+        Number.isFinite(params.anchorCoords.latitude) &&
+        Number.isFinite(params.anchorCoords.longitude) &&
+        googleMaps.LatLngBounds
+      ) {
+        const d = 0.005; // ~500m de bias ao redor do GPS
+        const { latitude, longitude } = params.anchorCoords;
+        request.bounds = new googleMaps.LatLngBounds(
+          { lat: latitude - d, lng: longitude - d },
+          { lat: latitude + d, lng: longitude + d }
+        );
+      }
+
+      const gResults = await new Promise<any[]>((resolve) => {
+        geocoder.geocode(request, (res: any[], status: string) => {
+          if (status === 'OK' && Array.isArray(res)) {
+            resolve(res);
+          } else {
+            resolve([]);
+          }
+        });
+      });
+
+      for (const item of gResults) {
+        const lat = typeof item.geometry?.location?.lat === 'function'
+          ? item.geometry.location.lat()
+          : Number(item.geometry?.location?.lat);
+        const lng = typeof item.geometry?.location?.lng === 'function'
+          ? item.geometry.location.lng()
+          : Number(item.geometry?.location?.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+        let routeName = '';
+        let hasNum = false;
+        if (Array.isArray(item.address_components)) {
+          for (const comp of item.address_components) {
+            const types: string[] = comp.types || [];
+            if (types.includes('route')) {
+              routeName = `${comp.long_name || ''} ${comp.short_name || ''}`;
+            }
+            if (types.includes('street_number')) {
+              hasNum = true;
+            }
+          }
+        }
+        const formatted = String(item.formatted_address || '');
+        const matchText = `${routeName} ${formatted}`;
+        if (!candidateMatchesStreet(matchText, sName)) continue;
+
+        candidates.push({
+          latitude: lat,
+          longitude: lng,
+          formattedAddress: formatted,
+          hasStreetNumber: hasNum || (!!sNum && new RegExp(`\\b${sNum.replace(/\D/g, '')}\\b`).test(formatted))
+        });
+      }
+    } catch (err) {
+      console.warn('[geoService] Erro no Google Geocoder durante validação de endereço:', err);
+    }
+  }
+
+  // 2. Consulta complementar via searchAddresses (/api/geocode?q=... / Nominatim)
+  try {
+    const searchRes = await searchAddresses(fullQuery);
+    for (const item of searchRes) {
+      const matchText = `${item.label || ''} ${item.sublabel || ''} ${item.formattedAddress || ''}`;
+      if (!candidateMatchesStreet(matchText, sName)) continue;
+      const numDigits = sNum.replace(/\D/g, '');
+      const hasNum = Boolean(numDigits && new RegExp(`\\b${numDigits}\\b`).test(matchText));
+      candidates.push({
+        latitude: item.latitude,
+        longitude: item.longitude,
+        formattedAddress: item.formattedAddress || item.label,
+        hasStreetNumber: hasNum
+      });
+    }
+  } catch (err) {
+    console.warn('[geoService] Erro no searchAddresses durante validação de endereço:', err);
+  }
+
+  // Se o usuário digitou número mas nenhuma busca com número retornou a rua, tenta buscar apenas pelo nome da rua + bairro + cidade
+  if (candidates.length === 0 && sNum) {
+    const streetOnlyQuery = [sName, bairro, cidade, estado, 'Brasil'].filter(Boolean).join(', ');
+    try {
+      const fallbackRes = await searchAddresses(streetOnlyQuery);
+      for (const item of fallbackRes) {
+        const matchText = `${item.label || ''} ${item.sublabel || ''} ${item.formattedAddress || ''}`;
+        if (!candidateMatchesStreet(matchText, sName)) continue;
+        candidates.push({
+          latitude: item.latitude,
+          longitude: item.longitude,
+          formattedAddress: item.formattedAddress || item.label,
+          hasStreetNumber: false
+        });
+      }
+    } catch {}
+  }
+
+  return candidates;
+}
+
+

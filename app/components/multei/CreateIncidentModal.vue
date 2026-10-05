@@ -168,8 +168,8 @@
             </div>
           </div>
 
-          <!-- Ações secundárias caso o endereço já esteja válido -->
-          <div v-if="isLocationValid" class="location-actions-bar">
+          <!-- Ações de localização (GPS, Mapa e Editar Endereço) -->
+          <div v-if="isLocationValid || isEditingAddress" class="location-actions-bar">
             <button 
               type="button" 
               class="btn-loc-action btn-refresh-gps" 
@@ -189,6 +189,66 @@
             >
               {{ isAdjustingLocation ? '✓ Concluir Ajuste' : '🗺️ Ajustar no Mapa' }}
             </button>
+
+            <button 
+              type="button" 
+              class="btn-loc-action btn-edit-address" 
+              :class="{ 'is-active': isEditingAddress }"
+              @click="toggleEditAddress"
+            >
+              {{ isEditingAddress ? '✓ Concluir Edição' : '✏️ Editar Endereço' }}
+            </button>
+          </div>
+
+          <!-- Painel de Edição Manual de Endereço (Rua, Número e Bairro pré-preenchidos pelo GPS) -->
+          <div v-if="isEditingAddress" class="edit-address-panel">
+            <div class="edit-address-grid">
+              <div class="edit-field edit-field-street">
+                <label for="incident-street-input" class="edit-field-label">Rua / Logradouro</label>
+                <input
+                  id="incident-street-input"
+                  v-model="streetName"
+                  type="text"
+                  class="edit-field-input"
+                  :class="{ 'is-invalid': !!addressEditError }"
+                  placeholder="Ex: Av. Paulista"
+                  @input="handleManualAddressInput"
+                />
+              </div>
+
+              <div class="edit-field edit-field-number">
+                <label for="incident-number-input" class="edit-field-label">Número</label>
+                <input
+                  id="incident-number-input"
+                  v-model="streetNumber"
+                  type="text"
+                  class="edit-field-input"
+                  :class="{ 'is-invalid': !!addressEditError }"
+                  placeholder="Ex: 1000"
+                  @input="handleManualAddressInput"
+                />
+              </div>
+
+              <div class="edit-field edit-field-neighborhood">
+                <label for="incident-neighborhood-input" class="edit-field-label">Bairro</label>
+                <input
+                  id="incident-neighborhood-input"
+                  v-model="currentBairro"
+                  type="text"
+                  class="edit-field-input"
+                  :class="{ 'is-invalid': !!addressEditError }"
+                  placeholder="Ex: Bela Vista"
+                  @input="handleManualAddressInput"
+                />
+              </div>
+            </div>
+
+            <p v-if="isValidatingAddress" class="edit-address-status">
+              ⏳ Verificando se o endereço está dentro do raio de {{ MAX_ADJUST_RADIUS_METERS }}m do GPS...
+            </p>
+            <div v-else-if="addressEditError" class="edit-address-error" role="alert">
+              ⚠️ {{ addressEditError }}
+            </div>
           </div>
 
           <!-- Alerta Destacado: Endereço não identificado automaticamente (oculto durante o ajuste no mapa para evitar piscadas na UX) -->
@@ -266,11 +326,13 @@
           </button>
           <button 
             class="btn btn-primary btn-save-incident" 
+            :class="{ 'is-disabled-lock': !!addressEditError }"
             @click="handleSaveIncident" 
-            :disabled="isSaving || isResolvingAddress"
+            :disabled="isSaving || isResolvingAddress || isValidatingAddress || !!addressEditError"
           >
             <span v-if="isSaving">Processando...</span>
             <span v-else-if="isResolvingAddress">Obtendo endereço...</span>
+            <span v-else-if="isValidatingAddress">Validando endereço...</span>
             <span v-else>Salvar denúncia</span>
           </button>
         </div>
@@ -297,7 +359,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
 import { extractPhotoMetadata, blurSensitiveContentAndCompress, prepareImageForGemini } from '../../services/imageProcessor';
 import { saveIncidentToSheet } from '../../services/sheetsService';
-import { getAddressDetailsFromCoords, requestUserLocation } from '../../services/geoService';
+import { getAddressDetailsFromCoords, requestUserLocation, geocodeAddressForValidation } from '../../services/geoService';
 
 const props = defineProps({
   currentLocation: {
@@ -323,14 +385,223 @@ const lastSelectedFile = ref(null);
 const rawPreviewUrl = ref('');
 const saveError = ref('');
 const isAdjustingLocation = ref(false);
+const isEditingAddress = ref(false);
+const hasManualAddressEdit = ref(false);
+const isValidatingAddress = ref(false);
+const addressEditError = ref('');
 const addressText = ref('');
+const streetName = ref('');
+const streetNumber = ref('');
+const gpsResolvedStreetName = ref('');
+const gpsResolvedStreetNumber = ref('');
+const gpsResolvedBairro = ref('');
 const currentRua = ref('');
 const currentBairro = ref('');
 const currentCidade = ref('');
 const currentEstado = ref('');
 const isResolvingAddress = ref(false);
 let geocodeDebounceTimer = null;
+let addressValidationTimer = null;
 let currentAddressPromise = null;
+
+const splitStreetAndNumber = (rawRua) => {
+  const clean = (rawRua || '').trim();
+  if (!clean) return { streetName: '', streetNumber: '' };
+  const match = clean.match(/^(.*?),\s*(\d+[A-Za-z0-9\-\/]*|s\/n|S\/N)$/i);
+  if (match) {
+    return {
+      streetName: match[1].trim(),
+      streetNumber: match[2].trim()
+    };
+  }
+  return { streetName: clean, streetNumber: '' };
+};
+
+const composeRuaWithNumber = (sName, sNum) => {
+  const cleanName = (sName || '').trim().replace(/,\s*$/, '');
+  const cleanNum = (sNum || '').trim();
+  if (cleanName && cleanNum) return `${cleanName}, ${cleanNum}`;
+  return cleanName || cleanNum || '';
+};
+
+const syncFieldsFromRua = (rawRua, isFromGps = false) => {
+  const parsed = splitStreetAndNumber(rawRua);
+  streetName.value = parsed.streetName;
+  streetNumber.value = parsed.streetNumber;
+  if (isFromGps) {
+    gpsResolvedStreetName.value = parsed.streetName;
+    gpsResolvedStreetNumber.value = parsed.streetNumber;
+  }
+  currentRua.value = composeRuaWithNumber(streetName.value, streetNumber.value);
+};
+
+const normalizeComparison = (val) =>
+  (val || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(rua|r\.|r|avenida|av\.|av|alameda|al\.|travessa|tv\.|praca|pca\.)\b/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const validateTypedAddressRadius = async () => {
+  if (!hasManualAddressEdit.value) {
+    addressEditError.value = '';
+    return { valid: true };
+  }
+
+  const sName = (streetName.value || '').trim();
+  const sNum = (streetNumber.value || '').trim();
+  const sBairro = (currentBairro.value || '').trim();
+
+  if (!sName) {
+    const msg = 'Informe o nome da rua para validar o endereço.';
+    addressEditError.value = msg;
+    return { valid: false, message: msg };
+  }
+
+  const sameStreetAsGps =
+    gpsResolvedStreetName.value &&
+    normalizeComparison(sName) === normalizeComparison(gpsResolvedStreetName.value);
+  const sameBairroAsGps =
+    !sBairro ||
+    !gpsResolvedBairro.value ||
+    normalizeComparison(sBairro) === normalizeComparison(gpsResolvedBairro.value);
+  const sameNumberAsGps =
+    normalizeComparison(sNum) === normalizeComparison(gpsResolvedStreetNumber.value);
+
+  if (sameStreetAsGps && sameBairroAsGps && sameNumberAsGps) {
+    addressEditError.value = '';
+    saveError.value = '';
+    return { valid: true };
+  }
+
+  const outOfRadiusMessage = 'O endereço digitado está fora do raio máximo permitido';
+
+  isValidatingAddress.value = true;
+  try {
+    const candidates = await geocodeAddressForValidation({
+      streetName: sName,
+      streetNumber: sNum,
+      bairro: sBairro,
+      cidade: currentCidade.value,
+      estado: currentEstado.value,
+      anchorCoords: {
+        latitude: gpsAnchorLocation.latitude,
+        longitude: gpsAnchorLocation.longitude
+      }
+    });
+
+    if (!candidates || candidates.length === 0) {
+      addressEditError.value = outOfRadiusMessage;
+      return { valid: false, message: outOfRadiusMessage };
+    }
+
+    const withNumberPool = sNum ? candidates.filter(c => c.hasStreetNumber) : [];
+    const pool = withNumberPool.length > 0 ? withNumberPool : candidates;
+
+    // Se o usuário digitou um número na mesma rua do GPS mas o mapa não possui números cadastrados nessa via,
+    // valida também pela diferença de numeração métrica (cada 100 números equivale a ~100m)
+    if (sNum && withNumberPool.length === 0 && sameStreetAsGps && gpsResolvedStreetNumber.value) {
+      const typedDigits = parseInt(sNum.replace(/\D/g, ''), 10);
+      const gpsDigits = parseInt(gpsResolvedStreetNumber.value.replace(/\D/g, ''), 10);
+      if (Number.isFinite(typedDigits) && Number.isFinite(gpsDigits)) {
+        const estimatedDiffMeters = Math.abs(typedDigits - gpsDigits);
+        if (estimatedDiffMeters > MAX_ADJUST_RADIUS_METERS) {
+          addressEditError.value = outOfRadiusMessage;
+          return { valid: false, message: outOfRadiusMessage };
+        }
+      }
+    }
+
+    let minDistance = Infinity;
+    let bestCandidate = null;
+    for (const cand of pool) {
+      const dist = getDistanceMeters(
+        gpsAnchorLocation.latitude,
+        gpsAnchorLocation.longitude,
+        cand.latitude,
+        cand.longitude
+      );
+      if (dist < minDistance) {
+        minDistance = dist;
+        bestCandidate = cand;
+      }
+    }
+
+    // Caso a rua seja a mesma localizada pelo GPS e o geocodificador tenha retornado apenas o centroide da via inteira (sem número específico)
+    if (minDistance > MAX_ADJUST_RADIUS_METERS && withNumberPool.length === 0 && sameStreetAsGps && sameBairroAsGps) {
+      const typedDigits = parseInt(sNum.replace(/\D/g, ''), 10);
+      const gpsDigits = parseInt((gpsResolvedStreetNumber.value || '').replace(/\D/g, ''), 10);
+      if (!sNum || (Number.isFinite(typedDigits) && Number.isFinite(gpsDigits) && Math.abs(typedDigits - gpsDigits) <= MAX_ADJUST_RADIUS_METERS)) {
+        addressEditError.value = '';
+        saveError.value = '';
+        return { valid: true };
+      }
+    }
+
+    if (minDistance > MAX_ADJUST_RADIUS_METERS) {
+      addressEditError.value = outOfRadiusMessage;
+      return { valid: false, message: outOfRadiusMessage };
+    }
+
+    if (bestCandidate) {
+      selectedLocation.latitude = bestCandidate.latitude;
+      selectedLocation.longitude = bestCandidate.longitude;
+    }
+
+    addressEditError.value = '';
+    saveError.value = '';
+    return { valid: true };
+  } catch (err) {
+    console.warn('[CreateIncidentModal] Erro ao validar raio do endereço digitado:', err);
+    addressEditError.value = outOfRadiusMessage;
+    return { valid: false, message: outOfRadiusMessage };
+  } finally {
+    isValidatingAddress.value = false;
+  }
+};
+
+const handleManualAddressInput = () => {
+  hasManualAddressEdit.value = true;
+  addressEditError.value = '';
+  saveError.value = '';
+  currentRua.value = composeRuaWithNumber(streetName.value, streetNumber.value);
+  const cityState = [currentCidade.value, currentEstado.value].filter(Boolean).join(' - ');
+  const parts = [currentRua.value, (currentBairro.value || '').trim(), cityState].filter(Boolean);
+  if (parts.length > 0) {
+    addressText.value = parts.join(' - ');
+  }
+
+  if (addressValidationTimer) clearTimeout(addressValidationTimer);
+  addressValidationTimer = setTimeout(() => {
+    validateTypedAddressRadius();
+  }, 650);
+};
+
+const toggleEditAddress = async () => {
+  if (!isEditingAddress.value) {
+    if (currentRua.value && !streetName.value) {
+      syncFieldsFromRua(currentRua.value);
+    }
+    isEditingAddress.value = true;
+    return;
+  }
+
+  if (hasManualAddressEdit.value) {
+    if (addressValidationTimer) {
+      clearTimeout(addressValidationTimer);
+      addressValidationTimer = null;
+    }
+    const validation = await validateTypedAddressRadius();
+    if (!validation.valid) {
+      return;
+    }
+  }
+
+  isEditingAddress.value = false;
+};
 
 // Origem da foto ('camera' | 'gallery') e metadados EXIF extraídos para classificação de qualidade (A, B, C)
 const photoOrigin = ref('gallery');
@@ -711,8 +982,15 @@ const updateAddress = async (lat, lng) => {
     if (details.formattedAddress && (!addressText.value || addressText.value.startsWith('Lat:') || !details.formattedAddress.startsWith('Lat:'))) {
       addressText.value = details.formattedAddress;
     }
-    if (details.rua) currentRua.value = details.rua;
-    if (details.bairro) currentBairro.value = details.bairro;
+    if (details.rua) {
+      syncFieldsFromRua(details.rua, !hasManualAddressEdit.value);
+    }
+    if (details.bairro) {
+      currentBairro.value = details.bairro;
+      if (!hasManualAddressEdit.value) {
+        gpsResolvedBairro.value = details.bairro;
+      }
+    }
     if (details.cidade) currentCidade.value = details.cidade;
     if (details.estado) currentEstado.value = details.estado;
 
@@ -721,8 +999,15 @@ const updateAddress = async (lat, lng) => {
       const textToParse = details.formattedAddress || addressText.value;
       if (textToParse) {
         const fromText = extractCityAndStateFromText(textToParse);
-        if (fromText.rua && !currentRua.value) currentRua.value = fromText.rua;
-        if (fromText.bairro && !currentBairro.value) currentBairro.value = fromText.bairro;
+        if (fromText.rua && !currentRua.value) {
+          syncFieldsFromRua(fromText.rua, !hasManualAddressEdit.value);
+        }
+        if (fromText.bairro && !currentBairro.value) {
+          currentBairro.value = fromText.bairro;
+          if (!hasManualAddressEdit.value) {
+            gpsResolvedBairro.value = fromText.bairro;
+          }
+        }
         if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
         if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
       }
@@ -742,8 +1027,15 @@ const updateAddress = async (lat, lng) => {
 watch(addressText, (newText) => {
   if (newText && (!currentCidade.value || !currentEstado.value || !currentRua.value || !currentBairro.value)) {
     const fromText = extractCityAndStateFromText(newText);
-    if (fromText.rua && !currentRua.value) currentRua.value = fromText.rua;
-    if (fromText.bairro && !currentBairro.value) currentBairro.value = fromText.bairro;
+    if (fromText.rua && !currentRua.value) {
+      syncFieldsFromRua(fromText.rua, !hasManualAddressEdit.value);
+    }
+    if (fromText.bairro && !currentBairro.value) {
+      currentBairro.value = fromText.bairro;
+      if (!hasManualAddressEdit.value) {
+        gpsResolvedBairro.value = fromText.bairro;
+      }
+    }
     if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
     if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
   }
@@ -753,6 +1045,8 @@ const handleRefreshGps = async () => {
   isRefreshingGps.value = true;
   gpsStatusMessage.value = 'Consultando o GPS do dispositivo...';
   gpsStatusIsError.value = false;
+  addressEditError.value = '';
+  saveError.value = '';
 
   try {
     const coords = await requestUserLocation();
@@ -760,6 +1054,7 @@ const handleRefreshGps = async () => {
     selectedLocation.longitude = coords.longitude;
     setGpsAnchorLocation(coords.latitude, coords.longitude);
     locationSource.value = 'device';
+    hasManualAddressEdit.value = false;
     gpsStatusMessage.value = 'Localização atualizada com sucesso!';
     await updateAddress(coords.latitude, coords.longitude);
   } catch (err) {
@@ -798,6 +1093,8 @@ onMounted(async () => {
     } catch {
       // Permissão ainda não concedida: mantém cidade e estado vazios para solicitar GPS antes de salvar
       locationSource.value = 'fallback';
+      streetName.value = '';
+      streetNumber.value = '';
       currentRua.value = '';
       currentBairro.value = '';
       currentCidade.value = '';
@@ -820,6 +1117,10 @@ onBeforeUnmount(() => {
     clearTimeout(geocodeDebounceTimer);
     geocodeDebounceTimer = null;
   }
+  if (addressValidationTimer) {
+    clearTimeout(addressValidationTimer);
+    addressValidationTimer = null;
+  }
 });
 
 watch(() => props.currentLocation, (newVal) => {
@@ -841,11 +1142,19 @@ const resetToUpload = () => {
     URL.revokeObjectURL(rawPreviewUrl.value);
     rawPreviewUrl.value = '';
   }
+  if (addressValidationTimer) {
+    clearTimeout(addressValidationTimer);
+    addressValidationTimer = null;
+  }
   step.value = 'upload';
   isApiError.value = false;
   errorMessage.value = '';
   saveError.value = '';
+  addressEditError.value = '';
   isAdjustingLocation.value = false;
+  isEditingAddress.value = false;
+  hasManualAddressEdit.value = false;
+  isValidatingAddress.value = false;
   processedImageWebp.value = '';
   addressText.value = '';
   gpsStatusMessage.value = '';
@@ -950,6 +1259,8 @@ const processSelectedImage = async (file) => {
 
     // Iniciar busca pelo nome da rua apenas se não for fallback sem localização real
     if (locationSource.value === 'fallback') {
+      streetName.value = '';
+      streetNumber.value = '';
       currentRua.value = '';
       currentBairro.value = '';
       currentCidade.value = '';
@@ -1065,6 +1376,9 @@ const handleMiniMapGpsFound = (coords) => {
   selectedLocation.latitude = coords.latitude;
   selectedLocation.longitude = coords.longitude;
   locationSource.value = 'device';
+  hasManualAddressEdit.value = false;
+  addressEditError.value = '';
+  saveError.value = '';
   updateAddress(coords.latitude, coords.longitude);
 };
 
@@ -1085,6 +1399,11 @@ const handlePinChange = (newLoc) => {
   // Só limpa rua/bairro/cidade/estado se o pino realmente se moveu significativamente ou se ainda não tinham sido preenchidos
   if (hasMovedSignificantly || !currentCidade.value || !currentEstado.value) {
     if (hasMovedSignificantly) {
+      hasManualAddressEdit.value = false;
+      addressEditError.value = '';
+      saveError.value = '';
+      streetName.value = '';
+      streetNumber.value = '';
       currentRua.value = '';
       currentBairro.value = '';
       currentCidade.value = '';
@@ -1102,6 +1421,11 @@ const handlePinChange = (newLoc) => {
 const handleSaveIncident = async () => {
   isSaving.value = true;
   saveError.value = '';
+
+  const editedRua = composeRuaWithNumber(streetName.value, streetNumber.value);
+  if (editedRua) {
+    currentRua.value = editedRua;
+  }
 
   const screenRua = (currentRua.value || '').trim();
   const screenBairro = (currentBairro.value || '').trim();
@@ -1121,6 +1445,23 @@ const handleSaveIncident = async () => {
     try {
       await currentAddressPromise;
     } catch {}
+  }
+
+  // Restaura e valida edição manual caso o usuário tenha editado os campos de rua/número/bairro
+  if (hasManualAddressEdit.value) {
+    if (addressValidationTimer) {
+      clearTimeout(addressValidationTimer);
+      addressValidationTimer = null;
+    }
+    if (editedRua) currentRua.value = editedRua;
+    if (screenBairro) currentBairro.value = screenBairro;
+
+    const validation = await validateTypedAddressRadius();
+    if (!validation.valid) {
+      isSaving.value = false;
+      isEditingAddress.value = true;
+      return;
+    }
   }
 
   // 3. Se ainda estiver no fallback (usuário não mexeu no mapa e foto sem EXIF) e ainda sem Cidade/Estado na tela, tenta pegar o GPS ao vivo
@@ -1143,7 +1484,7 @@ const handleSaveIncident = async () => {
   if (!currentCidade.value?.trim() || !currentEstado.value?.trim() || !currentRua.value?.trim() || !currentBairro.value?.trim()) {
     try {
       const details = await getAddressDetailsFromCoords(selectedLocation.latitude, selectedLocation.longitude);
-      if (details.rua && !currentRua.value) currentRua.value = details.rua;
+      if (details.rua && !currentRua.value) syncFieldsFromRua(details.rua);
       if (details.bairro && !currentBairro.value) currentBairro.value = details.bairro;
       if (details.cidade && !currentCidade.value) currentCidade.value = details.cidade;
       if (details.estado && !currentEstado.value) currentEstado.value = details.estado;
@@ -1156,13 +1497,14 @@ const handleSaveIncident = async () => {
   // 5. Extração complementar do texto do endereço caso necessário
   if ((!currentCidade.value?.trim() || !currentEstado.value?.trim() || !currentRua.value?.trim() || !currentBairro.value?.trim()) && (addressText.value || screenAddress)) {
     const fromText = extractCityAndStateFromText(addressText.value || screenAddress);
-    if (fromText.rua && !currentRua.value) currentRua.value = fromText.rua;
+    if (fromText.rua && !currentRua.value) syncFieldsFromRua(fromText.rua);
     if (fromText.bairro && !currentBairro.value) currentBairro.value = fromText.bairro;
     if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
     if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
   }
 
   let finalRua = (
+    (hasManualAddressEdit.value && editedRua ? editedRua : '') ||
     currentRua.value ||
     screenRua ||
     (addressText.value ? extractCityAndStateFromText(addressText.value).rua : '') ||
@@ -1170,6 +1512,7 @@ const handleSaveIncident = async () => {
     ''
   ).trim();
   let finalBairro = (
+    (hasManualAddressEdit.value && screenBairro ? screenBairro : '') ||
     currentBairro.value ||
     screenBairro ||
     (addressText.value ? extractCityAndStateFromText(addressText.value).bairro : '') ||
@@ -1220,7 +1563,7 @@ const handleSaveIncident = async () => {
     estado: finalEstado,
     classificacao,
     maskedImageUrl: processedImageWebp.value,
-    description: addressText.value || ([finalRua, finalBairro, finalCidade, finalEstado].filter(Boolean).join(' - ') || 'Infração registrada via colaboração cidadã')
+    description: [finalRua, finalBairro, [finalCidade, finalEstado].filter(Boolean).join(' - ')].filter(Boolean).join(' - ') || addressText.value || 'Infração registrada via colaboração cidadã'
   };
 
   try {
@@ -1240,11 +1583,11 @@ const handleSaveIncident = async () => {
       classificacao: newIncident.classificacao
     });
 
-    if (saveResult && saveResult.rua) {
+    if (saveResult && saveResult.rua && !hasManualAddressEdit.value && !newIncident.rua) {
       newIncident.rua = saveResult.rua;
       currentRua.value = saveResult.rua;
     }
-    if (saveResult && saveResult.bairro) {
+    if (saveResult && saveResult.bairro && !hasManualAddressEdit.value && !newIncident.bairro) {
       newIncident.bairro = saveResult.bairro;
       currentBairro.value = saveResult.bairro;
     }
@@ -1849,6 +2192,106 @@ const handleSaveIncident = async () => {
 .btn-adjust:hover {
   background: var(--primary, #86007D);
   color: #fff;
+}
+
+.btn-edit-address {
+  background: transparent;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-edit-address:hover {
+  border-color: var(--primary, #86007D);
+  color: var(--primary, #86007D);
+  background: rgba(134, 0, 125, 0.05);
+}
+
+.btn-edit-address.is-active {
+  background: var(--primary, #86007D);
+  border-color: var(--primary, #86007D);
+  color: #fff;
+}
+
+.edit-address-panel {
+  margin-top: 0.35rem;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.edit-address-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 0.7rem;
+}
+
+.edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.edit-field-neighborhood {
+  grid-column: 1 / -1;
+}
+
+.edit-field-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.edit-field-input {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  border: 1.5px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.edit-field-input:focus {
+  outline: none;
+  border-color: var(--primary, #86007D);
+  box-shadow: 0 0 0 3px rgba(134, 0, 125, 0.14);
+}
+
+.edit-field-input.is-invalid {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.edit-address-status {
+  margin: 0.65rem 0 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.edit-address-error {
+  margin-top: 0.65rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+@media (max-width: 480px) {
+  .edit-address-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .gps-msg {

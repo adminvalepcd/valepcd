@@ -798,7 +798,12 @@ watch(() => props.isMapApiLoaded, (loaded) => {
 
 watch(() => props.initialCenter, (newCenter) => {
   if (map.value && newCenter && !props.pinLocation) {
-    map.value.panTo({ lat: newCenter.latitude, lng: newCenter.longitude });
+    const targetLatLng = { lat: Number(newCenter.latitude), lng: Number(newCenter.longitude) };
+    if (newCenter.isSearchResult) {
+      map.value.setCenter(targetLatLng);
+    } else {
+      map.value.panTo(targetLatLng);
+    }
     if (typeof newCenter.zoom === 'number') {
       map.value.setZoom(newCenter.zoom);
     } else if ((map.value.getZoom() || 0) < props.initialZoom) {
@@ -808,6 +813,7 @@ watch(() => props.initialCenter, (newCenter) => {
     if (!isDefaultSP && !newCenter.isSearchResult) {
       updateUserLocationDot(newCenter.latitude, newCenter.longitude);
     }
+    emitVisibleBounds();
   }
 }, { deep: true });
 

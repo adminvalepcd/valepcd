@@ -221,6 +221,22 @@
                 <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso VIII do CTB</p>
               </div>
             </details>
+<details class="report-summary-card">
+  <summary class="report-summary-trigger">
+    <span class="report-summary-number" aria-hidden="true">5</span>
+    <span class="report-summary-heading">Multa em supermercado e shopping tem validade?</span>
+    <span class="report-summary-chevron" aria-hidden="true">▾</span>
+  </summary>
+  <div class="report-summary-body">
+    <p><strong>Sim, tem total validade.</strong> Desde 2015, o Código de Trânsito Brasileiro (CTB) estabelece que
+      estacionamentos de uso coletivo — como supermercados, shoppings, hospitais e faculdades — são considerados
+      vias públicas para fins de fiscalização.</p>
+    <p><strong>Como funciona a regra:</strong></p>
+    <p class="report-legal-base"><strong>A infração principal:</strong> Estacionar nas vagas reservadas para
+      pessoas com deficiência ou idosos sem a credencial (Art. 181, XX). A multa é gravíssima e o veículo pode ser
+      guinchado.</p>
+  </div>
+</details>
           </div>
     
           <div class="what-to-report-footer">
