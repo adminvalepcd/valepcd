@@ -13,20 +13,32 @@
       </div>
 
       <div class="modal-image-wrapper">
-        <div v-if="isLoadingPhoto" class="image-loading-placeholder">
-          <LoadingSpinner />
-          <span class="image-loading-text">Carregando foto anonimizada...</span>
-        </div>
-        <img 
-          v-else-if="currentPhoto"
-          :src="currentPhoto" 
-          alt="Foto da infração com dados sensíveis ocultos" 
-          class="incident-image is-clickable" 
-          title="Clique para ver em tamanho original"
-          @click="isPhotoExpanded = true"
-        />
-        <div v-else class="image-empty-placeholder">
-          <span>📷 Foto da infração indisponível</span>
+        <div class="photo-stage">
+          <div v-if="isLoadingPhoto" class="image-loading-placeholder">
+            <LoadingSpinner />
+            <span class="image-loading-text">Carregando foto anonimizada...</span>
+          </div>
+          <img 
+            v-else-if="currentPhoto"
+            :src="currentPhoto" 
+            alt="Foto da infração com dados sensíveis ocultos" 
+            class="incident-image is-clickable" 
+            title="Clique para ver em tamanho original"
+            @click="isPhotoExpanded = true"
+          />
+          <div v-else class="image-empty-placeholder">
+            <span>📷 Foto da infração indisponível</span>
+          </div>
+
+          <div
+            v-if="verificationBadge"
+            class="verification-photo-badge"
+            :class="`is-${verificationBadge.type}`"
+            :title="verificationBadge.label"
+          >
+            <span class="verification-badge-icon" aria-hidden="true">{{ verificationBadge.icon }}</span>
+            <span class="verification-badge-text">{{ verificationBadge.label }}</span>
+          </div>
         </div>
         <p class="privacy-note">
           Áreas sensíveis (placas e rostos) foram ocultadas automaticamente por IA. Se seu rosto apareceu, <button type="button" class="btn-link-report" @click="handleOpenReport">reporte a ocorrência</button>.
@@ -151,7 +163,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { getAddressFromCoords } from '../../services/geoService';
-import { reportIncidentInSheet, fetchIncidentPhoto } from '../../services/sheetsService';
+import { reportIncidentInSheet, fetchIncidentPhoto, normalizeVerificacao } from '../../services/sheetsService';
 import LoadingSpinner from './LoadingSpinner.vue';
 
 const props = defineProps({
@@ -172,6 +184,32 @@ const isLoadingPhoto = ref(!currentPhoto.value);
 const isPhotoExpanded = ref(false);
 const addressText = ref('');
 const isResolving = ref(false);
+
+const verificationBadge = computed(() => {
+  const type = normalizeVerificacao(props.incident?.verificacao ?? props.incident?.verification);
+  if (type === 'exclusiva') {
+    return {
+      type: 'exclusiva',
+      icon: '♿',
+      label: 'Vaga exclusiva'
+    };
+  }
+  if (type === 'transferencia') {
+    return {
+      type: 'transferencia',
+      icon: '♿️↔️',
+      label: 'Área de transferência'
+    };
+  }
+  if (type === 'pedestre') {
+    return {
+      type: 'pedestre',
+      icon: '🚷',
+      label: 'Faixa de pedestres'
+    };
+  }
+  return null;
+});
 
 const cleanStreetAndNeighborhood = (rawAddress, city, state) => {
   if (!rawAddress || typeof rawAddress !== 'string') return '';
@@ -393,6 +431,42 @@ watch(() => props.incident, () => {
   text-align: center;
 }
 
+.photo-stage {
+  position: relative;
+  border-radius: var(--radius-md, 12px);
+  overflow: hidden;
+}
+
+.verification-photo-badge {
+  position: absolute;
+  top: 0.7rem;
+  left: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #ffffff;
+  background-color: var(--primary, #86007D);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.verification-badge-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.verification-badge-text {
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+}
+
 .image-loading-placeholder {
   min-height: 200px;
   display: flex;
@@ -428,6 +502,7 @@ watch(() => props.incident, () => {
   object-fit: scale-down;
   border-radius: var(--radius-md, 12px);
   background: #000;
+  display: block;
 }
 
 .incident-image.is-clickable {

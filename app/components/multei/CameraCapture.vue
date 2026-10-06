@@ -69,7 +69,11 @@ onMounted(async () => {
       throw new Error('A API de Câmera não é suportada neste navegador.');
     }
     const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-      video: { facingMode: 'environment' } 
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      } 
     });
     stream.value = mediaStream;
     if (videoRef.value) {
@@ -97,23 +101,44 @@ onBeforeUnmount(() => {
   }
 });
 
+const TARGET_WIDTH = 1080;
+const TARGET_HEIGHT = 1920;
+
 const handleCapture = () => {
   if (!videoRef.value || !canvasRef.value) return;
 
   const video = videoRef.value;
   const canvas = canvasRef.value;
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  const srcW = video.videoWidth || TARGET_WIDTH;
+  const srcH = video.videoHeight || TARGET_HEIGHT;
+  const targetAspect = TARGET_WIDTH / TARGET_HEIGHT; // 9:16 (1080x1920)
+  const srcAspect = srcW / srcH;
+
+  let sx = 0;
+  let sy = 0;
+  let sWidth = srcW;
+  let sHeight = srcH;
+
+  if (srcAspect > targetAspect) {
+    sWidth = Math.round(srcH * targetAspect);
+    sx = Math.round((srcW - sWidth) / 2);
+  } else if (srcAspect < targetAspect) {
+    sHeight = Math.round(srcW / targetAspect);
+    sy = Math.round((srcH - sHeight) / 2);
+  }
+
+  canvas.width = TARGET_WIDTH;
+  canvas.height = TARGET_HEIGHT;
   const context = canvas.getContext('2d');
   if (context) {
-    context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+    context.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
     canvas.toBlob((blob) => {
       if (blob) {
         const fileName = `infracao-${Date.now()}.jpg`;
         const file = new File([blob], fileName, { type: 'image/jpeg' });
         emit('photoTaken', file);
       }
-    }, 'image/jpeg', 0.9);
+    }, 'image/jpeg', 0.92);
   }
 };
 </script>
@@ -128,7 +153,7 @@ const handleCapture = () => {
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  padding: 1rem;
+  padding: 0.75rem;
 }
 
 .hidden-canvas {
@@ -137,11 +162,12 @@ const handleCapture = () => {
 
 .video-card {
   position: relative;
-  width: 100%;
-  max-width: 760px;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 9 / 16;
+  height: min(88dvh, 100%);
+  width: auto;
+  max-width: 100%;
   background-color: #0f172a;
-  border-radius: 16px;
+  border-radius: 18px;
   overflow: hidden;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   display: flex;

@@ -57,6 +57,7 @@ export async function analyzeIncidentImage(
     rejectionReason: 'Não foi possível analisar a imagem enviada. Tente novamente.',
     plates: [],
     faces: [],
+    verification: '',
     apiError: false
   };
 
@@ -70,13 +71,16 @@ export async function analyzeIncidentImage(
   }
 
   const prompt = `
-Você é um auditor de trânsito especializado em privacidade e conformidade da LGPD em imagens de trânsito e vagas reservadas (PCD e idosos).
-Analise a imagem enviada com atenção aos seguintes critérios:
-1. "hasVehicle": Defina como true se houver QUALQUER veículo automotor (carro, automóvel, caminhonete, SUV, van, caminhão, moto, micro-ônibus ou ônibus) visível na foto, mesmo que parcialmente enquadrado, em ângulo aberto ou fechado, estacionado ou em movimento. Apenas defina como false se comprovadamente não houver nenhum veículo na imagem.
-2. "isAppropriate": Defina como true se a imagem for segura para exibição pública em um aplicativo cívico (sem pornografia, nudez, violência extrema/sangue ou armas de fogo). Fotos cotidianas de vias públicas, estacionamentos, ruas e veículos automotores DEVEM ser sempre consideradas apropriadas (true).
-3. "rejectionReason": Se hasVehicle for false ou isAppropriate for false, retorne uma explicação concisa em português do motivo da rejeição. Se a foto for aprovada, retorne uma string vazia "".
-4. "plates": IMPORTANTE: Localize com precisão as caixas delimitadoras (bounding boxes) de TODAS as placas de veículos visíveis (dianteiras e traseiras de qualquer veículo na cena), cobrindo toda a extensão da placa (incluindo moldura e caracteres), onde x e y são o canto superior esquerdo (xmin, ymin).
-5. "faces": IMPORTANTE: Localize com precisão as caixas delimitadoras de TODOS os rostos humanos visíveis para aplicação de desfoque de privacidade, onde x e y são o canto superior esquerdo (xmin, ymin).
+Audite a imagem (LGPD/Trânsito) e retorne o JSON:
+{"hasVehicle": bool, "isAppropriate": bool, "rejectionReason": str, "plates": [{box_2d: [ymin,xmin,ymax,xmax], label: str}], "faces": [{box_2d: [ymin,xmin,ymax,xmax]}], "verification": str}
+"rejectionReason": motivo se falso em 1 ou 2, senão "".
+"verification" deve ser apenas um dos valores:
+
+"transferencia": veículo ocupando ou com rodas sobre a pintura zebrada PCD acima de 25%.
+"Vaga exclusiva": veículo na vaga PCD/Idoso sem credencial visível (pneus fora do zebrado ou ocupando ≤ 25%).
+"faixa de pedestres": veículo sobre a faixa de pedestres.
+"": se nenhum dos anteriores
+Prioridade: Se o zebrado (> 25% de ocupação) ou faixa de pedestres estiver ocupado, este é o veículo PRINCIPAL.
 `;
 
   const { data, mimeType } = parseBase64Image(imageBase64);
@@ -129,9 +133,13 @@ Analise a imagem enviada com atenção aos seguintes critérios:
           },
           propertyOrdering: ['x', 'y', 'width', 'height']
         }
+      },
+      verification: {
+        type: Type.STRING,
+        description: 'Retorne "Vaga exclusiva" se houver sinalização de vaga acessível (cadeira de rodas), "faixa de pedestres" se o veículo estiver sobre faixa de pedestres, "transferencia" se estiver sobre área de transferência de vaga PCD, ou "" se não identificado.'
       }
     },
-    propertyOrdering: ['hasVehicle', 'isAppropriate', 'rejectionReason', 'plates', 'faces']
+    propertyOrdering: ['hasVehicle', 'isAppropriate', 'rejectionReason', 'plates', 'faces', 'verification']
   };
 
   let lastError: unknown = null;
@@ -225,7 +233,9 @@ Analise a imagem enviada com atenção aos seguintes critérios:
       const plates = sanitizeAndNormalizeBoxes(parsed.plates);
       const faces = sanitizeAndNormalizeBoxes(parsed.faces);
 
-      console.log(`[geminiService] Sucesso com ${model}. Placas encontradas: ${plates.length}, Rostos encontrados: ${faces.length}`);
+      const verification = typeof parsed.verification === 'string' ? parsed.verification.trim() : '';
+
+      console.log(`[geminiService] Sucesso com ${model}. Placas encontradas: ${plates.length}, Rostos encontrados: ${faces.length}, Verificação: "${verification}"`);
 
       return {
         hasVehicle: Boolean(parsed.hasVehicle),
@@ -236,6 +246,7 @@ Analise a imagem enviada com atenção aos seguintes critérios:
         ),
         plates,
         faces,
+        verification,
         apiError: false
       };
     } catch (err) {

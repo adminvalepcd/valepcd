@@ -22,6 +22,7 @@ export interface IncidentAnalysisResult {
   rejectionReason: string;
   plates: BoundingBox[];
   faces: BoundingBox[];
+  verification?: string;
   apiError?: boolean;
 }
 
@@ -36,6 +37,7 @@ export interface ReportedIncident {
   rua?: string;
   bairro?: string;
   classificacao?: 'A' | 'B' | 'C' | string;
+  verificacao?: 'exclusiva' | 'transferencia' | 'pedestre' | '' | string;
   description?: string;
   ativo?: boolean;
   motivo_denuncia?: string;

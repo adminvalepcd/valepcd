@@ -14,6 +14,23 @@ export interface SheetRowPayload {
   rua?: string;
   bairro?: string;
   classificacao?: 'A' | 'B' | 'C' | string;
+  verificacao?: 'exclusiva' | 'transferencia' | 'pedestre' | '' | string;
+}
+
+export function normalizeVerificacao(raw?: unknown): 'exclusiva' | 'transferencia' | 'pedestre' | '' {
+  if (!raw) return '';
+  const v = String(raw).trim().toLowerCase();
+  if (!v) return '';
+  if (v.includes('transfer') || v.includes('zebrad')) {
+    return 'transferencia';
+  }
+  if (v.includes('exclusiv') || v.includes('vaga') || v.includes('acess') || v.includes('cadeira')) {
+    return 'exclusiva';
+  }
+  if (v.includes('pedestr') || v.includes('faixa')) {
+    return 'pedestre';
+  }
+  return '';
 }
 
 export interface FetchIncidentsOptions {
@@ -96,6 +113,7 @@ export async function fetchIncidentsFromSheet(
         const cidadeVal = row.cidade ? String(row.cidade).trim() : '';
         const estadoVal = row.estado ? String(row.estado).trim() : '';
         const classificacaoVal = row.classificacao ? String(row.classificacao).trim().toUpperCase() : '';
+        const verificacaoVal = normalizeVerificacao(row.verificacao ?? row.verification);
         const descParts = [ruaVal, bairroVal, cidadeVal, estadoVal].filter(Boolean);
 
         return {
@@ -108,6 +126,7 @@ export async function fetchIncidentsFromSheet(
           cidade: cidadeVal,
           estado: estadoVal,
           classificacao: classificacaoVal,
+          verificacao: verificacaoVal,
           maskedImageUrl: row.foto || row.image || '',
           description: row.description || (descParts.length > 0 ? descParts.join(' - ') : 'Infração registrada'),
           ativo: true,
@@ -153,12 +172,13 @@ export async function fetchIncidentPhoto(
 export async function saveIncidentToSheet(
   appsScriptUrl: string,
   incident: SheetRowPayload
-): Promise<{ success: boolean; rua?: string; bairro?: string; cidade?: string; estado?: string; classificacao?: string }> {
+): Promise<{ success: boolean; rua?: string; bairro?: string; cidade?: string; estado?: string; classificacao?: string; verificacao?: string }> {
   let resolvedRua = (incident.rua || '').trim();
   let resolvedBairro = (incident.bairro || '').trim();
   let resolvedCidade = (incident.cidade || '').trim();
   let resolvedEstado = normalizeState((incident.estado || '').trim());
   const resolvedClassificacao = ((incident.classificacao || 'C').trim().toUpperCase()) as 'A' | 'B' | 'C';
+  const resolvedVerificacao = normalizeVerificacao(incident.verificacao);
 
   const hasStreetNum = (s: string) => /,\s*\d+/.test(s);
 
@@ -183,7 +203,7 @@ export async function saveIncidentToSheet(
     } catch {}
   }
 
-  // Coloca rua, bairro, cidade, estado e classificacao antes da foto base64 para garantir parsing prioritário no JSON
+  // Coloca rua, bairro, cidade, estado, classificacao e verificacao antes da foto base64 para garantir parsing prioritário no JSON
   const fullIncident = {
     id: incident.id,
     data: incident.data,
@@ -194,6 +214,7 @@ export async function saveIncidentToSheet(
     rua: resolvedRua,
     bairro: resolvedBairro,
     classificacao: resolvedClassificacao,
+    verificacao: resolvedVerificacao,
     ativo: incident.ativo !== undefined ? incident.ativo : true,
     motivo_denuncia: incident.motivo_denuncia || '',
     foto: incident.foto
@@ -210,6 +231,7 @@ export async function saveIncidentToSheet(
     cidade: fullIncident.cidade,
     estado: fullIncident.estado,
     classificacao: fullIncident.classificacao,
+    verificacao: fullIncident.verificacao,
     maskedImageUrl: fullIncident.foto,
     description: [fullIncident.rua, fullIncident.bairro, fullIncident.cidade, fullIncident.estado].filter(Boolean).join(' - ') || 'Infração registrada',
     ativo: fullIncident.ativo,
@@ -225,7 +247,8 @@ export async function saveIncidentToSheet(
       bairro: fullIncident.bairro,
       cidade: fullIncident.cidade,
       estado: fullIncident.estado,
-      classificacao: fullIncident.classificacao
+      classificacao: fullIncident.classificacao,
+      verificacao: fullIncident.verificacao
     };
   }
 
@@ -238,6 +261,7 @@ export async function saveIncidentToSheet(
       if (resolvedRua) urlObj.searchParams.set('rua', resolvedRua);
       if (resolvedBairro) urlObj.searchParams.set('bairro', resolvedBairro);
       if (resolvedClassificacao) urlObj.searchParams.set('classificacao', resolvedClassificacao);
+      if (resolvedVerificacao) urlObj.searchParams.set('verificacao', resolvedVerificacao);
       targetUrl = urlObj.toString();
     } catch {}
 
@@ -259,6 +283,7 @@ export async function saveIncidentToSheet(
     const finalCidade = result?.cidade || fullIncident.cidade || '';
     const finalEstado = result?.estado || fullIncident.estado || '';
     const finalClassificacao = result?.classificacao || fullIncident.classificacao || 'C';
+    const finalVerificacao = normalizeVerificacao(result?.verificacao ?? fullIncident.verificacao);
 
     if (result && (result.success || result.status === 'ok')) {
       if (finalCidade || finalEstado || finalRua || finalBairro) {
@@ -272,6 +297,7 @@ export async function saveIncidentToSheet(
           cidade: finalCidade,
           estado: finalEstado,
           classificacao: finalClassificacao,
+          verificacao: finalVerificacao,
           maskedImageUrl: fullIncident.foto,
           description: [finalRua, finalBairro, finalCidade, finalEstado].filter(Boolean).join(' - ') || 'Infração registrada',
           ativo: fullIncident.ativo,
@@ -284,7 +310,8 @@ export async function saveIncidentToSheet(
         bairro: finalBairro,
         cidade: finalCidade,
         estado: finalEstado,
-        classificacao: finalClassificacao
+        classificacao: finalClassificacao,
+        verificacao: finalVerificacao
       };
     }
 

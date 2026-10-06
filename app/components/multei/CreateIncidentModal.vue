@@ -139,6 +139,14 @@
       <div v-if="step === 'preview'" class="step-preview">
         <div class="preview-container">
           <img :src="processedImageWebp" alt="Pré-visualização com desfoque de privacidade" class="preview-img" />
+          <div
+            v-if="previewVerificationBadge"
+            class="verification-photo-badge"
+            :title="previewVerificationBadge.label"
+          >
+            <span class="verification-badge-icon" aria-hidden="true">{{ previewVerificationBadge.icon }}</span>
+            <span class="verification-badge-text">{{ previewVerificationBadge.label }}</span>
+          </div>
           <span class="badge-blur">Filtro privacidade aplicado</span>
         </div>
 
@@ -358,7 +366,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
   import LoadingSpinner from './LoadingSpinner.vue';
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
 import { extractPhotoMetadata, blurSensitiveContentAndCompress, prepareImageForGemini } from '../../services/imageProcessor';
-import { saveIncidentToSheet } from '../../services/sheetsService';
+import { saveIncidentToSheet, normalizeVerificacao } from '../../services/sheetsService';
 import { getAddressDetailsFromCoords, requestUserLocation, geocodeAddressForValidation } from '../../services/geoService';
 
 const props = defineProps({
@@ -399,10 +407,37 @@ const currentRua = ref('');
 const currentBairro = ref('');
 const currentCidade = ref('');
 const currentEstado = ref('');
+const detectedVerificacao = ref('');
 const isResolvingAddress = ref(false);
 let geocodeDebounceTimer = null;
 let addressValidationTimer = null;
 let currentAddressPromise = null;
+
+const previewVerificationBadge = computed(() => {
+  const type = normalizeVerificacao(detectedVerificacao.value);
+  if (type === 'exclusiva') {
+    return {
+      type: 'exclusiva',
+      icon: '♿',
+      label: 'Vaga exclusiva'
+    };
+  }
+  if (type === 'transferencia') {
+    return {
+      type: 'transferencia',
+      icon: '♿️↔️',
+      label: 'Área de transferência'
+    };
+  }
+  if (type === 'pedestre') {
+    return {
+      type: 'pedestre',
+      icon: '🚷',
+      label: 'Faixa de pedestres'
+    };
+  }
+  return null;
+});
 
 const splitStreetAndNumber = (rawRua) => {
   const clean = (rawRua || '').trim();
@@ -771,7 +806,7 @@ const getCachedGeminiAnalysis = (hash) => {
     const raw = localStorage.getItem(`${GEMINI_CACHE_PREFIX}${hash}`);
     if (!raw) return null;
     const cached = JSON.parse(raw);
-    if (Date.now() - cached.timestamp > GEMINI_CACHE_TTL_MS) {
+    if (Date.now() - cached.timestamp > GEMINI_CACHE_TTL_MS || !cached.data || !('verification' in cached.data)) {
       localStorage.removeItem(`${GEMINI_CACHE_PREFIX}${hash}`);
       return null;
     }
@@ -1173,6 +1208,7 @@ const resetToUpload = () => {
   hasManualAddressEdit.value = false;
   isValidatingAddress.value = false;
   processedImageWebp.value = '';
+  detectedVerificacao.value = '';
   addressText.value = '';
   gpsStatusMessage.value = '';
   lastSelectedFile.value = null;
@@ -1330,6 +1366,8 @@ const processSelectedImage = async (file) => {
       errorMessage.value = analysis.rejectionReason || 'A foto precisa conter um veículo automotor e cumprir as regras comunitárias.';
       return;
     }
+
+    detectedVerificacao.value = normalizeVerificacao(analysis.verification);
 
     // 4. Se aprovado: queimar o blur pesado no Canvas e comprimir em WebP de alta definição
     analyzingStatusText.value = 'Aplicando desfoque pesado nas placas e rostos...';
@@ -1568,6 +1606,7 @@ const handleSaveIncident = async () => {
   }
 
   const classificacao = computeIncidentClassification();
+  const verificacao = normalizeVerificacao(detectedVerificacao.value);
 
   const newIncident = {
     id: `inc-${Date.now()}`,
@@ -1579,12 +1618,13 @@ const handleSaveIncident = async () => {
     cidade: finalCidade,
     estado: finalEstado,
     classificacao,
+    verificacao,
     maskedImageUrl: processedImageWebp.value,
     description: [finalRua, finalBairro, [finalCidade, finalEstado].filter(Boolean).join(' - ')].filter(Boolean).join(' - ') || addressText.value || 'Infração registrada via colaboração cidadã'
   };
 
   try {
-    // Gravar na planilha através do serviço (respeitando ordem das colunas: id, data, latitude, longitude, foto, ativo, motivo_denuncia, cidade, estado, rua, bairro, classificacao)
+    // Gravar na planilha através do serviço (respeitando ordem das colunas: id, data, latitude, longitude, foto, ativo, motivo_denuncia, cidade, estado, rua, bairro, classificacao, verificacao)
     const saveResult = await saveIncidentToSheet(props.appsScriptUrl || '', {
       id: newIncident.id,
       data: String(newIncident.timestamp),
@@ -1597,7 +1637,8 @@ const handleSaveIncident = async () => {
       estado: newIncident.estado,
       rua: newIncident.rua,
       bairro: newIncident.bairro,
-      classificacao: newIncident.classificacao
+      classificacao: newIncident.classificacao,
+      verificacao: newIncident.verificacao
     });
 
     if (saveResult && saveResult.rua && !hasManualAddressEdit.value && !newIncident.rua) {
@@ -1615,6 +1656,9 @@ const handleSaveIncident = async () => {
     if (saveResult && saveResult.estado) {
       newIncident.estado = saveResult.estado;
       currentEstado.value = saveResult.estado;
+    }
+    if (saveResult && saveResult.verificacao) {
+      newIncident.verificacao = saveResult.verificacao;
     }
     if ((!addressText.value || addressText.value.startsWith('Lat:')) && newIncident.cidade) {
       newIncident.description = [newIncident.rua, newIncident.bairro, newIncident.cidade, newIncident.estado].filter(Boolean).join(' - ');
@@ -2071,6 +2115,36 @@ const handleSaveIncident = async () => {
   max-height: 280px;
   object-fit: contain;
   display: block;
+}
+
+.verification-photo-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #ffffff;
+  background-color: var(--primary, #86007D);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.verification-badge-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.verification-badge-text {
+  line-height: 1.1;
+  letter-spacing: 0.01em;
 }
 
 .badge-blur {
