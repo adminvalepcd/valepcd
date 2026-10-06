@@ -240,10 +240,9 @@ Prioridade: Se o zebrado (> 25% de ocupação) ou faixa de pedestres estiver ocu
       return {
         hasVehicle: Boolean(parsed.hasVehicle),
         isAppropriate: Boolean(parsed.isAppropriate),
-        rejectionReason: parsed.rejectionReason || (
+        rejectionReason:
           !parsed.hasVehicle ? 'Nenhum veículo identificado na imagem.' : 
-          (!parsed.isAppropriate ? 'A imagem enviada não atende às diretrizes de uso.' : '')
-        ),
+          (!parsed.isAppropriate ? 'A imagem enviada não atende às diretrizes de uso.' : ''),
         plates,
         faces,
         verification,
