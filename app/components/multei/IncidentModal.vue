@@ -16,7 +16,7 @@
         <div class="photo-stage">
           <div v-if="isLoadingPhoto" class="image-loading-placeholder">
             <LoadingSpinner />
-            <span class="image-loading-text">Carregando foto anonimizada...</span>
+            <span class="image-loading-text">Carregando foto...</span>
           </div>
           <img 
             v-else-if="currentPhoto"

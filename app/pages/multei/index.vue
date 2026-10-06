@@ -545,8 +545,11 @@ const handleIncidentReported = (reportedData) => {
   });
 };
 
+let latestLoadRequestId = 0;
+
 const loadIncidents = async (scope = filterScope.value, customCenter = null) => {
   if (!appsScriptUrl.value) return;
+  const requestId = ++latestLoadRequestId;
   isLoadingSheet.value = true;
   filterScope.value = scope;
 
@@ -564,17 +567,22 @@ const loadIncidents = async (scope = filterScope.value, customCenter = null) => 
       latitude: targetCenter.latitude,
       longitude: targetCenter.longitude,
       radiusKm: 30,
-      includePhoto: true
+      includePhoto: false // Lazy Loading: baixa a foto apenas ao clicar no pino
     } : {
       includePhoto: false // Modo leve: carrega pontos sem baixar megabytes de base64
     };
 
     const sheetIncidents = await fetchIncidentsFromSheet(appsScriptUrl.value, options);
+    // Ignora respostas de requisições antigas que terminaram depois de uma mais recente
+    if (requestId !== latestLoadRequestId) return;
     incidents.value = sheetIncidents;
   } catch (e) {
+    if (requestId !== latestLoadRequestId) return;
     console.warn('Não foi possível sincronizar com a planilha no momento:', e);
   } finally {
-    isLoadingSheet.value = false;
+    if (requestId === latestLoadRequestId) {
+      isLoadingSheet.value = false;
+    }
   }
 };
 
@@ -604,11 +612,11 @@ const requestLocation = async () => {
     initialCenter.value = coords;
     currentMapCenter.value = coords;
     locationState.value = 'granted';
-    loadIncidents('nearby', coords);
+    await loadIncidents('nearby', coords);
   } catch (err) {
     console.warn('[multei] Permissão de geolocalização recusada ou indisponível:', err);
     locationState.value = 'denied';
-    loadIncidents('all');
+    await loadIncidents('all');
   }
 };
 
@@ -616,8 +624,7 @@ onMounted(async () => {
   if (typeof document !== 'undefined') {
     document.addEventListener('mousedown', handleDocumentClick);
   }
-  requestLocation();
-  loadIncidents();
+  await requestLocation();
 });
 
   onBeforeUnmount(() => {

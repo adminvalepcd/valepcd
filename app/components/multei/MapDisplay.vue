@@ -551,6 +551,11 @@ const initMap = () => {
       boundsListenerRef = null;
     }
     boundsListenerRef = map.value.addListener('idle', () => {
+      if (clusterer.value && typeof clusterer.value.render === 'function') {
+        try {
+          clusterer.value.render();
+        } catch {}
+      }
       emitVisibleBounds();
     });
 
@@ -799,11 +804,7 @@ watch(() => props.isMapApiLoaded, (loaded) => {
 watch(() => props.initialCenter, (newCenter) => {
   if (map.value && newCenter && !props.pinLocation) {
     const targetLatLng = { lat: Number(newCenter.latitude), lng: Number(newCenter.longitude) };
-    if (newCenter.isSearchResult) {
-      map.value.setCenter(targetLatLng);
-    } else {
-      map.value.panTo(targetLatLng);
-    }
+    map.value.setCenter(targetLatLng);
     if (typeof newCenter.zoom === 'number') {
       map.value.setZoom(newCenter.zoom);
     } else if ((map.value.getZoom() || 0) < props.initialZoom) {
@@ -812,6 +813,11 @@ watch(() => props.initialCenter, (newCenter) => {
     const isDefaultSP = Math.abs(newCenter.latitude - (-23.55052)) < 0.0001 && Math.abs(newCenter.longitude - (-46.633308)) < 0.0001;
     if (!isDefaultSP && !newCenter.isSearchResult) {
       updateUserLocationDot(newCenter.latitude, newCenter.longitude);
+    }
+    if (clusterer.value && typeof clusterer.value.render === 'function') {
+      try {
+        clusterer.value.render();
+      } catch {}
     }
     emitVisibleBounds();
   }
