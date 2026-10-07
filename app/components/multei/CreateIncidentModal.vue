@@ -2149,7 +2149,7 @@ const handleSaveIncident = async () => {
 
 .badge-blur {
   position: absolute;
-  top: 12px;
+  bottom: 12px;
   right: 12px;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(4px);
