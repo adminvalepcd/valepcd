@@ -73,15 +73,22 @@ export async function analyzeIncidentImage(
   const prompt = `
 Audite a imagem (LGPD/Trânsito) e retorne o JSON:
 {"hasVehicle": bool, "isAppropriate": bool, "rejectionReason": str, "plates": [{box_2d: [ymin,xmin,ymax,xmax], label: str}], "faces": [{box_2d: [ymin,xmin,ymax,xmax]}], "verification": str}
-"rejectionReason": motivo se falso em 1 ou 2, senão "".
-"verification" deve ser apenas um dos valores:
 
-"transferencia": veículo ocupando ou com rodas sobre a pintura zebrada PCD acima de 25%.
-"Vaga exclusiva": veículo na vaga PCD/Idoso sem credencial visível (pneus fora do zebrado ou ocupando ≤ 25%).
-"faixa de pedestres": veículo sobre a faixa de pedestres.
-"": se nenhum dos anteriores
-Prioridade: Se o zebrado (> 25% de ocupação) ou faixa de pedestres estiver ocupado, este é o veículo PRINCIPAL.
-`;
+Diretrizes de Moderação e Auditoria:
+
+1. Moderação da Imagem:
+- "isAppropriate": true se a imagem for apropriada (imagem normal do cotidiano). false SOMENTE se for conteúdo impróprio (pornografia, nudismo, violência, gore, etc.).
+- "hasVehicle": true se houver qualquer veículo na imagem (carros, motos, caminhões), senão false.
+- "rejectionReason": se "isAppropriate" ou "hasVehicle" for false, detalhe o motivo (ex: "Imagem contém conteúdo impróprio" ou "Nenhum veículo detectado"). Se ambos forem true, retorne "".
+
+2. Classificação da Infração ("verification"):
+Analise o local do veículo PRINCIPAL (aquele cometendo a infração ou em maior destaque) e defina "verification" como exatamente um destes valores:
+- "transferencia": veículo (incluindo motocicleta) ocupando ou com rodas sobre a pintura zebrada PCD/área de transferência (ocupação superior a 25%).
+- "Vaga exclusiva": veículo na vaga exclusiva PCD/Idoso sem credencial visível.
+- "faixa de pedestres": veículo sobre a faixa de pedestres.
+- "": se não houver nenhuma das infrações acima.
+
+Prioridade: Se a área de transferência (zebrado >25%) ou a faixa de pedestres estiver ocupada por um veículo ou objeto, este é o problema PRINCIPAL a ser reportado em "verification".`;
 
   const { data, mimeType } = parseBase64Image(imageBase64);
   const imagePart = {
