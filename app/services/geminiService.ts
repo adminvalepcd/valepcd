@@ -77,18 +77,20 @@ Audite a imagem (LGPD/Trânsito) e retorne o JSON:
 Diretrizes de Moderação e Auditoria:
 
 1. Moderação da Imagem:
-- "isAppropriate": true se a imagem for apropriada (imagem normal do cotidiano). false SOMENTE se for conteúdo impróprio (pornografia, nudismo, violência, gore, etc.).
+- "isAppropriate": true se a imagem for apropriada (imagem normal de trânsito/rua). false SOMENTE em caso de conteúdo impróprio (pornografia, nudismo, violência, gore).
 - "hasVehicle": true se houver qualquer veículo na imagem (carros, motos, caminhões), senão false.
-- "rejectionReason": se "isAppropriate" ou "hasVehicle" for false, detalhe o motivo (ex: "Imagem contém conteúdo impróprio" ou "Nenhum veículo detectado"). Se ambos forem true, retorne "".
+- "rejectionReason": motivo detalhado se "isAppropriate" ou "hasVehicle" for false. Se ambos forem true, retorne "".
 
-2. Classificação da Infração ("verification"):
-Analise o local do veículo PRINCIPAL (aquele cometendo a infração ou em maior destaque) e defina "verification" como exatamente um destes valores:
-- "transferencia": veículo (incluindo motocicleta) ocupando ou com rodas sobre a pintura zebrada PCD/área de transferência (ocupação superior a 25%).
-- "Vaga exclusiva": veículo na vaga exclusiva PCD/Idoso sem credencial visível.
-- "faixa de pedestres": veículo sobre a faixa de pedestres.
-- "": se não houver nenhuma das infrações acima.
+2. Classificação de Infração ("verification"):
+Identifique o veículo PRINCIPAL (em destaque ou cometendo a infração) e classifique "verification" estritamente como um destes valores:
 
-Prioridade: Se a área de transferência (zebrado >25%) ou a faixa de pedestres estiver ocupada por um veículo ou objeto, este é o problema PRINCIPAL a ser reportado em "verification".`;
+- "faixa de pedestres": veículo efetivamente com as rodas ou carroceria SOBRE a marcação de faixa de pedestres. (Se o veículo estiver apenas parado ANTES da faixa, NÃO considere infração).
+- "transferencia": veículo/moto ocupando ou com rodas sobre a pintura zebrada amarela/azul PCD (área de transferência de cadeirantes).
+- "Vaga exclusiva": veículo parado em vaga reservada (sinalizada por pintura no chão PCD/Idoso OU por placa R-6b de Estacionamento Regulamentado com informação complementar de vaga exclusiva) SEM credencial visível no painel.
+- "": se o veículo estiver estacionado em vaga comum/permitida ou se não houver infração clara identificável na imagem.
+
+Regra de Incerteza Visual:
+- Se houver placa de vaga exclusiva ou pintura no chão, mas a credencial no painel do veículo não puder ser verificada devido a insulfilm/distância/ângulo da foto, priorize a verificação do espaço físico e retorne "Vaga exclusiva" caso o veículo esteja na vaga reservada sem credencial aparente.`;
 
   const { data, mimeType } = parseBase64Image(imageBase64);
   const imagePart = {
