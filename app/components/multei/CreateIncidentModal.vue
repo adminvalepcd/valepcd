@@ -3,12 +3,51 @@
     <div class="modal-card">
       <!-- Cabeçalho -->
       <div class="modal-header">
-        <h2 class="modal-title">Incluir Ocorrência</h2>
+        <h2 class="modal-title">{{ modalTitle }}</h2>
         <button class="btn-close" @click="emit('close')" aria-label="Fechar" :disabled="isAnalyzing || isSaving">✕</button>
+      </div>
+
+      <!-- Etapa 0: Escolha do Tipo de Ocorrência -->
+      <div v-if="step === 'category'" class="step-category">
+        <p class="step-desc">
+          Selecione o tipo de ocorrência que você deseja registrar:
+        </p>
+
+        <div class="category-options">
+          <button
+            type="button"
+            class="btn-category is-traffic"
+            @click="handleSelectCategory('infracao_veicular')"
+          >
+            <span class="category-icon" aria-hidden="true">♿</span>
+            <div class="category-info">
+              <strong class="category-title">Infração de trânsito</strong>
+              <span class="category-sub">Vaga exclusiva sem credencial, área zebrada ou faixa de pedestres</span>
+            </div>
+            <span class="category-arrow" aria-hidden="true">→</span>
+          </button>
+
+          <button
+            type="button"
+            class="btn-category is-urban"
+            @click="handleSelectCategory('urbana')"
+          >
+            <span class="category-icon" aria-hidden="true">🚧</span>
+            <div class="category-info">
+              <strong class="category-title">Mobilidade urbana</strong>
+              <span class="category-sub">Calçadas irregulares, obstáculos, obras ou falta de acessibilidade</span>
+            </div>
+            <span class="category-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
       </div>
 
       <!-- Etapa 1: Captura / Upload da Foto -->
       <div v-if="step === 'upload'" class="step-upload">
+        <button type="button" class="btn-back-step" @click="step = 'category'">
+          ← Alterar tipo de ocorrência
+        </button>
+
         <!-- Aviso de Cooldown se atingiu limite de uploads seguidos -->
         <div v-if="cooldownSecondsLeft > 0" class="cooldown-banner">
           <div class="cooldown-icon">⏳</div>
@@ -21,7 +60,7 @@
         </div>
 
         <p class="step-desc">
-          Tire uma foto ou envie uma imagem da infração.
+          {{ selectedNatureza === 'urbana' ? 'Tire uma foto ou envie uma imagem do problema de acessibilidade.' : 'Tire uma foto ou envie uma imagem da infração.' }}
         </p>
 
         <div class="upload-actions">
@@ -142,12 +181,33 @@
           <div
             v-if="previewVerificationBadge"
             class="verification-photo-badge"
+            :class="`is-${previewVerificationBadge.type}`"
             :title="previewVerificationBadge.label"
           >
             <span class="verification-badge-icon" aria-hidden="true">{{ previewVerificationBadge.icon }}</span>
             <span class="verification-badge-text">{{ previewVerificationBadge.label }}</span>
           </div>
           <span class="badge-blur">Filtro privacidade aplicado</span>
+        </div>
+
+        <!-- Campo de Breve Descrição (exclusivo para Mobilidade Urbana, máx 300 caracteres) -->
+        <div v-if="selectedNatureza === 'urbana'" class="urban-description-box glass">
+          <div class="urban-desc-header">
+            <label for="incident-urban-desc" class="urban-desc-label">
+              Breve descrição:
+            </label>
+            <span class="urban-desc-counter" :class="{ 'is-limit': urbanDescricao.length >= 300 }">
+              {{ urbanDescricao.length }}/300
+            </span>
+          </div>
+          <textarea
+            id="incident-urban-desc"
+            v-model="urbanDescricao"
+            maxlength="300"
+            rows="3"
+            class="urban-desc-textarea"
+            placeholder="Descreva o problema de acessibilidade urbana (ex: buraco na calçada, rampa quebrada, piso tátil danificado)..."
+          ></textarea>
         </div>
 
         <div class="location-box glass">
@@ -344,6 +404,32 @@
             <span v-else>Salvar denúncia</span>
           </button>
         </div>
+
+        <!-- Modal de confirmação quando um veículo em infração é detectado na foto de Mobilidade Urbana -->
+        <div v-if="showSwitchToTrafficModal" class="switch-natureza-overlay" @click.stop>
+          <div class="switch-natureza-card" role="dialog" aria-modal="true" aria-labelledby="switch-natureza-title">
+            <div class="switch-natureza-icon" aria-hidden="true">🚗</div>
+            <h3 id="switch-natureza-title" class="switch-natureza-title">
+              Parece que tem um veículo na imagem, quer alterar o tipo de denúncia para infração de trânsito?
+            </h3>
+            <div class="switch-natureza-actions">
+              <button
+                type="button"
+                class="btn btn-secondary"
+                @click="declineSwitchToTraffic"
+              >
+                Não
+              </button>
+              <button
+                type="button"
+                class="btn btn-primary"
+                @click="confirmSwitchToTraffic"
+              >
+                Sim
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Etapa 4: Sucesso -->
@@ -366,7 +452,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
   import LoadingSpinner from './LoadingSpinner.vue';
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
 import { extractPhotoMetadata, blurSensitiveContentAndCompress, prepareImageForGemini } from '../../services/imageProcessor';
-import { saveIncidentToSheet, normalizeVerificacao } from '../../services/sheetsService';
+import { saveIncidentToFirebase, normalizeVerificacao } from '../../services/firebaseService';
 import { getAddressDetailsFromCoords, requestUserLocation, geocodeAddressForValidation } from '../../services/geoService';
 
 const props = defineProps({
@@ -382,8 +468,39 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'incidentCreated']);
 
-const step = ref('upload');
+const step = ref('category');
+const selectedNatureza = ref('infracao_veicular');
+const urbanDescricao = ref('');
+const showSwitchToTrafficModal = ref(false);
+const pendingVehicleVerification = ref('');
 const showCamera = ref(false);
+
+const modalTitle = computed(() => {
+  if (step.value === 'category') {
+    return 'Incluir Ocorrência';
+  }
+  return selectedNatureza.value === 'urbana'
+    ? '🚧 Mobilidade Urbana'
+    : '♿ Infração de Trânsito';
+});
+
+const handleSelectCategory = (natureza) => {
+  selectedNatureza.value = natureza;
+  step.value = 'upload';
+};
+
+const confirmSwitchToTraffic = () => {
+  selectedNatureza.value = 'infracao_veicular';
+  detectedVerificacao.value = pendingVehicleVerification.value;
+  urbanDescricao.value = '';
+  showSwitchToTrafficModal.value = false;
+};
+
+const declineSwitchToTraffic = () => {
+  selectedNatureza.value = 'urbana';
+  detectedVerificacao.value = '';
+  showSwitchToTrafficModal.value = false;
+};
 const isAnalyzing = ref(false);
 const isSaving = ref(false);
 const analyzingStatusText = ref('Iniciando análise...');
@@ -414,6 +531,13 @@ let addressValidationTimer = null;
 let currentAddressPromise = null;
 
 const previewVerificationBadge = computed(() => {
+  if (selectedNatureza.value === 'urbana') {
+    return {
+      type: 'urbana',
+      icon: '🚧',
+      label: 'Mobilidade urbana'
+    };
+  }
   const type = normalizeVerificacao(detectedVerificacao.value);
   if (type === 'exclusiva') {
     return {
@@ -783,7 +907,7 @@ const isLocationValid = computed(() => {
 });
 
 // --- Trava de Segurança 2: Cache de Análise Gemini (1x por dia por foto via SHA-256) ---
-const GEMINI_CACHE_PREFIX = 'multei_gemini_cache_';
+const GEMINI_CACHE_PREFIX = 'multei_gemini_cache_v2_';
 const GEMINI_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
 
 const computeFileSha256 = async (file) => {
@@ -1027,52 +1151,72 @@ const config = useRuntimeConfig();
 const geminiApiKey = config.public.geminiApiKey;
 const geminiClient = initializeGeminiClient(geminiApiKey);
 
+let latestAddressRequestId = 0;
+const lastGeocodedCoords = reactive({
+  latitude: null,
+  longitude: null
+});
+
 const updateAddress = async (lat, lng) => {
+  const requestId = ++latestAddressRequestId;
+  lastGeocodedCoords.latitude = lat;
+  lastGeocodedCoords.longitude = lng;
   isResolvingAddress.value = true;
   try {
     const details = await getAddressDetailsFromCoords(lat, lng);
-    if (details.formattedAddress && (!addressText.value || addressText.value.startsWith('Lat:') || !details.formattedAddress.startsWith('Lat:'))) {
-      addressText.value = details.formattedAddress;
+    if (requestId !== latestAddressRequestId) {
+      return details;
     }
-    if (details.rua) {
-      syncFieldsFromRua(details.rua, !hasManualAddressEdit.value);
-    }
-    if (details.bairro) {
-      currentBairro.value = details.bairro;
-      if (!hasManualAddressEdit.value) {
-        gpsResolvedBairro.value = details.bairro;
-      }
-    }
-    if (details.cidade) currentCidade.value = details.cidade;
-    if (details.estado) currentEstado.value = details.estado;
 
-    // Se o serviço não tiver separado rua/bairro/cidade/estado mas o texto os contém, puxa direto do texto
-    if (!currentCidade.value || !currentEstado.value || !currentRua.value || !currentBairro.value) {
-      const textToParse = details.formattedAddress || addressText.value;
-      if (textToParse) {
-        const fromText = extractCityAndStateFromText(textToParse);
-        if (fromText.rua && !currentRua.value) {
-          syncFieldsFromRua(fromText.rua, !hasManualAddressEdit.value);
-        }
-        if (fromText.bairro && !currentBairro.value) {
-          currentBairro.value = fromText.bairro;
-          if (!hasManualAddressEdit.value) {
-            gpsResolvedBairro.value = fromText.bairro;
-          }
-        }
-        if (fromText.cidade && !currentCidade.value) currentCidade.value = fromText.cidade;
-        if (fromText.estado && !currentEstado.value) currentEstado.value = fromText.estado;
+    const fromText = details.formattedAddress
+      ? extractCityAndStateFromText(details.formattedAddress)
+      : { rua: '', bairro: '', cidade: '', estado: '' };
+
+    const resolvedRua = (details.rua || fromText.rua || '').trim();
+    const resolvedBairro = (details.bairro || fromText.bairro || '').trim();
+    const resolvedCidade = (details.cidade || fromText.cidade || '').trim();
+    const resolvedEstado = (details.estado || fromText.estado || '').trim();
+
+    if (!hasManualAddressEdit.value) {
+      syncFieldsFromRua(resolvedRua, true);
+      currentBairro.value = resolvedBairro;
+      gpsResolvedBairro.value = resolvedBairro;
+    } else {
+      if (resolvedRua && !currentRua.value) {
+        syncFieldsFromRua(resolvedRua, false);
       }
+      if (resolvedBairro && !currentBairro.value) {
+        currentBairro.value = resolvedBairro;
+      }
+    }
+
+    if (resolvedCidade) currentCidade.value = resolvedCidade;
+    if (resolvedEstado) currentEstado.value = resolvedEstado;
+
+    const composedDisplay = [
+      currentRua.value,
+      currentBairro.value,
+      [currentCidade.value, currentEstado.value].filter(Boolean).join(' - ')
+    ].filter(Boolean).join(' - ');
+
+    if (details.formattedAddress && !details.formattedAddress.startsWith('Lat:')) {
+      addressText.value = details.formattedAddress;
+    } else if (composedDisplay) {
+      addressText.value = composedDisplay;
+    } else {
+      addressText.value = details.formattedAddress || `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
     }
 
     return details;
   } catch {
-    if (!addressText.value) {
+    if (requestId === latestAddressRequestId && !addressText.value) {
       addressText.value = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
     }
     return null;
   } finally {
-    isResolvingAddress.value = false;
+    if (requestId === latestAddressRequestId) {
+      isResolvingAddress.value = false;
+    }
   }
 };
 
@@ -1209,12 +1353,17 @@ const resetToUpload = () => {
   isValidatingAddress.value = false;
   processedImageWebp.value = '';
   detectedVerificacao.value = '';
+  urbanDescricao.value = '';
+  pendingVehicleVerification.value = '';
+  showSwitchToTrafficModal.value = false;
   addressText.value = '';
   gpsStatusMessage.value = '';
   lastSelectedFile.value = null;
   photoOrigin.value = 'gallery';
   photoExifLocation.value = null;
   photoExifDate.value = null;
+  lastGeocodedCoords.latitude = null;
+  lastGeocodedCoords.longitude = null;
 };
 
 const handleRetry = async () => {
@@ -1328,12 +1477,13 @@ const processSelectedImage = async (file) => {
     analyzingStatusText.value = 'Otimizando imagem...';
     const optimizedBase64 = await prepareImageForGemini(file, 1200);
 
-    // 3. Cache diário (1x por dia por foto) para poupar cotas do Gemini
-    let imageHash = null;
+    // 3. Cache diário (1x por dia por foto + natureza) para poupar cotas do Gemini
+    let cacheKey = null;
     let analysis = null;
     try {
-      imageHash = await computeFileSha256(file);
-      analysis = getCachedGeminiAnalysis(imageHash);
+      const imageHash = await computeFileSha256(file);
+      cacheKey = `${imageHash}_${selectedNatureza.value}`;
+      analysis = getCachedGeminiAnalysis(cacheKey);
       if (analysis) {
         analyzingStatusText.value = 'Foto já analisada hoje. Reutilizando análise do cache...';
       }
@@ -1343,12 +1493,14 @@ const processSelectedImage = async (file) => {
 
     // Se não estiver em cache, chama a IA do Google Gemini
     if (!analysis) {
-      analyzingStatusText.value = 'Analisando veículo e segurança com IA...';
-      analysis = await analyzeIncidentImage(geminiClient, optimizedBase64);
+      analyzingStatusText.value = selectedNatureza.value === 'urbana'
+        ? 'Analisando acessibilidade urbana e segurança com IA...'
+        : 'Analisando veículo e segurança com IA...';
+      analysis = await analyzeIncidentImage(geminiClient, optimizedBase64, selectedNatureza.value);
 
       // Salva no cache local de 24h caso a chamada tenha sido bem-sucedida
-      if (imageHash && analysis && !analysis.apiError) {
-        saveGeminiAnalysisCache(imageHash, analysis);
+      if (cacheKey && analysis && !analysis.apiError) {
+        saveGeminiAnalysisCache(cacheKey, analysis);
       }
     }
 
@@ -1359,15 +1511,40 @@ const processSelectedImage = async (file) => {
       return;
     }
 
-    // Validação de presença de veículo e adequação de conteúdo:
-    if (!analysis.hasVehicle || !analysis.isAppropriate) {
-      isApiError.value = false;
-      step.value = 'error';
-      errorMessage.value = analysis.rejectionReason || 'A foto precisa conter um veículo automotor e cumprir as regras comunitárias.';
-      return;
-    }
+    if (selectedNatureza.value === 'urbana') {
+      // Validação para Mobilidade Urbana: rejeita se for imprópria ("foto inapropriada") ou fora de ambiente urbano
+      if (!analysis.isAppropriate) {
+        isApiError.value = false;
+        step.value = 'error';
+        errorMessage.value = 'foto inapropriada';
+        return;
+      }
 
-    detectedVerificacao.value = normalizeVerificacao(analysis.verification);
+      if (analysis.isUrbanEnvironment === false) {
+        isApiError.value = false;
+        step.value = 'error';
+        errorMessage.value = analysis.rejectionReason || 'A foto enviada não parece mostrar uma calçada, via pública ou ambiente urbano.';
+        return;
+      }
+
+      urbanDescricao.value = (analysis.urbanDescription || '').trim().slice(0, 300);
+      pendingVehicleVerification.value = normalizeVerificacao(analysis.verification);
+      detectedVerificacao.value = '';
+      showSwitchToTrafficModal.value = Boolean(analysis.hasTrafficInfractionVehicle);
+    } else {
+      // Validação de presença de veículo e adequação de conteúdo para Infração de Trânsito:
+      if (!analysis.hasVehicle || !analysis.isAppropriate) {
+        isApiError.value = false;
+        step.value = 'error';
+        errorMessage.value = analysis.rejectionReason || 'A foto precisa conter um veículo automotor e cumprir as regras comunitárias.';
+        return;
+      }
+
+      detectedVerificacao.value = normalizeVerificacao(analysis.verification);
+      urbanDescricao.value = '';
+      pendingVehicleVerification.value = '';
+      showSwitchToTrafficModal.value = false;
+    }
 
     // 4. Se aprovado: queimar o blur pesado no Canvas e comprimir em WebP de alta definição
     analyzingStatusText.value = 'Aplicando desfoque pesado nas placas e rostos...';
@@ -1443,33 +1620,36 @@ const handlePinChange = (newLoc) => {
     handleRadiusLimitReached();
   }
 
-  const latDiff = Math.abs(checked.latitude - selectedLocation.latitude);
-  const lngDiff = Math.abs(checked.longitude - selectedLocation.longitude);
-  const hasMovedSignificantly = latDiff > 0.00005 || lngDiff > 0.00005;
+  const refLat = lastGeocodedCoords.latitude ?? selectedLocation.latitude;
+  const refLng = lastGeocodedCoords.longitude ?? selectedLocation.longitude;
+  const latDiff = Math.abs(checked.latitude - refLat);
+  const lngDiff = Math.abs(checked.longitude - refLng);
+  const hasMoved = latDiff > 0.000008 || lngDiff > 0.000008;
 
   selectedLocation.latitude = checked.latitude;
   selectedLocation.longitude = checked.longitude;
-  locationSource.value = 'manual';
 
-  // Só limpa rua/bairro/cidade/estado se o pino realmente se moveu significativamente ou se ainda não tinham sido preenchidos
-  if (hasMovedSignificantly || !currentCidade.value || !currentEstado.value) {
-    if (hasMovedSignificantly) {
-      hasManualAddressEdit.value = false;
-      addressEditError.value = '';
-      saveError.value = '';
+  // Atualiza e busca o endereço imediatamente após qualquer movimento do pino no mapa (mesmo sem clicar em "Concluir Ajuste")
+  if (hasMoved || !currentCidade.value || !currentEstado.value) {
+    locationSource.value = 'manual';
+    hasManualAddressEdit.value = false;
+    addressEditError.value = '';
+    saveError.value = '';
+    isResolvingAddress.value = true;
+
+    if (hasMoved) {
       streetName.value = '';
       streetNumber.value = '';
       currentRua.value = '';
       currentBairro.value = '';
-      currentCidade.value = '';
-      currentEstado.value = '';
       addressText.value = 'Buscando endereço...';
     }
 
     if (geocodeDebounceTimer) clearTimeout(geocodeDebounceTimer);
     geocodeDebounceTimer = setTimeout(() => {
+      geocodeDebounceTimer = null;
       currentAddressPromise = updateAddress(checked.latitude, checked.longitude);
-    }, 250);
+    }, 150);
   }
 };
 
@@ -1477,8 +1657,35 @@ const handleSaveIncident = async () => {
   isSaving.value = true;
   saveError.value = '';
 
+  // 1. Se ainda houver debounce ativo do pino (ex: usuário moveu no mapa e clicou em Salvar sem clicar em Concluir Ajuste),
+  // cancela o debounce e dispara a busca imediatamente para a posição atual do pino
+  if (geocodeDebounceTimer) {
+    clearTimeout(geocodeDebounceTimer);
+    geocodeDebounceTimer = null;
+    currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
+  }
+
+  // 2. Se a busca de endereço estiver em andamento, aguarda finalizar antes de ler os campos
+  if (currentAddressPromise) {
+    try {
+      await currentAddressPromise;
+    } catch {}
+  }
+
+  // Garante que se o pino no mapa mudou em relação ao último endereço geocodificado, o novo endereço seja buscado agora
+  const needsFreshGeocode =
+    lastGeocodedCoords.latitude === null ||
+    Math.abs(selectedLocation.latitude - lastGeocodedCoords.latitude) > 0.000008 ||
+    Math.abs(selectedLocation.longitude - lastGeocodedCoords.longitude) > 0.000008;
+  if (needsFreshGeocode && !hasManualAddressEdit.value) {
+    try {
+      currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
+      await currentAddressPromise;
+    } catch {}
+  }
+
   const editedRua = composeRuaWithNumber(streetName.value, streetNumber.value);
-  if (editedRua) {
+  if (hasManualAddressEdit.value && editedRua) {
     currentRua.value = editedRua;
   }
 
@@ -1487,20 +1694,6 @@ const handleSaveIncident = async () => {
   const screenCidade = (currentCidade.value || '').trim();
   const screenEstado = (currentEstado.value || '').trim();
   const screenAddress = (addressText.value || '').trim();
-
-  // 1. Se ainda houver debounce ativo do pino, cancela e roda imediatamente
-  if (geocodeDebounceTimer) {
-    clearTimeout(geocodeDebounceTimer);
-    geocodeDebounceTimer = null;
-    currentAddressPromise = updateAddress(selectedLocation.latitude, selectedLocation.longitude);
-  }
-
-  // 2. Se a busca de endereço estiver em andamento, aguarda finalizar
-  if (currentAddressPromise) {
-    try {
-      await currentAddressPromise;
-    } catch {}
-  }
 
   // Restaura e valida edição manual caso o usuário tenha editado os campos de rua/número/bairro
   if (hasManualAddressEdit.value) {
@@ -1607,59 +1800,54 @@ const handleSaveIncident = async () => {
 
   const classificacao = computeIncidentClassification();
   const verificacao = normalizeVerificacao(detectedVerificacao.value);
+  const finalDescricao = selectedNatureza.value === 'urbana'
+    ? (urbanDescricao.value || '').trim().slice(0, 300)
+    : '';
 
-  const newIncident = {
-    id: `inc-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    latitude: selectedLocation.latitude,
-    longitude: selectedLocation.longitude,
-    rua: finalRua,
-    bairro: finalBairro,
-    cidade: finalCidade,
-    estado: finalEstado,
-    classificacao,
-    verificacao,
-    maskedImageUrl: processedImageWebp.value,
-    description: [finalRua, finalBairro, [finalCidade, finalEstado].filter(Boolean).join(' - ')].filter(Boolean).join(' - ') || addressText.value || 'Infração registrada via colaboração cidadã'
-  };
+  const timestampIso = new Date().toISOString();
 
   try {
-    // Gravar na planilha através do serviço (respeitando ordem das colunas: id, data, latitude, longitude, foto, ativo, motivo_denuncia, cidade, estado, rua, bairro, classificacao, verificacao)
-    const saveResult = await saveIncidentToSheet(props.appsScriptUrl || '', {
-      id: newIncident.id,
-      data: String(newIncident.timestamp),
-      latitude: newIncident.latitude,
-      longitude: newIncident.longitude,
-      foto: newIncident.maskedImageUrl,
+    const saveResult = await saveIncidentToFirebase({
+      data: timestampIso,
+      latitude: selectedLocation.latitude,
+      longitude: selectedLocation.longitude,
+      foto: processedImageWebp.value,
       ativo: true,
       motivo_denuncia: '',
-      cidade: newIncident.cidade,
-      estado: newIncident.estado,
-      rua: newIncident.rua,
-      bairro: newIncident.bairro,
-      classificacao: newIncident.classificacao,
-      verificacao: newIncident.verificacao
+      cidade: finalCidade,
+      estado: finalEstado,
+      rua: finalRua,
+      bairro: finalBairro,
+      classificacao,
+      verificacao,
+      natureza: selectedNatureza.value,
+      descricao: finalDescricao
     });
 
-    if (saveResult && saveResult.rua && !hasManualAddressEdit.value && !newIncident.rua) {
-      newIncident.rua = saveResult.rua;
-      currentRua.value = saveResult.rua;
-    }
-    if (saveResult && saveResult.bairro && !hasManualAddressEdit.value && !newIncident.bairro) {
-      newIncident.bairro = saveResult.bairro;
-      currentBairro.value = saveResult.bairro;
-    }
-    if (saveResult && saveResult.cidade) {
-      newIncident.cidade = saveResult.cidade;
-      currentCidade.value = saveResult.cidade;
-    }
-    if (saveResult && saveResult.estado) {
-      newIncident.estado = saveResult.estado;
-      currentEstado.value = saveResult.estado;
-    }
-    if (saveResult && saveResult.verificacao) {
-      newIncident.verificacao = saveResult.verificacao;
-    }
+    const newIncident = {
+      id: saveResult.id,
+      timestamp: timestampIso,
+      latitude: selectedLocation.latitude,
+      longitude: selectedLocation.longitude,
+      geohash: saveResult.geohash,
+      natureza: selectedNatureza.value,
+      descricao: saveResult.descricao ?? finalDescricao,
+      rua: (!hasManualAddressEdit.value && !finalRua && saveResult.rua) ? saveResult.rua : finalRua,
+      bairro: (!hasManualAddressEdit.value && !finalBairro && saveResult.bairro) ? saveResult.bairro : finalBairro,
+      cidade: saveResult.cidade || finalCidade,
+      estado: saveResult.estado || finalEstado,
+      classificacao: saveResult.classificacao || classificacao,
+      verificacao: saveResult.verificacao || verificacao,
+      fotoUrl: saveResult.fotoUrl,
+      maskedImageUrl: saveResult.fotoUrl || processedImageWebp.value,
+      description: [finalRua, finalBairro, [finalCidade, finalEstado].filter(Boolean).join(' - ')].filter(Boolean).join(' - ') || addressText.value || 'Infração registrada via colaboração cidadã'
+    };
+
+    if (newIncident.rua) currentRua.value = newIncident.rua;
+    if (newIncident.bairro) currentBairro.value = newIncident.bairro;
+    if (newIncident.cidade) currentCidade.value = newIncident.cidade;
+    if (newIncident.estado) currentEstado.value = newIncident.estado;
+
     if ((!addressText.value || addressText.value.startsWith('Lat:')) && newIncident.cidade) {
       newIncident.description = [newIncident.rua, newIncident.bairro, newIncident.cidade, newIncident.estado].filter(Boolean).join(' - ');
     }
@@ -1667,8 +1855,8 @@ const handleSaveIncident = async () => {
     emit('incidentCreated', newIncident);
     step.value = 'success';
   } catch (err) {
-    console.error('Erro ao salvar na planilha:', err);
-    saveError.value = 'Não foi possível gravar na planilha Google. Tente novamente ou verifique a conexão.';
+    console.error('Erro ao salvar no Firebase:', err);
+    saveError.value = 'Não foi possível salvar a ocorrência no momento. Tente novamente ou verifique a conexão.';
   } finally {
     isSaving.value = false;
   }
@@ -1728,6 +1916,114 @@ const handleSaveIncident = async () => {
   color: var(--text-muted, #475569);
   margin-bottom: 1.5rem;
   line-height: 1.6;
+}
+
+/* --- Etapa 0: Seleção de Categoria --- */
+.category-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.btn-category {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  padding: 1.25rem 1.35rem;
+  border-radius: var(--radius-md, 16px);
+  border: 2px solid #e2e8f0;
+  background: #ffffff;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.btn-category.is-traffic:hover {
+  border-color: var(--primary, #86007D);
+  background: rgba(134, 0, 125, 0.04);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -6px rgba(134, 0, 125, 0.18);
+}
+
+.btn-category.is-urban:hover {
+  border-color: #ca8a04;
+  background: rgba(202, 138, 4, 0.05);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -6px rgba(202, 138, 4, 0.2);
+}
+
+.category-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  font-size: 1.6rem;
+  flex-shrink: 0;
+}
+
+.btn-category.is-traffic .category-icon {
+  background: rgba(134, 0, 125, 0.12);
+}
+
+.btn-category.is-urban .category-icon {
+  background: rgba(202, 138, 4, 0.14);
+}
+
+.category-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.category-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text, #0f172a);
+}
+
+.category-sub {
+  font-size: 0.86rem;
+  color: var(--text-muted, #475569);
+  line-height: 1.4;
+}
+
+.category-arrow {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #94a3b8;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.btn-category.is-traffic:hover .category-arrow {
+  color: var(--primary, #86007D);
+  transform: translateX(3px);
+}
+
+.btn-category.is-urban:hover .category-arrow {
+  color: #ca8a04;
+  transform: translateX(3px);
+}
+
+.btn-back-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin-bottom: 1rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--primary, #86007D);
+  cursor: pointer;
+}
+
+.btn-back-step:hover {
+  text-decoration: underline;
 }
 
 .upload-actions {
@@ -2693,6 +2989,110 @@ const handleSaveIncident = async () => {
   border-color: #94a3b8 !important;
   cursor: not-allowed !important;
   opacity: 0.75;
+}
+
+.verification-photo-badge.is-urbana {
+  background-color: #ca8a04;
+}
+
+.urban-description-box {
+  padding: 1rem 1.25rem;
+  border-radius: 16px;
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+.urban-desc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.45rem;
+}
+
+.urban-desc-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.urban-desc-counter {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted, #475466);
+}
+
+.urban-desc-counter.is-limit {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.urban-desc-textarea {
+  width: 100%;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: #0f172a;
+  background: #ffffff;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+  line-height: 1.4;
+}
+
+.urban-desc-textarea:focus {
+  border-color: var(--primary, #86007D);
+  box-shadow: 0 0 0 3px rgba(134, 0, 125, 0.14);
+}
+
+.switch-natureza-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(4px);
+  z-index: 10020;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.switch-natureza-card {
+  background: #ffffff;
+  border-radius: 16px;
+  max-width: 420px;
+  width: 100%;
+  padding: 1.5rem;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  border: 1px solid #e2e8f0;
+}
+
+.switch-natureza-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+  line-height: 1;
+}
+
+.switch-natureza-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.45;
+  margin-bottom: 1.25rem;
+}
+
+.switch-natureza-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.switch-natureza-actions .btn {
+  min-width: 110px;
 }
 
 @keyframes fadeIn {

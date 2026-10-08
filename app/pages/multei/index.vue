@@ -270,7 +270,7 @@
 
 <script setup>
   import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { fetchIncidentsFromSheet, ACTIVE_APPS_SCRIPT_URL } from '~/services/sheetsService';
+import { fetchIncidentsByVisibleArea } from '~/services/firebaseService';
   import { requestUserLocation, searchAddresses } from '~/services/geoService';
 
 definePageMeta({
@@ -292,8 +292,7 @@ useHead({
 });
 
 const config = useRuntimeConfig();
-// Lê NUXT_PUBLIC_APPS_SCRIPT_URL do .env (com fallback em sheetsService.ts)
-const appsScriptUrl = ref(config.public.appsScriptUrl || ACTIVE_APPS_SCRIPT_URL);
+const appsScriptUrl = ref(config.public.appsScriptUrl || '');
 
 const isCreateModalOpen = ref(false);
 const selectedIncident = ref(null);
@@ -324,6 +323,7 @@ const filterScope = ref('nearby'); // 'nearby' ou 'all'
   const searchNoResults = ref(false);
   const highlightedIndex = ref(-1);
   let searchDebounceTimer = null;
+  let boundsFetchDebounceTimer = null;
 
 const initialCenter = ref({
   latitude: -23.55052,
@@ -342,6 +342,7 @@ const currentMapCenter = ref({
 
 const incidents = ref([]);
 const mapBounds = ref(null);
+const lastQueriedBounds = ref(null);
 
   const runAddressSearch = async (queryText) => {
     const clean = (queryText || '').trim();
@@ -481,10 +482,30 @@ const hasMovedRegion = computed(() => {
   return dist > 2.5;
 });
 
+const haveBoundsChangedSignificantly = (nextBounds, prevBounds) => {
+  if (!nextBounds) return false;
+  if (!prevBounds) return true;
+  const eps = 0.0008;
+  return (
+    Math.abs(nextBounds.north - prevBounds.north) > eps ||
+    Math.abs(nextBounds.south - prevBounds.south) > eps ||
+    Math.abs(nextBounds.east - prevBounds.east) > eps ||
+    Math.abs(nextBounds.west - prevBounds.west) > eps
+  );
+};
+
 const handleBoundsChange = (bounds) => {
   mapBounds.value = bounds;
   if (bounds?.center) {
     currentMapCenter.value = bounds.center;
+  }
+
+  // Busca automática das ocorrências na área visível do mapa via geohash
+  if (haveBoundsChangedSignificantly(bounds, lastQueriedBounds.value)) {
+    if (boundsFetchDebounceTimer) clearTimeout(boundsFetchDebounceTimer);
+    boundsFetchDebounceTimer = setTimeout(() => {
+      loadIncidents('nearby', bounds?.center || currentMapCenter.value, bounds);
+    }, 280);
   }
 };
 
@@ -510,7 +531,10 @@ const handleMarkerClick = (incident) => {
 };
 
 const handleIncidentCreated = (newIncident) => {
-  incidents.value.unshift(newIncident);
+  incidents.value = [
+    newIncident,
+    ...incidents.value.filter((inc) => inc.id !== newIncident.id)
+  ];
   initialCenter.value = {
     latitude: newIncident.latitude,
     longitude: newIncident.longitude
@@ -547,38 +571,52 @@ const handleIncidentReported = (reportedData) => {
 
 let latestLoadRequestId = 0;
 
-const loadIncidents = async (scope = filterScope.value, customCenter = null) => {
-  if (!appsScriptUrl.value) return;
+const loadIncidents = async (scope = filterScope.value, customCenter = null, customBounds = null) => {
   const requestId = ++latestLoadRequestId;
   isLoadingSheet.value = true;
   filterScope.value = scope;
 
-  const targetCenter = customCenter || currentMapCenter.value || initialCenter.value;
-  if (scope === 'nearby' && targetCenter) {
+  const targetBounds = customBounds || mapBounds.value;
+  const targetCenter = customCenter || targetBounds?.center || currentMapCenter.value || initialCenter.value;
+
+  if (targetCenter) {
     loadedCenter.value = {
       latitude: targetCenter.latitude,
       longitude: targetCenter.longitude
     };
   }
 
-  try {
-    const isNearby = scope === 'nearby' && !!targetCenter;
-    const options = isNearby ? {
-      latitude: targetCenter.latitude,
-      longitude: targetCenter.longitude,
-      radiusKm: 30,
-      includePhoto: false // Lazy Loading: baixa a foto apenas ao clicar no pino
-    } : {
-      includePhoto: false // Modo leve: carrega pontos sem baixar megabytes de base64
+  if (targetBounds) {
+    lastQueriedBounds.value = {
+      north: targetBounds.north,
+      south: targetBounds.south,
+      east: targetBounds.east,
+      west: targetBounds.west
     };
+  }
 
-    const sheetIncidents = await fetchIncidentsFromSheet(appsScriptUrl.value, options);
-    // Ignora respostas de requisições antigas que terminaram depois de uma mais recente
+  try {
+    // Se customCenter foi passado explicitamente (ex: busca de endereço ou GPS inicial)
+    // antes do mapa reposicionar os bounds, verifica se o targetCenter está dentro dos bounds atuais
+    const centerInsideBounds =
+      targetBounds &&
+      targetCenter &&
+      targetCenter.latitude >= targetBounds.south &&
+      targetCenter.latitude <= targetBounds.north &&
+      targetCenter.longitude >= targetBounds.west &&
+      targetCenter.longitude <= targetBounds.east;
+
+    const firebaseIncidents = await fetchIncidentsByVisibleArea({
+      bounds: centerInsideBounds ? targetBounds : null,
+      center: targetCenter,
+      radiusKm: 15
+    });
+
     if (requestId !== latestLoadRequestId) return;
-    incidents.value = sheetIncidents;
+    incidents.value = firebaseIncidents;
   } catch (e) {
     if (requestId !== latestLoadRequestId) return;
-    console.warn('Não foi possível sincronizar com a planilha no momento:', e);
+    console.warn('Não foi possível sincronizar com o Firebase no momento:', e);
   } finally {
     if (requestId === latestLoadRequestId) {
       isLoadingSheet.value = false;
@@ -587,8 +625,7 @@ const loadIncidents = async (scope = filterScope.value, customCenter = null) => 
 };
 
 const handleRegionButtonClick = () => {
-  if (filterScope.value === 'nearby' && !hasMovedRegion.value) return;
-  loadIncidents('nearby', currentMapCenter.value || initialCenter.value);
+  loadIncidents('nearby', currentMapCenter.value || initialCenter.value, mapBounds.value);
 };
 
 const setFilterScope = (scope) => {
@@ -600,9 +637,7 @@ const handleUserLocationFound = (coords) => {
   initialCenter.value = coords;
   currentMapCenter.value = coords;
   locationState.value = 'granted';
-  if (filterScope.value === 'nearby') {
-    loadIncidents('nearby', coords);
-  }
+  loadIncidents('nearby', coords);
 };
 
 const requestLocation = async () => {
@@ -616,7 +651,7 @@ const requestLocation = async () => {
   } catch (err) {
     console.warn('[multei] Permissão de geolocalização recusada ou indisponível:', err);
     locationState.value = 'denied';
-    await loadIncidents('all');
+    await loadIncidents('nearby', currentMapCenter.value || initialCenter.value, mapBounds.value);
   }
 };
 
@@ -629,6 +664,7 @@ onMounted(async () => {
 
   onBeforeUnmount(() => {
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    if (boundsFetchDebounceTimer) clearTimeout(boundsFetchDebounceTimer);
     if (typeof document !== 'undefined') {
       document.removeEventListener('mousedown', handleDocumentClick);
     }
