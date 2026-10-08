@@ -49,11 +49,17 @@ function parseBase64Image(rawBase64: string): { data: string; mimeType: string }
  */
 export async function analyzeIncidentImage(
   client: GoogleGenAI | null,
-  imageBase64: string
+  imageBase64: string,
+  natureza: 'infracao_veicular' | 'urbana' = 'infracao_veicular'
 ): Promise<IncidentAnalysisResult> {
+  const isUrbanMode = natureza === 'urbana';
+
   const defaultFailure: IncidentAnalysisResult = {
     hasVehicle: false,
     isAppropriate: false,
+    isUrbanEnvironment: false,
+    hasTrafficInfractionVehicle: false,
+    urbanDescription: '',
     rejectionReason: 'Não foi possível analisar a imagem enviada. Tente novamente.',
     plates: [],
     faces: [],
@@ -70,7 +76,7 @@ export async function analyzeIncidentImage(
     };
   }
 
-  const prompt = `
+  const trafficPrompt = `
 Audite a imagem (LGPD/Trânsito) e retorne o JSON:
 {"hasVehicle": bool, "isAppropriate": bool, "rejectionReason": str, "plates": [{box_2d: [ymin,xmin,ymax,xmax], label: str}], "faces": [{box_2d: [ymin,xmin,ymax,xmax]}], "verification": str}
 
@@ -92,6 +98,30 @@ Identifique o veículo PRINCIPAL (em destaque ou cometendo a infração) e class
 Regra de Incerteza Visual:
 - Se houver placa de vaga exclusiva ou pintura no chão, mas a credencial no painel do veículo não puder ser verificada devido a insulfilm/distância/ângulo da foto, priorize a verificação do espaço físico e retorne "Vaga exclusiva" caso o veículo esteja na vaga reservada sem credencial aparente.`;
 
+  const urbanPrompt = `
+Audite a imagem (LGPD/Mobilidade e Acessibilidade Urbana) e retorne o JSON:
+{"isAppropriate": bool, "isUrbanEnvironment": bool, "hasTrafficInfractionVehicle": bool, "verification": str, "urbanDescription": str, "rejectionReason": str, "plates": [{box_2d: [ymin,xmin,ymax,xmax], label: str}], "faces": [{box_2d: [ymin,xmin,ymax,xmax]}]}
+
+Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
+
+1. Moderação e Pertinência da Imagem:
+- "isAppropriate": false SOMENTE se a imagem contiver conteúdo impróprio (nudez, pornografia, violência, gore ou semelhantes). Se for imprópria, retorne "foto inapropriada" em "rejectionReason".
+- "isUrbanEnvironment": true se a foto mostrar ambiente urbano, calçada, rua, rampa, faixa de travessia, piso tátil, estacionamento ou espaço público/coletivo. false se a imagem claramente não tiver relação com ambiente urbano/calçada/via pública (ex: foto interna de quarto, selfie fechada, tela de computador, objeto doméstico).
+- "rejectionReason": se "isAppropriate" for false, retorne exatamente "foto inapropriada". Se "isUrbanEnvironment" for false, explique brevemente que a foto deve mostrar uma calçada ou via pública. Caso contrário, retorne "".
+
+2. Detecção de Infração de Trânsito na Imagem ("hasTrafficInfractionVehicle" e "verification"):
+- "hasTrafficInfractionVehicle": true SE constar na foto um veículo parado sobre faixa de pedestres OU em vagas de estacionamento PCD / área de transferência zebrada PCD. Caso contrário, false.
+- "verification": se "hasTrafficInfractionVehicle" for true, preencha com "faixa de pedestres", "transferencia" ou "Vaga exclusiva". Senão, retorne "".
+
+3. Descrição de Acessibilidade Urbana ("urbanDescription"):
+- Descreva em português (máximo de 300 caracteres) o que há na imagem com foco na acessibilidade e mobilidade urbana (ex: "Buraco na calçada dificultando a passagem", "Rampa de acessibilidade quebrada", "Piso tátil danificado ou interrompido", "Calçada obstruída por entulho/obras", etc.).
+
+4. Proteção de Privacidade / LGPD ("plates" e "faces") — OBRIGATÓRIO:
+- "plates": IMPORTANTE: Localize com precisão as caixas delimitadoras (bounding boxes) de TODAS as placas de veículos visíveis na cena (dianteiras e traseiras de qualquer veículo estacionado, em movimento ou ao fundo), cobrindo toda a extensão da placa (incluindo moldura e caracteres), onde x e y são o canto superior esquerdo (xmin, ymin) e width e height são a largura e altura da caixa para aplicação do desfoque pesado de privacidade.
+- "faces": IMPORTANTE: Localize com precisão as caixas delimitadoras de TODOS os rostos humanos visíveis na cena (pedestres, trabalhadores, motoristas ou pessoas ao fundo), onde x e y são o canto superior esquerdo (xmin, ymin) e width e height são a largura e altura da caixa para aplicação do desfoque pesado de privacidade.`;
+
+  const prompt = isUrbanMode ? urbanPrompt : trafficPrompt;
+
   const { data, mimeType } = parseBase64Image(imageBase64);
   const imagePart = {
     inlineData: {
@@ -100,56 +130,99 @@ Regra de Incerteza Visual:
     },
   };
 
-  const schema = {
+  const boundingBoxItemsSchema = {
     type: Type.OBJECT,
     properties: {
-      hasVehicle: {
-        type: Type.BOOLEAN,
-        description: 'True se houver qualquer veículo motorizado na foto.'
-      },
-      isAppropriate: {
-        type: Type.BOOLEAN,
-        description: 'True se a imagem for segura e apropriada para o aplicativo público.'
-      },
-      rejectionReason: {
-        type: Type.STRING,
-        description: 'Motivo da rejeição em português se inválido, ou vazio se aprovado.'
-      },
-      plates: {
-        type: Type.ARRAY,
-        description: 'Lista de caixas delimitadoras de placas de veículos encontradas.',
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            x: { type: Type.NUMBER, description: 'Coordenada horizontal do canto superior esquerdo xmin (0 a 1000 ou 0 a 1).' },
-            y: { type: Type.NUMBER, description: 'Coordenada vertical do canto superior esquerdo ymin (0 a 1000 ou 0 a 1).' },
-            width: { type: Type.NUMBER, description: 'Largura total da caixa cobrindo toda a placa (0 a 1000 ou 0 a 1).' },
-            height: { type: Type.NUMBER, description: 'Altura total da caixa cobrindo toda a placa (0 a 1000 ou 0 a 1).' }
-          },
-          propertyOrdering: ['x', 'y', 'width', 'height']
-        }
-      },
-      faces: {
-        type: Type.ARRAY,
-        description: 'Lista de caixas delimitadoras de rostos humanos encontrados.',
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            x: { type: Type.NUMBER, description: 'Coordenada horizontal do canto superior esquerdo xmin (0 a 1000 ou 0 a 1).' },
-            y: { type: Type.NUMBER, description: 'Coordenada vertical do canto superior esquerdo ymin (0 a 1000 ou 0 a 1).' },
-            width: { type: Type.NUMBER, description: 'Largura total da caixa (0 a 1000 ou 0 a 1).' },
-            height: { type: Type.NUMBER, description: 'Altura total da caixa (0 a 1000 ou 0 a 1).' }
-          },
-          propertyOrdering: ['x', 'y', 'width', 'height']
-        }
-      },
-      verification: {
-        type: Type.STRING,
-        description: 'Retorne "Vaga exclusiva" se houver sinalização de vaga acessível (cadeira de rodas), "faixa de pedestres" se o veículo estiver sobre faixa de pedestres, "transferencia" se estiver sobre área de transferência de vaga PCD, ou "" se não identificado.'
-      }
+      x: { type: Type.NUMBER, description: 'Coordenada horizontal do canto superior esquerdo xmin (0 a 1000 ou 0 a 1).' },
+      y: { type: Type.NUMBER, description: 'Coordenada vertical do canto superior esquerdo ymin (0 a 1000 ou 0 a 1).' },
+      width: { type: Type.NUMBER, description: 'Largura total da caixa cobrindo toda a placa ou rosto (0 a 1000 ou 0 a 1).' },
+      height: { type: Type.NUMBER, description: 'Altura total da caixa cobrindo toda a placa ou rosto (0 a 1000 ou 0 a 1).' }
     },
-    propertyOrdering: ['hasVehicle', 'isAppropriate', 'rejectionReason', 'plates', 'faces', 'verification']
+    propertyOrdering: ['x', 'y', 'width', 'height']
   };
+
+  const schema = isUrbanMode
+    ? {
+        type: Type.OBJECT,
+        properties: {
+          isAppropriate: {
+            type: Type.BOOLEAN,
+            description: 'False se a imagem contiver nudez, pornografia, violência ou conteúdo impróprio.'
+          },
+          isUrbanEnvironment: {
+            type: Type.BOOLEAN,
+            description: 'True se a imagem mostrar calçada, via pública, estacionamento ou ambiente urbano.'
+          },
+          hasTrafficInfractionVehicle: {
+            type: Type.BOOLEAN,
+            description: 'True se houver veículo parado sobre faixa de pedestres ou em vaga/área de estacionamento PCD.'
+          },
+          verification: {
+            type: Type.STRING,
+            description: 'Se hasTrafficInfractionVehicle for true: "Vaga exclusiva", "transferencia" ou "faixa de pedestres", senão "".'
+          },
+          urbanDescription: {
+            type: Type.STRING,
+            description: 'Breve descrição em até 300 caracteres focada na acessibilidade urbana observada na imagem.'
+          },
+          rejectionReason: {
+            type: Type.STRING,
+            description: '"foto inapropriada" se isAppropriate for false, motivo se não for ambiente urbano, ou "" se válida.'
+          },
+          plates: {
+            type: Type.ARRAY,
+            description: 'Lista obrigatória de caixas delimitadoras de TODAS as placas de veículos visíveis na imagem para desfoque de privacidade.',
+            items: boundingBoxItemsSchema
+          },
+          faces: {
+            type: Type.ARRAY,
+            description: 'Lista obrigatória de caixas delimitadoras de TODOS os rostos humanos visíveis na imagem para desfoque de privacidade.',
+            items: boundingBoxItemsSchema
+          }
+        },
+        propertyOrdering: [
+          'isAppropriate',
+          'isUrbanEnvironment',
+          'hasTrafficInfractionVehicle',
+          'verification',
+          'urbanDescription',
+          'rejectionReason',
+          'plates',
+          'faces'
+        ]
+      }
+    : {
+        type: Type.OBJECT,
+        properties: {
+          hasVehicle: {
+            type: Type.BOOLEAN,
+            description: 'True se houver qualquer veículo motorizado na foto.'
+          },
+          isAppropriate: {
+            type: Type.BOOLEAN,
+            description: 'True se a imagem for segura e apropriada para o aplicativo público.'
+          },
+          rejectionReason: {
+            type: Type.STRING,
+            description: 'Motivo da rejeição em português se inválido, ou vazio se aprovado.'
+          },
+          plates: {
+            type: Type.ARRAY,
+            description: 'Lista de caixas delimitadoras de placas de veículos encontradas.',
+            items: boundingBoxItemsSchema
+          },
+          faces: {
+            type: Type.ARRAY,
+            description: 'Lista de caixas delimitadoras de rostos humanos encontrados.',
+            items: boundingBoxItemsSchema
+          },
+          verification: {
+            type: Type.STRING,
+            description: 'Retorne "Vaga exclusiva" se houver sinalização de vaga acessível (cadeira de rodas), "faixa de pedestres" se o veículo estiver sobre faixa de pedestres, "transferencia" se estiver sobre área de transferência de vaga PCD, ou "" se não identificado.'
+          }
+        },
+        propertyOrdering: ['hasVehicle', 'isAppropriate', 'rejectionReason', 'plates', 'faces', 'verification']
+      };
 
   let lastError: unknown = null;
 
@@ -241,8 +314,42 @@ Regra de Incerteza Visual:
 
       const plates = sanitizeAndNormalizeBoxes(parsed.plates);
       const faces = sanitizeAndNormalizeBoxes(parsed.faces);
-
       const verification = typeof parsed.verification === 'string' ? parsed.verification.trim() : '';
+
+      if (isUrbanMode) {
+        const isAppropriate = Boolean(parsed.isAppropriate);
+        const isUrbanEnvironment = parsed.isUrbanEnvironment !== undefined ? Boolean(parsed.isUrbanEnvironment) : true;
+        const hasTrafficInfractionVehicle = Boolean(parsed.hasTrafficInfractionVehicle);
+        const urbanDescription = typeof parsed.urbanDescription === 'string'
+          ? parsed.urbanDescription.trim().slice(0, 300)
+          : '';
+
+        let rejectionReason = '';
+        if (!isAppropriate) {
+          rejectionReason = 'foto inapropriada';
+        } else if (!isUrbanEnvironment) {
+          rejectionReason =
+            (typeof parsed.rejectionReason === 'string' && parsed.rejectionReason.trim()) ||
+            'A foto enviada não parece mostrar uma calçada, via pública ou ambiente urbano.';
+        }
+
+        console.log(
+          `[geminiService] Sucesso (Urbana) com ${model}. Apropriada: ${isAppropriate}, Ambiente urbano: ${isUrbanEnvironment}, Veículo infração: ${hasTrafficInfractionVehicle}, Placas: ${plates.length}, Rostos: ${faces.length}`
+        );
+
+        return {
+          hasVehicle: hasTrafficInfractionVehicle,
+          isAppropriate,
+          isUrbanEnvironment,
+          hasTrafficInfractionVehicle,
+          urbanDescription,
+          rejectionReason,
+          plates,
+          faces,
+          verification,
+          apiError: false
+        };
+      }
 
       console.log(`[geminiService] Sucesso com ${model}. Placas encontradas: ${plates.length}, Rostos encontrados: ${faces.length}, Verificação: "${verification}"`);
 

@@ -19,6 +19,9 @@ export interface GeminiSensitiveContentResponse {
 export interface IncidentAnalysisResult {
   hasVehicle: boolean;
   isAppropriate: boolean;
+  isUrbanEnvironment?: boolean;
+  hasTrafficInfractionVehicle?: boolean;
+  urbanDescription?: string;
   rejectionReason: string;
   plates: BoundingBox[];
   faces: BoundingBox[];
@@ -29,9 +32,13 @@ export interface IncidentAnalysisResult {
 export interface ReportedIncident {
   id?: string;
   maskedImageUrl: string;
+  fotoUrl?: string;
   timestamp: number | string | Date;
   latitude: number;
   longitude: number;
+  geohash?: string;
+  natureza?: string;
+  descricao?: string;
   cidade?: string;
   estado?: string;
   rua?: string;
@@ -41,4 +48,6 @@ export interface ReportedIncident {
   description?: string;
   ativo?: boolean;
   motivo_denuncia?: string;
+  resolvido_em_validacao?: boolean;
+  status_resolucao?: string;
 }

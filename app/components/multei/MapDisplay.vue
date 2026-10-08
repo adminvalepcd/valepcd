@@ -98,6 +98,7 @@ const mapContainer = ref(null);
 const mapError = ref(null);
 const isApiLoaded = ref(false);
 let listenerRef = null;
+let dragendListenerRef = null;
 let clickListenerRef = null;
 let zoomListenerRef = null;
 let boundsListenerRef = null;
@@ -256,6 +257,10 @@ const setupPinListeners = () => {
     listenerRef.remove();
     listenerRef = null;
   }
+  if (dragendListenerRef) {
+    dragendListenerRef.remove();
+    dragendListenerRef = null;
+  }
   if (clickListenerRef) {
     clickListenerRef.remove();
     clickListenerRef = null;
@@ -264,7 +269,7 @@ const setupPinListeners = () => {
   if (map.value && props.pinLocation) {
     updateRadiusBoundaryCircle();
 
-    listenerRef = map.value.addListener('idle', () => {
+    const emitCenterPinChange = () => {
       const currentCenter = map.value?.getCenter();
       if (currentCenter) {
         const rawLat = currentCenter.lat();
@@ -281,7 +286,10 @@ const setupPinListeners = () => {
           distance: checked.distance
         });
       }
-    });
+    };
+
+    dragendListenerRef = map.value.addListener('dragend', emitCenterPinChange);
+    listenerRef = map.value.addListener('idle', emitCenterPinChange);
 
     clickListenerRef = map.value.addListener('click', (e) => {
       if (e.latLng && map.value) {
@@ -560,6 +568,9 @@ const initMap = () => {
     });
 
     setupPinListeners();
+    if (props.pinLocation) {
+      isInitialPanDone = true;
+    }
 
     mapError.value = null;
     updateMarkers();
@@ -567,10 +578,6 @@ const initMap = () => {
     setTimeout(() => {
       if (map.value && window.google?.maps) {
         window.google.maps.event.trigger(map.value, 'resize');
-        const target = props.pinLocation || props.initialCenter;
-        if (target) {
-          map.value.setCenter({ lat: target.latitude, lng: target.longitude });
-        }
       }
     }, 150);
 
@@ -690,7 +697,7 @@ const updateMarkers = () => {
   const currentZoom = map.value?.getZoom() || 15;
   const showSpider = currentZoom >= 15;
 
-  // Pino personalizado com a identidade do Vale PCD (Púrpura + Símbolo Internacional de Acessibilidade PcD)
+  // Pino personalizado para "infracao_veicular" (Púrpura Vale PCD + Símbolo Internacional de Acessibilidade PcD)
   const pcdPinIcon = {
     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="32" height="42">
@@ -717,12 +724,40 @@ const updateMarkers = () => {
     anchor: new googleMaps.Point(16, 40)
   };
 
+  // Pino personalizado para natureza "urbana" (Amarelo escuro + ícone 🚧)
+  const urbanaPinIcon = {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="32" height="42">
+        <defs>
+          <filter id="urbana-pin-shadow" x="-20%" y="-10%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+        <!-- Sombra no solo -->
+        <ellipse cx="16" cy="40" rx="4.5" ry="1.5" fill="#000000" opacity="0.25"/>
+        <!-- Corpo do pino em Amarelo Escuro -->
+        <path d="M16 1C8.82 1 3 6.82 3 14c0 9.5 11.8 23 12.3 23.6.4.4 1 .4 1.4 0C17.2 37 29 23.5 29 14 29 6.82 23.18 1 16 1z" fill="#ca8a04" stroke="#ffffff" stroke-width="1.8" filter="url(#urbana-pin-shadow)"/>
+        <!-- Círculo branco de alto contraste -->
+        <circle cx="16" cy="14" r="7.8" fill="#ffffff"/>
+        <!-- Ícone de barreira urbana 🚧 -->
+        <text x="16.4" y="14.5" text-anchor="middle" dominant-baseline="central" font-size="9.5">🚧</text>
+      </svg>
+    `),
+    scaledSize: new googleMaps.Size(32, 42),
+    anchor: new googleMaps.Point(16, 40)
+  };
+
   // Desenha os pontos de ancoragem e linhas conectoras de desdobramento (spiderfy)
   multiGroups.forEach(group => {
+    const isAllUrbana = group.indices.every(
+      idx => String(incidents[idx]?.natureza || '').trim().toLowerCase() === 'urbana'
+    );
+    const groupColor = isAllUrbana ? '#ca8a04' : '#86007D';
+
     const anchorDot = new googleMaps.Circle({
       center: group.center,
       radius: 2,
-      fillColor: '#86007D',
+      fillColor: groupColor,
       fillOpacity: 0.85,
       strokeColor: '#ffffff',
       strokeWeight: 2,
@@ -734,12 +769,13 @@ const updateMarkers = () => {
     group.indices.forEach(idx => {
       const pos = positions[idx];
       if (pos) {
+        const isUrbana = String(incidents[idx]?.natureza || '').trim().toLowerCase() === 'urbana';
         const line = new googleMaps.Polyline({
           path: [
             group.center,
             { lat: pos.lat, lng: pos.lng }
           ],
-          strokeColor: '#86007D',
+          strokeColor: isUrbana ? '#ca8a04' : '#86007D',
           strokeOpacity: 0.8,
           strokeWeight: 2,
           map: showSpider ? map.value : null,
@@ -752,10 +788,13 @@ const updateMarkers = () => {
 
   const newMarkers = incidents.map((incident, index) => {
     const pos = positions[index] || { lat: incident.latitude, lng: incident.longitude };
+    const natureza = String(incident?.natureza || 'infracao_veicular').trim().toLowerCase();
+    const pinIcon = natureza === 'urbana' ? urbanaPinIcon : pcdPinIcon;
+
     const marker = markRaw(new googleMaps.Marker({
       position: { lat: pos.lat, lng: pos.lng },
-      title: incident.description || (incident.cidade ? `${incident.cidade} - ${incident.estado}` : `Infração registrada em ${new Date(incident.timestamp).toLocaleTimeString()}`),
-      icon: pcdPinIcon,
+      title: incident.description || (incident.cidade ? `${incident.cidade} - ${incident.estado}` : `Ocorrência registrada em ${new Date(incident.timestamp).toLocaleTimeString()}`),
+      icon: pinIcon,
       map: clusterer.value ? null : map.value
     }));
 
@@ -779,7 +818,9 @@ const updateMarkers = () => {
 watch(() => props.pinLocation, (newPin) => {
   if (!map.value) return;
 
-  setupPinListeners();
+  if (!listenerRef) {
+    setupPinListeners();
+  }
 
   if (newPin) {
     if (!isInitialPanDone) {
@@ -868,6 +909,10 @@ onBeforeUnmount(() => {
   if (listenerRef) {
     listenerRef.remove();
     listenerRef = null;
+  }
+  if (dragendListenerRef) {
+    dragendListenerRef.remove();
+    dragendListenerRef = null;
   }
   if (clickListenerRef) {
     clickListenerRef.remove();
