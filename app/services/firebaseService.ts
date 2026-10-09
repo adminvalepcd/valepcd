@@ -33,6 +33,7 @@ import { getAddressDetailsFromCoords, extractCityAndStateFromText, normalizeStat
 
 export const OCORRENCIAS_COLLECTION = 'ocorrencias';
 export const RESOLVIDOS_COLLECTION = 'resolvidos';
+export const REPORTADAS_COLLECTION = 'reportadas';
 export const ESTATISTICAS_COLLECTION = 'estatisticas';
 export const ESTATISTICAS_DOC_ID = 'resumo';
 
@@ -616,12 +617,22 @@ export async function saveIncidentToFirebase(
 }
 
 /**
- * Reporta / desativa uma ocorrência no Firestore marcando `ativo: false` e preenchendo `motivo_denuncia`.
+ * Reporta / desativa uma ocorrência no Firestore marcando `ativo: false`, preenchendo `motivo_denuncia`
+ * e criando uma nova entrada na coleção `reportadas` com todos os dados da ocorrência + o motivo do report.
  */
-export async function reportIncidentInFirebase(id: string, reason: string): Promise<boolean> {
+export async function reportIncidentInFirebase(
+  id: string,
+  reason: string,
+  incidentData?: Partial<ReportedIncident>
+): Promise<boolean> {
   const cleanId = (id || '').trim();
   if (!cleanId) {
     throw new Error('ID da ocorrência ausente para denúncia.');
+  }
+
+  const cleanReason = (reason || '').trim();
+  if (!cleanReason) {
+    throw new Error('Motivo da denúncia ausente.');
   }
 
   removeIncidentFromLocalCache(cleanId);
@@ -630,19 +641,54 @@ export async function reportIncidentInFirebase(id: string, reason: string): Prom
   const docRef = doc(db, OCORRENCIAS_COLLECTION, cleanId);
 
   let wasActive = true;
-  let wasUrbana = false;
+  let wasUrbana = incidentData?.natureza === 'urbana';
+  let existingData: Record<string, any> = {};
   try {
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      const d = snap.data() || {};
-      wasActive = d.ativo !== false && String(d.ativo).toLowerCase() !== 'false';
-      wasUrbana = d.natureza === 'urbana';
+      existingData = snap.data() || {};
+      wasActive = existingData.ativo !== false && String(existingData.ativo).toLowerCase() !== 'false';
+      wasUrbana = existingData.natureza === 'urbana';
     }
   } catch {}
 
+  const reportedAtIso = new Date().toISOString();
+  const latitude = Number(existingData.latitude ?? incidentData?.latitude ?? 0);
+  const longitude = Number(existingData.longitude ?? incidentData?.longitude ?? 0);
+  const geohash =
+    existingData.geohash ||
+    incidentData?.geohash ||
+    (latitude && longitude ? geohashForLocation([latitude, longitude]) : '');
+
+  const reportDocRef = doc(collection(db, REPORTADAS_COLLECTION));
+  const reportDocData = {
+    ...existingData,
+    id: reportDocRef.id,
+    ocorrenciaId: cleanId,
+    data: existingData.data || incidentData?.timestamp || reportedAtIso,
+    latitude,
+    longitude,
+    geohash,
+    fotoUrl: existingData.fotoUrl || incidentData?.fotoUrl || incidentData?.maskedImageUrl || '',
+    natureza: existingData.natureza || incidentData?.natureza || 'infracao_veicular',
+    descricao: existingData.descricao ?? incidentData?.descricao ?? '',
+    rua: existingData.rua ?? incidentData?.rua ?? '',
+    bairro: existingData.bairro ?? incidentData?.bairro ?? '',
+    cidade: existingData.cidade ?? incidentData?.cidade ?? '',
+    estado: existingData.estado ?? incidentData?.estado ?? '',
+    classificacao: existingData.classificacao ?? incidentData?.classificacao ?? '',
+    verificacao: existingData.verificacao ?? incidentData?.verificacao ?? '',
+    ativo: false,
+    motivo_denuncia: cleanReason,
+    motivo_report: cleanReason,
+    data_report: reportedAtIso
+  };
+
+  await setDoc(reportDocRef, reportDocData);
+
   await updateDoc(docRef, {
     ativo: false,
-    motivo_denuncia: (reason || '').trim()
+    motivo_denuncia: cleanReason
   });
 
   if (wasActive) {
@@ -659,7 +705,7 @@ export async function reportIncidentInFirebase(id: string, reason: string): Prom
         {
           totalGeral: increment(-1),
           [wasUrbana ? 'mobilidadeUrbana' : 'infracoesTransito']: increment(-1),
-          updatedAt: new Date().toISOString()
+          updatedAt: reportedAtIso
         },
         { merge: true }
       );

@@ -688,7 +688,7 @@ const handleSubmitReport = async () => {
 
   try {
     const id = props.incident.id || '';
-    await reportIncidentInFirebase(id, reportReason.value.trim());
+    await reportIncidentInFirebase(id, reportReason.value.trim(), props.incident);
 
     reportSuccess.value = true;
     // Emite imediatamente para que o mapa e o array reflitam a remoção em tempo real
