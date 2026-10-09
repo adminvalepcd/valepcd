@@ -525,6 +525,7 @@ export async function saveIncidentToFirebase(
       cacheControl: 'public, max-age=31536000, immutable'
     });
     fotoUrl = await getDownloadURL(imageFileRef);
+    await seedIncidentImageCache(fotoUrl, bytes, contentType || 'image/webp');
   }
 
   // 3. Calcula o geohash das coordenadas
@@ -1067,3 +1068,86 @@ function markIncidentResolvedInLocalCache(ocorrenciaId: string) {
   } catch {}
 }
 
+const IMAGE_CACHE_NAME = 'multei-images-cache-v1';
+const inMemoryImageBlobUrls = new Map<string, string>();
+
+/**
+ * Pré-armazena no cache local (memória + CacheStorage do navegador) a imagem recém-enviada,
+ * evitando novo download ao visualizar a própria ocorrência.
+ */
+export async function seedIncidentImageCache(
+  url: string,
+  bytes: Uint8Array,
+  contentType = 'image/webp'
+): Promise<void> {
+  if (!url || typeof window === 'undefined') return;
+  try {
+    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: contentType });
+    if (!inMemoryImageBlobUrls.has(url)) {
+      inMemoryImageBlobUrls.set(url, URL.createObjectURL(blob));
+    }
+    if ('caches' in window) {
+      const cache = await window.caches.open(IMAGE_CACHE_NAME);
+      const response = new Response(blob, {
+        headers: {
+          'Content-Type': contentType,
+          'Cache-Control': 'public, max-age=31536000, immutable'
+        }
+      });
+      await cache.put(url, response);
+    }
+  } catch {}
+}
+
+/**
+ * Retorna a URL da imagem a partir do cache permanente do cliente (memória ou CacheStorage),
+ * garantindo que uma foto já baixada nunca precise ser baixada novamente do Firebase Storage.
+ */
+export async function getCachedIncidentImageUrl(url: string): Promise<string> {
+  if (!url || typeof window === 'undefined') return url;
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+
+  const existingMemoryUrl = inMemoryImageBlobUrls.get(url);
+  if (existingMemoryUrl) {
+    return existingMemoryUrl;
+  }
+
+  if ('caches' in window) {
+    try {
+      const cache = await window.caches.open(IMAGE_CACHE_NAME);
+      const cachedResponse = await cache.match(url, { ignoreVary: true });
+      if (cachedResponse) {
+        if (cachedResponse.ok && cachedResponse.type !== 'opaque') {
+          const blob = await cachedResponse.blob();
+          if (blob.size > 0) {
+            const objUrl = URL.createObjectURL(blob);
+            inMemoryImageBlobUrls.set(url, objUrl);
+            return objUrl;
+          }
+        }
+        // Se for resposta opaque salva pelo Service Worker (sw-image-cache.js),
+        // o próprio Service Worker entregará do disco sem chamar a rede.
+        return url;
+      }
+
+      // Se ainda não estiver no CacheStorage, tenta buscar via fetch com cache forçado e salvar no CacheStorage
+      const netResponse = await fetch(url, { mode: 'cors', credentials: 'omit', cache: 'force-cache' });
+      if (netResponse.ok) {
+        try {
+          await cache.put(url, netResponse.clone());
+        } catch {}
+        const blob = await netResponse.blob();
+        if (blob.size > 0) {
+          const objUrl = URL.createObjectURL(blob);
+          inMemoryImageBlobUrls.set(url, objUrl);
+          return objUrl;
+        }
+      }
+    } catch {
+      // Caso o bucket não tenha cabeçalho CORS para fetch JS, o Service Worker (sw-image-cache.js)
+      // intercepta a tag <img> diretamente e faz o cache em CacheStorage no modo no-cors.
+    }
+  }
+
+  return url;
+}

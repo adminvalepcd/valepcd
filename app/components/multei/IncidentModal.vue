@@ -343,7 +343,12 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { getAddressFromCoords } from '../../services/geoService';
-import { reportIncidentInFirebase, submitUrbanResolutionToFirebase, normalizeVerificacao } from '../../services/firebaseService';
+import {
+  reportIncidentInFirebase,
+  submitUrbanResolutionToFirebase,
+  normalizeVerificacao,
+  getCachedIncidentImageUrl
+} from '../../services/firebaseService';
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
 import { prepareImageForGemini, blurSensitiveContentAndCompress } from '../../services/imageProcessor';
 import { useModalAccessibility } from '../../composables/useModalAccessibility';
@@ -500,17 +505,20 @@ const handlePhotoError = () => {
 
 const loadPhotoIfNeeded = async () => {
   const nextPhoto = props.incident?.fotoUrl || props.incident?.maskedImageUrl || '';
-  currentPhoto.value = nextPhoto;
   hasPhotoLoadError.value = false;
 
   if (!nextPhoto) {
+    currentPhoto.value = '';
     isLoadingPhoto.value = false;
     return;
   }
 
   isLoadingPhoto.value = true;
+  const cachedOrDirectUrl = await getCachedIncidentImageUrl(nextPhoto);
+  currentPhoto.value = cachedOrDirectUrl;
+
   await nextTick();
-  // Se a imagem já estiver em cache no navegador (ou for base64), libera imediatamente
+  // Se a imagem já estiver em cache no navegador (ou for blob:/base64), libera imediatamente
   if (photoImgRef.value?.complete && photoImgRef.value?.naturalWidth > 0) {
     isLoadingPhoto.value = false;
   }

@@ -163,6 +163,10 @@ useHead({
       name: 'description',
       content: 'Guia de orientações para Beta Testers do Multei: como fotografar vagas PcD, funcionamento experimental da IA Gemini e formulário de feedback anônimo.'
     }
+  ],
+  link: [
+    { rel: 'icon', type: 'image/svg+xml', href: '/favicon-multei.svg' },
+    { rel: 'shortcut icon', href: '/favicon-multei.svg' }
   ]
 });
 </script>

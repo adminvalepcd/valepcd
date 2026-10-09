@@ -337,6 +337,8 @@ useHead({
   // enquanto o bundle ainda está sendo avaliado, reduzindo o atraso até o
   // primeiro tile do mapa — que é justamente o elemento de LCP aqui.
   link: [
+    { rel: 'icon', type: 'image/svg+xml', href: '/favicon-multei.svg' },
+    { rel: 'shortcut icon', href: '/favicon-multei.svg' },
     { rel: 'preconnect', href: 'https://maps.googleapis.com', crossorigin: '' },
     { rel: 'preconnect', href: 'https://maps.gstatic.com', crossorigin: '' }
   ]

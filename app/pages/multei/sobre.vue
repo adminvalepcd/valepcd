@@ -222,6 +222,10 @@ useHead({
       name: 'description',
       content: 'Acompanhe em tempo real o número de denúncias de vagas PcD, ocorrências de mobilidade urbana e problemas resolvidos no Multei.'
     }
+  ],
+  link: [
+    { rel: 'icon', type: 'image/svg+xml', href: '/favicon-multei.svg' },
+    { rel: 'shortcut icon', href: '/favicon-multei.svg' }
   ]
 });
 

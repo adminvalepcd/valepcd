@@ -41,6 +41,12 @@ export default defineNuxtPlugin(() => {
 
   const storage = getStorage(app)
 
+  if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw-image-cache.js').catch(() => {})
+    })
+  }
+
   return {
     provide: {
       db,
