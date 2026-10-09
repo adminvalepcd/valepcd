@@ -1,6 +1,12 @@
 import { defineNuxtPlugin, useRuntimeConfig } from '#app'
 import { initializeApp, getApps, getApp } from 'firebase/app'
-import { getFirestore } from 'firebase/firestore'
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore
+} from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
 
 export default defineNuxtPlugin(() => {
@@ -15,8 +21,24 @@ export default defineNuxtPlugin(() => {
     appId: config.public.firebaseAppId
   }
 
-  const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)
-  const db = getFirestore(app)
+  const isExistingApp = getApps().length > 0
+  const app = isExistingApp ? getApp() : initializeApp(firebaseConfig)
+
+  let db: Firestore
+  if (!isExistingApp) {
+    try {
+      db = initializeFirestore(app, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager()
+        })
+      })
+    } catch {
+      db = getFirestore(app)
+    }
+  } else {
+    db = getFirestore(app)
+  }
+
   const storage = getStorage(app)
 
   return {

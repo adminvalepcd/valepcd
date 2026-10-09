@@ -1,14 +1,65 @@
 <template>
   <div class="modal-backdrop">
-    <div class="modal-card">
+    <div
+      ref="modalCardRef"
+      class="modal-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-incident-modal-title"
+    >
       <!-- Cabeçalho -->
       <div class="modal-header">
-        <h2 class="modal-title">{{ modalTitle }}</h2>
+        <h2 id="create-incident-modal-title" class="modal-title">{{ modalTitle }}</h2>
         <button class="btn-close" @click="emit('close')" aria-label="Fechar" :disabled="isAnalyzing || isSaving">✕</button>
       </div>
 
+      <!-- Bloqueio: Exige GPS Ativo para realizar denúncia -->
+      <div v-if="!isGpsEnabled && step !== 'success'" class="step-gps-required">
+        <div class="gps-required-hero">
+          <div class="gps-required-icon" aria-hidden="true">📍</div>
+          <h3 class="gps-required-title">Ative seu GPS para denunciar</h3>
+          <p class="gps-required-desc">
+            O seu GPS está desativado no momento. Para garantir a veracidade das ocorrências e realizar as validações de localização, é necessário ativar o GPS antes de prosseguir.
+          </p>
+        </div>
+
+        <div v-if="gpsActivationError" class="gps-required-error" role="alert">
+          {{ gpsActivationError }}
+        </div>
+
+        <button
+          type="button"
+          class="btn btn-primary btn-activate-gps-modal"
+          :disabled="isActivatingGpsForReport"
+          @click="handleActivateGpsForReport"
+        >
+          <span v-if="isActivatingGpsForReport">⏳ Obtendo localização GPS...</span>
+          <span v-else>📍 Ativar GPS e prosseguir</span>
+        </button>
+
+        <details class="gps-why-accordion">
+          <summary class="gps-why-summary">
+            <span>🛡️ Por que precisamos do GPS ativo durante a denúncia?</span>
+            <span class="gps-why-chevron" aria-hidden="true">▾</span>
+          </summary>
+          <div class="gps-why-body">
+            <ul class="gps-why-list">
+              <li>
+                <strong>Validação de autenticidade:</strong> Cruzamos a posição atual do aparelho com os dados da imagem para classificar a confiabilidade do registro (Selo A, B ou C).
+              </li>
+              <li>
+                <strong>Prevenção de denúncias falsas:</strong> O GPS delimita um raio máximo de segurança de 200 metros para evitar cadastros indevidos feitos à distância.
+              </li>
+              <li>
+                <strong>100% Anônimo e sem rastreamento:</strong> As coordenadas são usadas exclusivamente no momento do envio para posicionar o pino da infração no mapa. Não coletamos dados pessoais nem acompanhamos seus deslocamentos.
+              </li>
+            </ul>
+          </div>
+        </details>
+      </div>
+
       <!-- Etapa 0: Escolha do Tipo de Ocorrência -->
-      <div v-if="step === 'category'" class="step-category">
+      <div v-else-if="step === 'category'" class="step-category">
         <p class="step-desc">
           Selecione o tipo de ocorrência que você deseja registrar:
         </p>
@@ -43,7 +94,7 @@
       </div>
 
       <!-- Etapa 1: Captura / Upload da Foto -->
-      <div v-if="step === 'upload'" class="step-upload">
+      <div v-if="isGpsEnabled && step === 'upload'" class="step-upload">
         <button type="button" class="btn-back-step" @click="step = 'category'">
           ← Alterar tipo de ocorrência
         </button>
@@ -75,17 +126,27 @@
             <span class="btn-label">{{ cooldownSecondsLeft > 0 ? `Aguarde ${cooldownSecondsLeft}s` : 'Tirar Foto Agora' }}</span>
           </button>
 
-          <label class="btn-upload btn-gallery" :class="{ 'is-disabled': cooldownSecondsLeft > 0 }">
+          <button
+            type="button"
+            class="btn-upload btn-gallery"
+            :disabled="cooldownSecondsLeft > 0"
+            :class="{ 'is-disabled': cooldownSecondsLeft > 0 }"
+            @click="triggerGalleryPicker"
+          >
             <span class="btn-icon">🖼️</span>
             <span class="btn-label">{{ cooldownSecondsLeft > 0 ? `Aguarde ${cooldownSecondsLeft}s` : 'Escolher da Galeria' }}</span>
-            <input 
-              type="file" 
-              accept="image/jpeg,image/png,image/webp" 
-              class="hidden-file-input" 
-              :disabled="cooldownSecondsLeft > 0"
-              @change="handleFileSelected" 
-            />
-          </label>
+          </button>
+
+          <input 
+            ref="galleryInputRef"
+            type="file" 
+            accept="image/jpeg,image/png,image/webp" 
+            class="hidden-file-input" 
+            :disabled="cooldownSecondsLeft > 0"
+            tabindex="-1"
+            aria-hidden="true"
+            @change="handleFileSelected" 
+          />
         </div>
 
         <p class="privacy-note">
@@ -96,13 +157,13 @@
 
       <!-- Câmera ao vivo em tela cheia se acionada -->
       <MulteiCameraCapture
-        v-if="showCamera"
+        v-if="isGpsEnabled && showCamera"
         @photo-taken="handlePhotoTaken"
         @cancel="showCamera = false"
       />
 
       <!-- Etapa 2: Análise da Imagem e Aplicação do Filtro de Privacidade -->
-      <div v-if="step === 'analyzing'" class="step-analyzing">
+      <div v-if="isGpsEnabled && step === 'analyzing'" class="step-analyzing">
         <div class="analyzing-preview-card">
           <!-- Preview da foto em análise -->
           <img 
@@ -157,7 +218,7 @@
       </div>
 
       <!-- Erro de Validação ou Instabilidade de IA -->
-      <div v-if="step === 'error'" class="step-error">
+      <div v-if="isGpsEnabled && step === 'error'" class="step-error">
         <div class="error-badge">{{ isApiError ? '⚡' : '⚠️' }}</div>
         <h3 class="error-heading" :class="{ 'is-api-error': isApiError }">
           {{ isApiError ? 'Instabilidade no Serviço de IA' : 'Foto Não Aceita' }}
@@ -175,7 +236,7 @@
       </div>
 
       <!-- Etapa 3: Preview Anonimizado e Ajuste de Localização -->
-      <div v-if="step === 'preview'" class="step-preview">
+      <div v-if="isGpsEnabled && step === 'preview'" class="step-preview">
         <div class="preview-container">
           <img :src="processedImageWebp" alt="Pré-visualização com desfoque de privacidade" class="preview-img" />
           <div
@@ -448,12 +509,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue';
-  import LoadingSpinner from './LoadingSpinner.vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
+import LoadingSpinner from './LoadingSpinner.vue';
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
 import { extractPhotoMetadata, blurSensitiveContentAndCompress, prepareImageForGemini } from '../../services/imageProcessor';
 import { saveIncidentToFirebase, normalizeVerificacao } from '../../services/firebaseService';
 import { getAddressDetailsFromCoords, requestUserLocation, geocodeAddressForValidation } from '../../services/geoService';
+import { useModalAccessibility } from '../../composables/useModalAccessibility';
 
 const props = defineProps({
   currentLocation: {
@@ -463,19 +525,35 @@ const props = defineProps({
   appsScriptUrl: {
     type: String,
     default: ''
+  },
+  isGpsEnabled: {
+    type: Boolean,
+    default: true
   }
 });
 
-const emit = defineEmits(['close', 'incidentCreated']);
+const emit = defineEmits(['close', 'incidentCreated', 'gpsEnabled']);
 
+const modalCardRef = ref(null);
+const galleryInputRef = ref(null);
 const step = ref('category');
 const selectedNatureza = ref('infracao_veicular');
 const urbanDescricao = ref('');
 const showSwitchToTrafficModal = ref(false);
 const pendingVehicleVerification = ref('');
 const showCamera = ref(false);
+const isActivatingGpsForReport = ref(false);
+const gpsActivationError = ref('');
+
+const triggerGalleryPicker = () => {
+  if (cooldownSecondsLeft.value > 0) return;
+  galleryInputRef.value?.click();
+};
 
 const modalTitle = computed(() => {
+  if (!props.isGpsEnabled && step.value !== 'success') {
+    return '📍 GPS Necessário';
+  }
   if (step.value === 'category') {
     return 'Incluir Ocorrência';
   }
@@ -483,6 +561,25 @@ const modalTitle = computed(() => {
     ? '🚧 Mobilidade Urbana'
     : '♿ Infração de Trânsito';
 });
+
+const handleActivateGpsForReport = async () => {
+  isActivatingGpsForReport.value = true;
+  gpsActivationError.value = '';
+  try {
+    const coords = await requestUserLocation();
+    selectedLocation.latitude = coords.latitude;
+    selectedLocation.longitude = coords.longitude;
+    setGpsAnchorLocation(coords.latitude, coords.longitude);
+    locationSource.value = 'device';
+    emit('gpsEnabled', coords);
+  } catch (err) {
+    console.warn('[CreateIncidentModal] Falha ao ativar GPS:', err);
+    gpsActivationError.value =
+      'Não foi possível acessar o GPS. Verifique se a permissão de localização está liberada no navegador e no aparelho.';
+  } finally {
+    isActivatingGpsForReport.value = false;
+  }
+};
 
 const handleSelectCategory = (natureza) => {
   selectedNatureza.value = natureza;
@@ -503,6 +600,33 @@ const declineSwitchToTraffic = () => {
 };
 const isAnalyzing = ref(false);
 const isSaving = ref(false);
+
+const { focusInitialElement } = useModalAccessibility({
+  modalRef: modalCardRef,
+  canClose: () => !isAnalyzing.value && !isSaving.value,
+  onRequestClose: () => {
+    if (showCamera.value) {
+      showCamera.value = false;
+      return 'subview';
+    }
+    if (showSwitchToTrafficModal.value) {
+      declineSwitchToTraffic();
+      return 'subview';
+    }
+    emit('close');
+    return 'closed';
+  }
+});
+
+watch(
+  [step, showCamera, showSwitchToTrafficModal, () => props.isGpsEnabled],
+  () => {
+    nextTick(() => {
+      focusInitialElement();
+    });
+  }
+);
+
 const analyzingStatusText = ref('Iniciando análise...');
 const errorMessage = ref('');
 const isApiError = ref(false);
@@ -2038,6 +2162,8 @@ const handleSaveIncident = async () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  font-family: inherit;
   padding: 1.75rem 1rem;
   border-radius: var(--radius-md, 16px);
   border: 2px dashed var(--primary, #86007D);
@@ -3110,5 +3236,128 @@ const handleSaveIncident = async () => {
   .loc-prominent-actions {
     grid-template-columns: 1fr;
   }
+}
+
+/* Bloqueio de GPS Desativado durante Denúncia + Acordeon */
+.step-gps-required {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 0.5rem 0 0.25rem;
+}
+
+.gps-required-hero {
+  background: #fffbeb;
+  border: 1.5px solid #d97706;
+  border-radius: 16px;
+  padding: 1.35rem 1.2rem;
+  text-align: center;
+}
+
+.gps-required-icon {
+  font-size: 2.3rem;
+  line-height: 1;
+  margin-bottom: 0.55rem;
+}
+
+.gps-required-title {
+  margin: 0 0 0.45rem;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #78350f;
+}
+
+.gps-required-desc {
+  margin: 0;
+  font-size: 0.94rem;
+  line-height: 1.55;
+  color: #451a03;
+}
+
+.gps-required-error {
+  background: #fef2f2;
+  border: 1.5px solid #b91c1c;
+  color: #7f1d1d;
+  border-radius: 12px;
+  padding: 0.75rem 0.95rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.btn-activate-gps-modal {
+  width: 100%;
+  padding: 0.95rem 1.25rem;
+  border-radius: 9999px;
+  font-size: 1rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.gps-why-accordion {
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 14px;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.gps-why-accordion[open] {
+  border-color: var(--primary, #86007D);
+}
+
+.gps-why-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.95rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #0f172a;
+  cursor: pointer;
+  user-select: none;
+}
+
+.gps-why-summary::-webkit-details-marker {
+  display: none;
+}
+
+.gps-why-summary:hover {
+  background: #f1f5f9;
+}
+
+.gps-why-chevron {
+  font-size: 1.05rem;
+  color: #475569;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.gps-why-accordion[open] .gps-why-chevron {
+  transform: rotate(180deg);
+  color: var(--primary, #86007D);
+}
+
+.gps-why-body {
+  padding: 0 1.1rem 1.05rem 1.1rem;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.85rem;
+}
+
+.gps-why-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  color: #1e293b;
+  font-size: 0.88rem;
+  line-height: 1.5;
 }
 </style>

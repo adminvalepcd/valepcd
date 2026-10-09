@@ -84,6 +84,10 @@ const props = defineProps({
   height: {
     type: String,
     default: '600px'
+  },
+  showUserLocationDot: {
+    type: Boolean,
+    default: true
   }
 });
 
@@ -346,6 +350,7 @@ const updateUserLocationDot = (lat, lng) => {
   if (!map.value || !window.google?.maps) return;
   const googleMaps = window.google.maps;
   const pos = { lat, lng };
+  const targetMap = props.showUserLocationDot ? map.value : null;
 
   if (!userLocationHalo) {
     userLocationHalo = new googleMaps.Circle({
@@ -354,7 +359,7 @@ const updateUserLocationDot = (lat, lng) => {
       strokeWeight: 1,
       fillColor: '#4285F4',
       fillOpacity: 0.15,
-      map: map.value,
+      map: targetMap,
       center: pos,
       radius: 35,
       clickable: false,
@@ -362,13 +367,13 @@ const updateUserLocationDot = (lat, lng) => {
     });
   } else {
     userLocationHalo.setCenter(pos);
-    userLocationHalo.setMap(map.value);
+    userLocationHalo.setMap(targetMap);
   }
 
   if (!userLocationMarker) {
     userLocationMarker = new googleMaps.Marker({
       position: pos,
-      map: map.value,
+      map: targetMap,
       title: 'Sua localização atual',
       clickable: false,
       zIndex: 999,
@@ -383,9 +388,19 @@ const updateUserLocationDot = (lat, lng) => {
     });
   } else {
     userLocationMarker.setPosition(pos);
-    userLocationMarker.setMap(map.value);
+    userLocationMarker.setMap(targetMap);
   }
 };
+
+watch(() => props.showUserLocationDot, (visible) => {
+  const targetMap = visible ? map.value : null;
+  if (userLocationHalo) {
+    userLocationHalo.setMap(targetMap);
+  }
+  if (userLocationMarker) {
+    userLocationMarker.setMap(targetMap);
+  }
+});
 
 const createMyLocationControl = (mapInstance, googleMaps) => {
   const controlDiv = document.createElement('div');

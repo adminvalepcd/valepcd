@@ -4,30 +4,45 @@
     @click="emit('close')"
   >
     <div 
+      ref="modalCardRef"
       class="modal-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="incident-modal-title"
       @click.stop
     >
       <div class="modal-card-body">
         <div class="modal-header">
-          <h2 class="modal-title">Detalhes da Ocorrência</h2>
+          <h2 id="incident-modal-title" class="modal-title">Detalhes da Ocorrência</h2>
           <button class="btn-close" @click="emit('close')" aria-label="Fechar">✕</button>
         </div>
 
         <div class="modal-image-wrapper">
-          <div class="photo-stage">
-            <div v-if="isLoadingPhoto" class="image-loading-placeholder">
+          <div class="photo-stage" :class="{ 'is-loading': isLoadingPhoto }">
+            <div
+              v-if="isLoadingPhoto"
+              class="image-loading-placeholder"
+              role="status"
+              aria-live="polite"
+            >
               <LoadingSpinner />
               <span class="image-loading-text">Carregando foto...</span>
             </div>
+
             <img 
-              v-else-if="currentPhoto"
+              v-if="currentPhoto && !hasPhotoLoadError"
+              ref="photoImgRef"
               :src="currentPhoto" 
               alt="Foto da infração com dados sensíveis ocultos" 
-              class="incident-image is-clickable" 
+              class="incident-image is-clickable"
+              :class="{ 'is-hidden-while-loading': isLoadingPhoto }"
               title="Clique para ver em tamanho original"
-              @click="isPhotoExpanded = true"
+              @load="handlePhotoLoaded"
+              @error="handlePhotoError"
+              @click="!isLoadingPhoto && (isPhotoExpanded = true)"
             />
-            <div v-else class="image-empty-placeholder">
+
+            <div v-else-if="!isLoadingPhoto" class="image-empty-placeholder">
               <span>📷 Foto da infração indisponível</span>
             </div>
 
@@ -200,16 +215,23 @@
                   <span>📷</span>
                   <span>Tirar Foto</span>
                 </button>
-                <label class="btn-resolve-upload">
+                <button
+                  type="button"
+                  class="btn-resolve-upload"
+                  @click="resolveGalleryInputRef?.click()"
+                >
                   <span>🖼️</span>
                   <span>Escolher da Galeria</span>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    class="hidden-file-input"
-                    @change="handleResolveFileSelected"
-                  />
-                </label>
+                </button>
+                <input
+                  ref="resolveGalleryInputRef"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  class="hidden-file-input"
+                  tabindex="-1"
+                  aria-hidden="true"
+                  @change="handleResolveFileSelected"
+                />
               </div>
             </div>
 
@@ -319,11 +341,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { getAddressFromCoords } from '../../services/geoService';
 import { reportIncidentInFirebase, submitUrbanResolutionToFirebase, normalizeVerificacao } from '../../services/firebaseService';
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
 import { prepareImageForGemini, blurSensitiveContentAndCompress } from '../../services/imageProcessor';
+import { useModalAccessibility } from '../../composables/useModalAccessibility';
 import LoadingSpinner from './LoadingSpinner.vue';
 
 const props = defineProps({
@@ -339,11 +362,15 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'incidentReported']);
 
+const modalCardRef = ref(null);
+const resolveGalleryInputRef = ref(null);
+const photoImgRef = ref(null);
 const config = useRuntimeConfig();
 const geminiClient = initializeGeminiClient(config.public?.geminiApiKey);
 
 const currentPhoto = ref(props.incident?.fotoUrl || props.incident?.maskedImageUrl || '');
-const isLoadingPhoto = ref(false);
+const isLoadingPhoto = ref(Boolean(currentPhoto.value));
+const hasPhotoLoadError = ref(false);
 const isPhotoExpanded = ref(false);
 const addressText = ref('');
 const isResolving = ref(false);
@@ -461,9 +488,32 @@ const canSubmitResolve = computed(() => {
   return Boolean(resolvedPhotoWebp.value) && resolveDescription.value.trim().length >= 10;
 });
 
-const loadPhotoIfNeeded = async () => {
-  currentPhoto.value = props.incident?.fotoUrl || props.incident?.maskedImageUrl || '';
+const handlePhotoLoaded = () => {
   isLoadingPhoto.value = false;
+  hasPhotoLoadError.value = false;
+};
+
+const handlePhotoError = () => {
+  isLoadingPhoto.value = false;
+  hasPhotoLoadError.value = true;
+};
+
+const loadPhotoIfNeeded = async () => {
+  const nextPhoto = props.incident?.fotoUrl || props.incident?.maskedImageUrl || '';
+  currentPhoto.value = nextPhoto;
+  hasPhotoLoadError.value = false;
+
+  if (!nextPhoto) {
+    isLoadingPhoto.value = false;
+    return;
+  }
+
+  isLoadingPhoto.value = true;
+  await nextTick();
+  // Se a imagem já estiver em cache no navegador (ou for base64), libera imediatamente
+  if (photoImgRef.value?.complete && photoImgRef.value?.naturalWidth > 0) {
+    isLoadingPhoto.value = false;
+  }
 };
 
 const resolveAddress = async () => {
@@ -646,20 +696,40 @@ const handleSubmitReport = async () => {
   }
 };
 
-const handleKeydown = (e) => {
-  if (e.key === 'Escape' && isPhotoExpanded.value) {
-    isPhotoExpanded.value = false;
+const { focusInitialElement } = useModalAccessibility({
+  modalRef: modalCardRef,
+  canClose: () => !isSubmittingReport.value && !isSubmittingResolve.value && !isProcessingResolvePhoto.value,
+  onRequestClose: () => {
+    if (showResolveCamera.value) {
+      showResolveCamera.value = false;
+      return 'subview';
+    }
+    if (isPhotoExpanded.value) {
+      isPhotoExpanded.value = false;
+      return 'subview';
+    }
+    if (isResolveModalOpen.value) {
+      handleCancelResolve();
+      return 'subview';
+    }
+    if (isReportModalOpen.value) {
+      handleCancelReport();
+      return 'subview';
+    }
+    emit('close');
+    return 'closed';
   }
-};
+});
+
+watch([isReportModalOpen, isResolveModalOpen, showResolveCamera, isPhotoExpanded], () => {
+  nextTick(() => {
+    focusInitialElement();
+  });
+});
 
 onMounted(() => {
   resolveAddress();
   loadPhotoIfNeeded();
-  window.addEventListener('keydown', handleKeydown);
-});
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown);
 });
 
 watch(() => props.incident, () => {
@@ -738,6 +808,11 @@ watch(() => props.incident, () => {
 
 .photo-stage {
   position: relative;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
   border-radius: var(--radius-md, 12px);
   overflow: hidden;
 }
@@ -816,31 +891,42 @@ watch(() => props.incident, () => {
 }
 
 .image-loading-placeholder {
-  min-height: 200px;
+  width: 100%;
+  min-height: 240px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #f1f5f9;
+  background: linear-gradient(110deg, #f1f5f9 8%, #e2e8f0 18%, #f1f5f9 33%);
+  background-size: 200% 100%;
+  animation: photo-skeleton-shimmer 1.4s linear infinite;
   border-radius: var(--radius-md, 12px);
   gap: 0.75rem;
   padding: 2rem 1rem;
+  z-index: 2;
+}
+
+@keyframes photo-skeleton-shimmer {
+  to {
+    background-position-x: -200%;
+  }
 }
 
 .image-loading-text {
   font-size: 0.88rem;
-  color: #475466;
-  font-weight: 500;
+  color: #334155;
+  font-weight: 600;
 }
 
 .image-empty-placeholder {
-  min-height: 160px;
+  width: 100%;
+  min-height: 240px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #f8fafc;
   border-radius: var(--radius-md, 12px);
-  color: #94a3b8;
+  color: #64748b;
   font-size: 0.95rem;
 }
 
@@ -851,11 +937,21 @@ watch(() => props.incident, () => {
   border-radius: var(--radius-md, 12px);
   background: #000;
   display: block;
+  opacity: 1;
+  transition: opacity 0.25s ease, transform 0.2s ease;
+}
+
+.incident-image.is-hidden-while-loading {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .incident-image.is-clickable {
   cursor: zoom-in;
-  transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
 .incident-image.is-clickable:hover {
@@ -1189,6 +1285,8 @@ watch(() => props.incident, () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  font-family: inherit;
   gap: 0.4rem;
   padding: 0.7rem 0.75rem;
   background: #f8fafc;

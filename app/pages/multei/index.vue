@@ -4,7 +4,12 @@
     <h1 class="seo-title">Multei - Denúncia anônima de uso irregular de vagas para PcD</h1>
 
     <!-- Barra Superior Flutuante: Botão Voltar + Busca de Endereço + Status/GPS -->
-    <div class="top-header-bar" ref="searchContainerRef">
+    <div
+      class="top-header-bar"
+      ref="searchContainerRef"
+      :inert="isAnyModalOpen || undefined"
+      :aria-hidden="isAnyModalOpen ? 'true' : undefined"
+    >
       <div class="top-left-controls">
         <NuxtLink to="/" class="btn-back-home" title="Voltar para a página inicial do Vale PCD"
           aria-label="Voltar para a Home do Vale PCD">
@@ -15,25 +20,40 @@
           </svg>
           <span class="back-label">Voltar</span>
         </NuxtLink>
+
+        <!-- Filtro de Tipo de Ocorrência (filtra apenas o que é exibido em tela, sem nova busca) -->
+        <div class="incident-type-filter-wrapper">
+          <select
+            v-model="selectedIncidentType"
+            class="incident-type-select"
+            aria-label="Filtrar tipo de ocorrência exibida no mapa"
+            title="Filtrar ocorrências exibidas no mapa"
+          >
+            <option value="all">Todas ocorrências</option>
+            <option value="urbana">Mobilidade urbana</option>
+            <option value="transito">Infrações de trânsito</option>
+          </select>
+        </div>
     
         <div class="top-bar-pills glass-panel">
           <span v-if="isLoadingSheet" class="badge-status">Sincronizando...</span>
           <span v-else class="badge-status is-active"
-            :title="`Exibindo ${visibleIncidentsCount} de ${incidents.length} ocorrências carregadas`">
+            :title="`Exibindo ${visibleIncidentsCount} de ${filteredIncidents.length} ocorrências filtradas (${incidents.length} carregadas na região)`">
             {{ visibleIncidentsCount }} na região
           </span>
 
-          <button v-if="locationState !== 'granted'" type="button" class="badge-location-btn" @click="requestLocation"
-            title="Clique para obter sua localização exata no mapa">
-            <span>📍</span>
-            <span>{{ locationState === 'denied' ? 'Ativar GPS' : 'Meu GPS' }}</span>
+          <button
+            type="button"
+            class="badge-status is-clickable-gps"
+            :class="locationState === 'granted' ? 'is-gps' : 'is-gps-off'"
+            :aria-pressed="locationState === 'granted'"
+            :title="locationState === 'granted' ? 'GPS ativo. Clique para desativar o GPS' : 'GPS desativado. Clique para ativar sua localização GPS'"
+            @click="handleGpsToggle"
+          >
+            📍 {{ locationState === 'granted' ? 'GPS Ativo' : (locationState === 'requesting' ? 'GPS...' : 'Ativar GPS') }}
           </button>
-          <button v-else type="button" class="badge-status is-gps is-clickable-gps" @click="requestLocation"
-            title="Clique para voltar à sua localização GPS">
-            📍 GPS Ativo
-          </button>
-          </div>
-          </div>
+        </div>
+      </div>
 
       <!-- Barra de Busca de Endereços -->
       <div class="address-search-wrapper">
@@ -90,6 +110,8 @@
         v-if="hasMovedRegion && !isLoadingSheet"
         type="button"
         class="btn-floating-refresh"
+        :inert="isAnyModalOpen || undefined"
+        :aria-hidden="isAnyModalOpen ? 'true' : undefined"
         @click="handleRegionButtonClick"
         title="Você mudou a localização do mapa. Clique para carregar ocorrências desta região."
       >
@@ -99,7 +121,11 @@
     </Transition>
 
     <!-- Botões Flutuantes: Incluir Ocorrência + Dúvidas? -->
-    <div class="bottom-action-container">
+    <div
+      class="bottom-action-container"
+      :inert="isAnyModalOpen || undefined"
+      :aria-hidden="isAnyModalOpen ? 'true' : undefined"
+    >
       <button type="button" class="btn btn-primary btn-floating-report" @click="isCreateModalOpen = true">
         <span class="btn-report-icon" aria-hidden="true">+</span>
         <span>Incluir</span>
@@ -108,15 +134,19 @@
       <div class="help-menu-wrapper" ref="helpMenuRef">
         <Transition name="help-menu-pop">
           <div v-if="isHelpMenuOpen" class="help-upward-menu" role="menu" aria-label="Opções de ajuda">
-            <NuxtLink to="/multei/orientacoes" class="help-menu-item" role="menuitem" @click="isHelpMenuOpen = false">
-              <span class="help-menu-icon" aria-hidden="true">ℹ️</span>
+            <NuxtLink to="/multei/sobre" class="help-menu-item" role="menuitem" @click="isHelpMenuOpen = false">
+              <span class="help-menu-icon" aria-hidden="true">📊</span>
               <span>Sobre o Multei</span>
             </NuxtLink>
-<button type="button" class="help-menu-item" role="menuitem" @click="openWhatToReportModal">
-  <span class="help-menu-icon" aria-hidden="true">📋</span>
-  <span>O que denunciar?</span>
-</button>
-</div>
+            <NuxtLink to="/multei/orientacoes" class="help-menu-item" role="menuitem" @click="isHelpMenuOpen = false">
+              <span class="help-menu-icon" aria-hidden="true">ℹ️</span>
+              <span>Orientações de Uso</span>
+            </NuxtLink>
+            <button type="button" class="help-menu-item" role="menuitem" @click="openWhatToReportModal">
+              <span class="help-menu-icon" aria-hidden="true">📋</span>
+              <span>O que denunciar?</span>
+            </button>
+          </div>
 </Transition>
 
 <button type="button" class="btn-floating-help" :class="{ 'is-open': isHelpMenuOpen }" :aria-expanded="isHelpMenuOpen"
@@ -127,11 +157,16 @@
     </div>
 
     <!-- Mapa em Tela Cheia -->
-    <div class="fullscreen-map-container">
+    <div
+      class="fullscreen-map-container"
+      :inert="isAnyModalOpen || undefined"
+      :aria-hidden="isAnyModalOpen ? 'true' : undefined"
+    >
       <MulteiMapDisplay
-        :incidents="incidents"
+        :incidents="filteredIncidents"
         :initial-center="initialCenter"
         :initial-zoom="15"
+        :show-user-location-dot="locationState === 'granted'"
         height="100vh"
         @marker-click="handleMarkerClick"
         @bounds-change="handleBoundsChange"
@@ -141,8 +176,14 @@
 
     <!-- Modal Tela Cheia: O que posso denunciar? -->
     <Transition name="fade-modal">
-      <div v-if="isWhatToReportModalOpen" class="what-to-report-fullscreen-modal" role="dialog" aria-modal="true"
-        aria-labelledby="what-to-report-title">
+      <div
+        v-if="isWhatToReportModalOpen"
+        ref="whatToReportModalRef"
+        class="what-to-report-fullscreen-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="what-to-report-title"
+      >
         <div class="what-to-report-content">
           <div class="what-to-report-topbar">
             <span class="what-to-report-badge">Guia de Infrações</span>
@@ -253,8 +294,10 @@
       v-if="isCreateModalOpen"
       :current-location="currentMapCenter || initialCenter"
       :apps-script-url="appsScriptUrl"
+      :is-gps-enabled="locationState === 'granted'"
       @close="isCreateModalOpen = false"
       @incident-created="handleIncidentCreated"
+      @gps-enabled="handleUserLocationFound"
     />
 
     <!-- Modal de Detalhes da Ocorrência Clicada -->
@@ -272,6 +315,7 @@
   import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { fetchIncidentsByVisibleArea } from '~/services/firebaseService';
   import { requestUserLocation, searchAddresses } from '~/services/geoService';
+  import { useModalAccessibility } from '~/composables/useModalAccessibility';
 
 definePageMeta({
   layout: false
@@ -304,6 +348,20 @@ const filterScope = ref('nearby'); // 'nearby' ou 'all'
   const helpMenuRef = ref(null);
   const isHelpMenuOpen = ref(false);
   const isWhatToReportModalOpen = ref(false);
+  const whatToReportModalRef = ref(null);
+
+  const isAnyModalOpen = computed(() =>
+    Boolean(isCreateModalOpen.value || selectedIncident.value || isWhatToReportModalOpen.value)
+  );
+
+  useModalAccessibility({
+    modalRef: whatToReportModalRef,
+    isOpen: isWhatToReportModalOpen,
+    onRequestClose: () => {
+      isWhatToReportModalOpen.value = false;
+      return 'closed';
+    }
+  });
 
   const toggleHelpMenu = () => {
     isHelpMenuOpen.value = !isHelpMenuOpen.value;
@@ -479,42 +537,40 @@ const hasMovedRegion = computed(() => {
     loadedCenter.value.latitude,
     loadedCenter.value.longitude
   );
-  return dist > 2.5;
+  return dist > 5;
 });
-
-const haveBoundsChangedSignificantly = (nextBounds, prevBounds) => {
-  if (!nextBounds) return false;
-  if (!prevBounds) return true;
-  const eps = 0.0008;
-  return (
-    Math.abs(nextBounds.north - prevBounds.north) > eps ||
-    Math.abs(nextBounds.south - prevBounds.south) > eps ||
-    Math.abs(nextBounds.east - prevBounds.east) > eps ||
-    Math.abs(nextBounds.west - prevBounds.west) > eps
-  );
-};
 
 const handleBoundsChange = (bounds) => {
   mapBounds.value = bounds;
   if (bounds?.center) {
     currentMapCenter.value = bounds.center;
   }
-
-  // Busca automática das ocorrências na área visível do mapa via geohash
-  if (haveBoundsChangedSignificantly(bounds, lastQueriedBounds.value)) {
-    if (boundsFetchDebounceTimer) clearTimeout(boundsFetchDebounceTimer);
-    boundsFetchDebounceTimer = setTimeout(() => {
-      loadIncidents('nearby', bounds?.center || currentMapCenter.value, bounds);
-    }, 280);
-  }
+  // A consulta ao Firebase carrega um raio de 5 km ao redor do loadedCenter.
+  // Movimentações dentro desse raio usam os pinos já em memória; ao passar de 5 km,
+  // o botão "Atualizar região" aparece para buscar sob demanda e economizar leituras.
 };
 
+const selectedIncidentType = ref('all'); // 'all' | 'urbana' | 'transito'
+
+const filteredIncidents = computed(() => {
+  if (selectedIncidentType.value === 'all') {
+    return incidents.value;
+  }
+  return incidents.value.filter((inc) => {
+    const isUrbana = String(inc?.natureza || '').trim().toLowerCase() === 'urbana';
+    if (selectedIncidentType.value === 'urbana') return isUrbana;
+    if (selectedIncidentType.value === 'transito') return !isUrbana;
+    return true;
+  });
+});
+
 const visibleIncidentsCount = computed(() => {
+  const sourceList = filteredIncidents.value;
   if (!mapBounds.value) {
-    return incidents.value.length;
+    return sourceList.length;
   }
   const { north, south, east, west } = mapBounds.value;
-  return incidents.value.filter((inc) => {
+  return sourceList.filter((inc) => {
     const lat = Number(inc.latitude);
     const lng = Number(inc.longitude);
     if (isNaN(lat) || isNaN(lng)) return false;
@@ -609,7 +665,7 @@ const loadIncidents = async (scope = filterScope.value, customCenter = null, cus
     const firebaseIncidents = await fetchIncidentsByVisibleArea({
       bounds: centerInsideBounds ? targetBounds : null,
       center: targetCenter,
-      radiusKm: 15
+      radiusKm: 5
     });
 
     if (requestId !== latestLoadRequestId) return;
@@ -637,7 +693,17 @@ const handleUserLocationFound = (coords) => {
   initialCenter.value = coords;
   currentMapCenter.value = coords;
   locationState.value = 'granted';
-  loadIncidents('nearby', coords);
+  const distFromLoaded = loadedCenter.value
+    ? getDistanceKm(
+        coords.latitude,
+        coords.longitude,
+        loadedCenter.value.latitude,
+        loadedCenter.value.longitude
+      )
+    : Infinity;
+  if (incidents.value.length === 0 || distFromLoaded > 5) {
+    loadIncidents('nearby', coords);
+  }
 };
 
 const requestLocation = async () => {
@@ -653,6 +719,14 @@ const requestLocation = async () => {
     locationState.value = 'denied';
     await loadIncidents('nearby', currentMapCenter.value || initialCenter.value, mapBounds.value);
   }
+};
+
+const handleGpsToggle = async () => {
+  if (locationState.value === 'granted') {
+    locationState.value = 'disabled';
+    return;
+  }
+  await requestLocation();
 };
 
 onMounted(async () => {
@@ -942,6 +1016,44 @@ onMounted(async () => {
   stroke: currentColor;
 }
 
+.incident-type-filter-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.incident-type-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 14px;
+  color: #0f172a;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0.55rem 2.1rem 0.55rem 0.95rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.incident-type-select:hover {
+  background-color: #f8fafc;
+  border-color: var(--primary, #86007D);
+  color: var(--primary, #86007D);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
+}
+
+.incident-type-select:focus-visible {
+  outline: 2px solid var(--primary, #86007D);
+  outline-offset: 2px;
+}
+
 .glass-panel {
   display: inline-flex;
   align-items: center;
@@ -1047,6 +1159,19 @@ onMounted(async () => {
 .is-clickable-gps:hover {
   background: #0369a1;
   color: #ffffff;
+}
+
+.badge-status.is-gps-off {
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px solid #94a3b8;
+  font-weight: 700;
+}
+
+.badge-status.is-gps-off:hover {
+  background: var(--primary, #86007D);
+  color: #ffffff;
+  border-color: var(--primary, #86007D);
 }
 
 .btn-floating-refresh {
@@ -1454,14 +1579,15 @@ onMounted(async () => {
 @media (max-width: 640px) {
   .top-header-bar {
     top: 10px;
-    left: 10px;
-    right: 10px;
-    gap: 0.45rem;
+    left: 8px;
+    right: 8px;
+    gap: 0.4rem;
   }
   .top-left-controls {
     width: 100%;
+    flex-wrap: nowrap;
     justify-content: space-between;
-    gap: 0.4rem;
+    gap: 0.25rem;
   }
   .address-search-wrapper {
     width: 100%;
@@ -1469,11 +1595,44 @@ onMounted(async () => {
     flex: 1 1 100%;
   }
   .btn-back-home {
-    padding: 0.42rem 0.8rem;
-    font-size: 0.8rem;
+    padding: 0.36rem 0.52rem;
+    font-size: 0.72rem;
+    gap: 0.2rem;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .back-icon {
+    width: 14px;
+    height: 14px;
+  }
+  .incident-type-filter-wrapper {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 142px;
+  }
+  .incident-type-select {
+    width: 100%;
+    padding: 0.36rem 1.25rem 0.36rem 0.5rem;
+    font-size: 0.72rem;
+    background-position: right 0.38rem center;
+    background-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .top-bar-pills.glass-panel {
+    padding: 0.2rem 0.3rem;
+    gap: 0.22rem;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+  }
+  .badge-status {
+    font-size: 0.68rem;
+    padding: 0.2rem 0.42rem;
+    white-space: nowrap;
   }
   .btn-floating-refresh {
-    top: 112px;
+    top: 96px;
   }
   .bottom-action-container {
     bottom: 20px;

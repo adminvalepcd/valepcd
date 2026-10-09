@@ -8,6 +8,8 @@ import {
   setDoc,
   updateDoc,
   getDocs,
+  onSnapshot,
+  increment,
   query,
   orderBy,
   startAt,
@@ -31,6 +33,16 @@ import { getAddressDetailsFromCoords, extractCityAndStateFromText, normalizeStat
 
 export const OCORRENCIAS_COLLECTION = 'ocorrencias';
 export const RESOLVIDOS_COLLECTION = 'resolvidos';
+export const ESTATISTICAS_COLLECTION = 'estatisticas';
+export const ESTATISTICAS_DOC_ID = 'resumo';
+
+export interface MulteiStats {
+  totalGeral: number;
+  infracoesTransito: number;
+  mobilidadeUrbana: number;
+  resolvidos: number;
+  updatedAt?: string;
+}
 
 export interface SaveUrbanResolutionPayload {
   ocorrenciaId: string;
@@ -192,24 +204,149 @@ function mapDocToIncident(docId: string, data: Record<string, any>): ReportedInc
   };
 }
 
+const REGION_CACHE_STORAGE_KEY = 'multei_region_cache_v1';
+const STATS_CACHE_STORAGE_KEY = 'multei_stats_cache_v1';
+const REGION_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutos de cache por região
+const STATS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutos de cache para fallback de estatísticas
+const MAX_CACHED_REGIONS = 8;
+
+interface CachedRegionEntry {
+  centerLat: number;
+  centerLng: number;
+  radiusMeters: number;
+  fetchedAt: number;
+  incidents: ReportedIncident[];
+}
+
+let inMemoryRegionCache: CachedRegionEntry[] | null = null;
+const inFlightRegionPromises = new Map<string, Promise<ReportedIncident[]>>();
+
+function loadRegionCacheEntries(): CachedRegionEntry[] {
+  if (inMemoryRegionCache) {
+    return inMemoryRegionCache;
+  }
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(REGION_CACHE_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        inMemoryRegionCache = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
+  inMemoryRegionCache = [];
+  return [];
+}
+
+function saveRegionCacheEntries(entries: CachedRegionEntry[]) {
+  inMemoryRegionCache = entries;
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(REGION_CACHE_STORAGE_KEY, JSON.stringify(entries));
+  } catch {}
+}
+
+function findValidCachedRegion(
+  centerLat: number,
+  centerLng: number,
+  radiusMeters: number
+): ReportedIncident[] | null {
+  const now = Date.now();
+  const entries = loadRegionCacheEntries();
+  const validEntries = entries.filter(
+    (entry) =>
+      entry &&
+      typeof entry.fetchedAt === 'number' &&
+      now - entry.fetchedAt < REGION_CACHE_TTL_MS &&
+      Array.isArray(entry.incidents)
+  );
+
+  if (validEntries.length !== entries.length) {
+    saveRegionCacheEntries(validEntries);
+  }
+
+  for (const entry of validEntries) {
+    const distKm = distanceBetween([entry.centerLat, entry.centerLng], [centerLat, centerLng]);
+    const distMeters = distKm * 1000;
+    // Se o centro solicitado está a até 1.5 km do centro já carregado (ou totalmente coberto pelo raio em cache)
+    const isCovered =
+      (distMeters <= 1500 && radiusMeters <= entry.radiusMeters + 500) ||
+      distMeters + radiusMeters <= entry.radiusMeters + 300;
+
+    if (isCovered) {
+      return entry.incidents;
+    }
+  }
+
+  return null;
+}
+
+function storeRegionInCache(
+  centerLat: number,
+  centerLng: number,
+  radiusMeters: number,
+  incidents: ReportedIncident[]
+) {
+  const now = Date.now();
+  const entries = loadRegionCacheEntries().filter((entry) => {
+    if (!entry || now - entry.fetchedAt >= REGION_CACHE_TTL_MS) return false;
+    const distKm = distanceBetween([entry.centerLat, entry.centerLng], [centerLat, centerLng]);
+    // Substitui entradas muito próximas (< 1.5 km) pela mais recente
+    return distKm * 1000 > 1500;
+  });
+
+  entries.unshift({
+    centerLat,
+    centerLng,
+    radiusMeters,
+    fetchedAt: now,
+    incidents
+  });
+
+  saveRegionCacheEntries(entries.slice(0, MAX_CACHED_REGIONS));
+}
+
 /**
- * Busca ocorrências no Firestore dentro da área visível do mapa usando `geohashQueryBounds` (geofire-common).
+ * Busca ocorrências no Firestore em um raio de 5 km (padrão) ao redor do centro carregado
+ * usando `geohashQueryBounds` (geofire-common) e cache regional inteligente (TTL de 15 min),
+ * evitando chamadas repetidas ao recarregar a página na mesma região.
  */
 export async function fetchIncidentsByVisibleArea(options: {
   bounds?: MapVisibleBounds | null;
   center?: { latitude: number; longitude: number } | null;
   radiusKm?: number;
+  forceRefresh?: boolean;
 }): Promise<ReportedIncident[]> {
   try {
-    const { db } = getFirebaseServices();
-    const colRef = collection(db, OCORRENCIAS_COLLECTION);
-
     let centerLat: number;
     let centerLng: number;
     let radiusMeters: number;
     const bounds = options.bounds;
+    const defaultRadiusMeters = (options.radiusKm ?? 5) * 1000;
 
     if (
+      options.center &&
+      Number.isFinite(options.center.latitude) &&
+      Number.isFinite(options.center.longitude)
+    ) {
+      centerLat = options.center.latitude;
+      centerLng = options.center.longitude;
+      if (
+        bounds &&
+        Number.isFinite(bounds.north) &&
+        Number.isFinite(bounds.south) &&
+        Number.isFinite(bounds.east) &&
+        Number.isFinite(bounds.west)
+      ) {
+        const cornerDistanceKm = distanceBetween([centerLat, centerLng], [bounds.north, bounds.east]);
+        // Garante no mínimo 5 km de raio carregado ao redor da tela (ou mais se o zoom estiver aberto)
+        radiusMeters = Math.min(Math.max(cornerDistanceKm * 1000 + defaultRadiusMeters, defaultRadiusMeters), 80000);
+      } else {
+        radiusMeters = defaultRadiusMeters;
+      }
+    } else if (
       bounds &&
       Number.isFinite(bounds.north) &&
       Number.isFinite(bounds.south) &&
@@ -218,21 +355,15 @@ export async function fetchIncidentsByVisibleArea(options: {
     ) {
       centerLat = bounds.center?.latitude ?? (bounds.north + bounds.south) / 2;
       centerLng = bounds.center?.longitude ?? (bounds.east + bounds.west) / 2;
-
-      // Calcula a distância do centro até o canto nordeste da área visível do mapa (em km -> metros)
       const cornerDistanceKm = distanceBetween([centerLat, centerLng], [bounds.north, bounds.east]);
-      // Margem de 15% para cobrir bordas da tela, com mínimo de 1km e teto de 80km por consulta geohash
-      radiusMeters = Math.min(Math.max(cornerDistanceKm * 1000 * 1.15, 1000), 80000);
-    } else if (
-      options.center &&
-      Number.isFinite(options.center.latitude) &&
-      Number.isFinite(options.center.longitude)
-    ) {
-      centerLat = options.center.latitude;
-      centerLng = options.center.longitude;
-      radiusMeters = (options.radiusKm ?? 30) * 1000;
+      radiusMeters = Math.min(Math.max(cornerDistanceKm * 1000 + defaultRadiusMeters, defaultRadiusMeters), 80000);
     } else {
-      // Fallback: busca geral na coleção caso ainda não haja centro ou bounds definidos
+      const cachedFallback = loadIncidentsFromLocalCache();
+      if (!options.forceRefresh && cachedFallback.length > 0) {
+        return cachedFallback;
+      }
+      const { db } = getFirebaseServices();
+      const colRef = collection(db, OCORRENCIAS_COLLECTION);
       const snap = await getDocs(colRef);
       const all: ReportedIncident[] = [];
       snap.forEach((docSnap) => {
@@ -242,70 +373,76 @@ export async function fetchIncidentsByVisibleArea(options: {
       return all;
     }
 
-    const queryBounds = geohashQueryBounds([centerLat, centerLng], radiusMeters);
-    const snapshots = await Promise.all(
-      queryBounds.map(([startHash, endHash]) => {
-        const q = query(colRef, orderBy('geohash'), startAt(startHash), endAt(endHash));
-        return getDocs(q);
-      })
-    );
+    // 1. Verifica se a região já está em cache válido (0 leituras no Firestore)
+    if (!options.forceRefresh) {
+      const cachedRegion = findValidCachedRegion(centerLat, centerLng, radiusMeters);
+      if (cachedRegion) {
+        return cachedRegion;
+      }
+    }
 
-    const seenIds = new Set<string>();
-    const results: ReportedIncident[] = [];
+    // 2. Deduplica chamadas simultâneas para a mesma região arredondada (~1 km)
+    const inflightKey = `${centerLat.toFixed(2)}_${centerLng.toFixed(2)}_${Math.round(radiusMeters / 1000)}`;
+    if (!options.forceRefresh && inFlightRegionPromises.has(inflightKey)) {
+      return await inFlightRegionPromises.get(inflightKey)!;
+    }
 
-    for (const snap of snapshots) {
-      snap.forEach((docSnap) => {
-        if (seenIds.has(docSnap.id)) return;
-        seenIds.add(docSnap.id);
+    const fetchPromise = (async () => {
+      const { db } = getFirebaseServices();
+      const colRef = collection(db, OCORRENCIAS_COLLECTION);
+      const queryBounds = geohashQueryBounds([centerLat, centerLng], radiusMeters);
+      const snapshots = await Promise.all(
+        queryBounds.map(([startHash, endHash]) => {
+          const q = query(colRef, orderBy('geohash'), startAt(startHash), endAt(endHash));
+          return getDocs(q);
+        })
+      );
 
-        const incident = mapDocToIncident(docSnap.id, docSnap.data());
-        if (!incident) return;
+      const seenIds = new Set<string>();
+      const results: ReportedIncident[] = [];
 
-        // Se temos os limites exatos da tela (bounds), filtra pelos limites visíveis (com pequena folga)
-        if (
-          bounds &&
-          Number.isFinite(bounds.north) &&
-          Number.isFinite(bounds.south) &&
-          Number.isFinite(bounds.east) &&
-          Number.isFinite(bounds.west)
-        ) {
-          const latPad = Math.abs(bounds.north - bounds.south) * 0.05;
-          const lngPad = Math.abs(bounds.east - bounds.west) * 0.05;
-          const inLat =
-            incident.latitude >= bounds.south - latPad &&
-            incident.latitude <= bounds.north + latPad;
-          const inLng =
-            bounds.west <= bounds.east
-              ? incident.longitude >= bounds.west - lngPad && incident.longitude <= bounds.east + lngPad
-              : incident.longitude >= bounds.west - lngPad || incident.longitude <= bounds.east + lngPad;
+      for (const snap of snapshots) {
+        snap.forEach((docSnap) => {
+          if (seenIds.has(docSnap.id)) return;
+          seenIds.add(docSnap.id);
 
-          if (!inLat || !inLng) return;
-        } else {
-          // Filtro por raio em relação ao centro
+          const incident = mapDocToIncident(docSnap.id, docSnap.data());
+          if (!incident) return;
+
+          // Filtra pelo raio carregado (5 km ao redor da visualização) para manter todos os pinos da vizinhança em memória
           const distKm = distanceBetween(
             [centerLat, centerLng],
             [incident.latitude, incident.longitude]
           );
           if (distKm * 1000 > radiusMeters) return;
-        }
 
-        results.push(incident);
+          results.push(incident);
+        });
+      }
+
+      results.sort((a, b) => {
+        const timeA = new Date(a.timestamp).getTime() || 0;
+        const timeB = new Date(b.timestamp).getTime() || 0;
+        return timeB - timeA;
       });
+
+      storeRegionInCache(centerLat, centerLng, radiusMeters, results);
+
+      if (typeof window !== 'undefined' && results.length > 0) {
+        try {
+          localStorage.setItem('multei_cached_incidents', JSON.stringify(results));
+        } catch {}
+      }
+
+      return results;
+    })();
+
+    inFlightRegionPromises.set(inflightKey, fetchPromise);
+    try {
+      return await fetchPromise;
+    } finally {
+      inFlightRegionPromises.delete(inflightKey);
     }
-
-    results.sort((a, b) => {
-      const timeA = new Date(a.timestamp).getTime() || 0;
-      const timeB = new Date(b.timestamp).getTime() || 0;
-      return timeB - timeA;
-    });
-
-    if (typeof window !== 'undefined' && results.length > 0) {
-      try {
-        localStorage.setItem('multei_cached_incidents', JSON.stringify(results));
-      } catch {}
-    }
-
-    return results;
   } catch (err) {
     console.warn('[firebaseService] Erro ao buscar ocorrências no Firestore, usando cache local:', err);
     return loadIncidentsFromLocalCache();
@@ -317,7 +454,8 @@ export async function fetchIncidentsByVisibleArea(options: {
  * 1. Gera um ID único do Firestore para a coleção `ocorrencias`
  * 2. Faz upload da foto anonimizada para `/ocorrencias/{id}.webp` no Firebase Storage
  * 3. Obtém a `downloadURL`
- * 4. Grava o documento em `ocorrencias/{id}` com `geohash` e `natureza: 'infracao_veicular'`
+ * 4. Grava o documento em `ocorrencias/{id}` com `geohash` e `natureza`
+ * 5. Atualiza o documento agregador `estatisticas/resumo`
  */
 export async function saveIncidentToFirebase(
   incident: SaveFirebaseIncidentPayload
@@ -326,6 +464,7 @@ export async function saveIncidentToFirebase(
   id: string;
   fotoUrl: string;
   geohash: string;
+  descricao?: string;
   rua?: string;
   bairro?: string;
   cidade?: string;
@@ -418,6 +557,25 @@ export async function saveIncidentToFirebase(
 
   await setDoc(newDocRef, docData);
 
+  // 5. Atualiza contadores em `estatisticas/resumo` (Option B - 1 documento único)
+  if (docData.ativo) {
+    try {
+      const isUrbana = docData.natureza === 'urbana';
+      const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+      await setDoc(
+        statsRef,
+        {
+          totalGeral: increment(1),
+          [isUrbana ? 'mobilidadeUrbana' : 'infracoesTransito']: increment(1),
+          updatedAt: dataIso
+        },
+        { merge: true }
+      );
+    } catch (statsErr) {
+      console.warn('[firebaseService] Aviso ao atualizar estatísticas:', statsErr);
+    }
+  }
+
   saveIncidentToLocalCache({
     id,
     timestamp: dataIso,
@@ -465,23 +623,49 @@ export async function reportIncidentInFirebase(id: string, reason: string): Prom
     throw new Error('ID da ocorrência ausente para denúncia.');
   }
 
-  if (typeof window !== 'undefined') {
-    try {
-      const cached = loadIncidentsFromLocalCache();
-      const updated = cached.filter((inc) => inc.id !== cleanId);
-      localStorage.setItem('multei_cached_incidents', JSON.stringify(updated));
-    } catch (e) {
-      console.warn('[firebaseService] Erro ao atualizar cache local na denúncia:', e);
-    }
-  }
+  removeIncidentFromLocalCache(cleanId);
 
   const { db } = getFirebaseServices();
   const docRef = doc(db, OCORRENCIAS_COLLECTION, cleanId);
+
+  let wasActive = true;
+  let wasUrbana = false;
+  try {
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const d = snap.data() || {};
+      wasActive = d.ativo !== false && String(d.ativo).toLowerCase() !== 'false';
+      wasUrbana = d.natureza === 'urbana';
+    }
+  } catch {}
 
   await updateDoc(docRef, {
     ativo: false,
     motivo_denuncia: (reason || '').trim()
   });
+
+  if (wasActive) {
+    adjustCachedStats({
+      totalGeralDelta: -1,
+      infracoesTransitoDelta: wasUrbana ? 0 : -1,
+      mobilidadeUrbanaDelta: wasUrbana ? -1 : 0,
+      resolvidosDelta: 0
+    });
+    try {
+      const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+      await setDoc(
+        statsRef,
+        {
+          totalGeral: increment(-1),
+          [wasUrbana ? 'mobilidadeUrbana' : 'infracoesTransito']: increment(-1),
+          updatedAt: new Date().toISOString()
+        },
+        { merge: true }
+      );
+    } catch (statsErr) {
+      console.warn('[firebaseService] Aviso ao decrementar estatísticas:', statsErr);
+    }
+  }
 
   return true;
 }
@@ -588,28 +772,206 @@ export async function submitUrbanResolutionToFirebase(
     data_sinalizacao_resolvido: dataIso
   });
 
-  // Atualiza também o cache local para refletir o status imediatamente
-  if (typeof window !== 'undefined') {
-    try {
-      const cached = loadIncidentsFromLocalCache();
-      const updated = cached.map((item) =>
-        item.id === ocorrenciaId
-          ? {
-              ...item,
-              resolvido_em_validacao: true,
-              status_resolucao: 'em_validacao'
-            }
-          : item
-      );
-      localStorage.setItem('multei_cached_incidents', JSON.stringify(updated));
-    } catch {}
+  // Atualiza contador de resolvidos em `estatisticas/resumo`
+  adjustCachedStats({
+    totalGeralDelta: 0,
+    infracoesTransitoDelta: 0,
+    mobilidadeUrbanaDelta: 0,
+    resolvidosDelta: 1
+  });
+  try {
+    const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+    await setDoc(
+      statsRef,
+      {
+        resolvidos: increment(1),
+        updatedAt: dataIso
+      },
+      { merge: true }
+    );
+  } catch (statsErr) {
+    console.warn('[firebaseService] Aviso ao incrementar contador de resolvidos:', statsErr);
   }
+
+  // Atualiza também o cache local e regional para refletir o status imediatamente
+  markIncidentResolvedInLocalCache(ocorrenciaId);
 
   return {
     success: true,
     id,
     fotoUrl
   };
+}
+
+function loadCachedStatsEntry(): { stats: MulteiStats; fetchedAt: number } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(STATS_CACHE_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.stats && typeof parsed.fetchedAt === 'number') {
+        return parsed;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function saveCachedStatsEntry(stats: MulteiStats) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(
+      STATS_CACHE_STORAGE_KEY,
+      JSON.stringify({
+        stats,
+        fetchedAt: Date.now()
+      })
+    );
+  } catch {}
+}
+
+function adjustCachedStats(deltas: {
+  totalGeralDelta: number;
+  infracoesTransitoDelta: number;
+  mobilidadeUrbanaDelta: number;
+  resolvidosDelta: number;
+}) {
+  const cached = loadCachedStatsEntry();
+  if (!cached) return;
+  const s = cached.stats;
+  const infracoesTransito = Math.max(0, Number(s.infracoesTransito || 0) + deltas.infracoesTransitoDelta);
+  const mobilidadeUrbana = Math.max(0, Number(s.mobilidadeUrbana || 0) + deltas.mobilidadeUrbanaDelta);
+  const resolvidos = Math.max(0, Number(s.resolvidos || 0) + deltas.resolvidosDelta);
+  const totalGeral = Math.max(infracoesTransito + mobilidadeUrbana, Number(s.totalGeral || 0) + deltas.totalGeralDelta);
+  saveCachedStatsEntry({
+    totalGeral,
+    infracoesTransito,
+    mobilidadeUrbana,
+    resolvidos,
+    updatedAt: new Date().toISOString()
+  });
+}
+
+/**
+ * Recalcula as métricas a partir das coleções `ocorrencias` e `resolvidos`
+ * e grava o documento único `estatisticas/resumo` (executado apenas na primeira inicialização).
+ */
+export async function recalculateAndSyncMulteiStats(): Promise<MulteiStats> {
+  const cached = loadCachedStatsEntry();
+  if (cached && Date.now() - cached.fetchedAt < STATS_CACHE_TTL_MS) {
+    return cached.stats;
+  }
+
+  const { db } = getFirebaseServices();
+  const [ocorrenciasSnap, resolvidosSnap] = await Promise.all([
+    getDocs(collection(db, OCORRENCIAS_COLLECTION)),
+    getDocs(collection(db, RESOLVIDOS_COLLECTION))
+  ]);
+
+  let infracoesTransito = 0;
+  let mobilidadeUrbana = 0;
+
+  ocorrenciasSnap.forEach((docSnap) => {
+    const d = docSnap.data() || {};
+    const isAtivo =
+      d.ativo !== undefined && d.ativo !== ''
+        ? d.ativo === true || String(d.ativo).toLowerCase() === 'true'
+        : true;
+    if (!isAtivo) return;
+
+    if (d.natureza === 'urbana') {
+      mobilidadeUrbana++;
+    } else {
+      infracoesTransito++;
+    }
+  });
+
+  const resolvidos = resolvidosSnap.size;
+  const totalGeral = infracoesTransito + mobilidadeUrbana;
+  const updatedAt = new Date().toISOString();
+
+  const stats: MulteiStats = {
+    totalGeral,
+    infracoesTransito,
+    mobilidadeUrbana,
+    resolvidos,
+    updatedAt
+  };
+
+  saveCachedStatsEntry(stats);
+
+  try {
+    const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+    await setDoc(statsRef, stats, { merge: true });
+  } catch (err) {
+    console.warn('[firebaseService] Aviso ao gravar estatisticas/resumo inicial:', err);
+  }
+
+  return stats;
+}
+
+/**
+ * Escuta em tempo real o documento único `estatisticas/resumo` (consome apenas 1 leitura).
+ * Utiliza cache local imediato e evita varreduras repetidas caso o documento agregador ainda não exista.
+ */
+export function subscribeToMulteiStats(
+  onUpdate: (stats: MulteiStats) => void,
+  onError?: (err: unknown) => void
+): () => void {
+  const cachedEntry = loadCachedStatsEntry();
+  if (cachedEntry?.stats) {
+    onUpdate(cachedEntry.stats);
+  }
+
+  try {
+    const { db } = getFirebaseServices();
+    const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+    let isSeeding = false;
+
+    const unsubscribe = onSnapshot(
+      statsRef,
+      async (snap) => {
+        if (snap.exists()) {
+          const d = snap.data() || {};
+          if (typeof d.totalGeral === 'number') {
+            const infracoesTransito = Math.max(0, Number(d.infracoesTransito || 0));
+            const mobilidadeUrbana = Math.max(0, Number(d.mobilidadeUrbana || 0));
+            const resolvidos = Math.max(0, Number(d.resolvidos || 0));
+            const totalGeral = Math.max(infracoesTransito + mobilidadeUrbana, Number(d.totalGeral || 0));
+            const nextStats: MulteiStats = {
+              totalGeral,
+              infracoesTransito,
+              mobilidadeUrbana,
+              resolvidos,
+              updatedAt: d.updatedAt ? String(d.updatedAt) : undefined
+            };
+            saveCachedStatsEntry(nextStats);
+            onUpdate(nextStats);
+            return;
+          }
+        }
+
+        if (!isSeeding) {
+          isSeeding = true;
+          try {
+            const seeded = await recalculateAndSyncMulteiStats();
+            onUpdate(seeded);
+          } catch (seedErr) {
+            if (onError) onError(seedErr);
+          }
+        }
+      },
+      (err) => {
+        console.warn('[firebaseService] Erro ao escutar estatisticas/resumo:', err);
+        if (onError && !cachedEntry?.stats) onError(err);
+      }
+    );
+
+    return unsubscribe;
+  } catch (err) {
+    if (onError && !cachedEntry?.stats) onError(err);
+    return () => {};
+  }
 }
 
 function loadIncidentsFromLocalCache(): ReportedIncident[] {
@@ -626,8 +988,82 @@ function loadIncidentsFromLocalCache(): ReportedIncident[] {
 function saveIncidentToLocalCache(inc: ReportedIncident) {
   if (typeof window === 'undefined') return;
   try {
-    const list = loadIncidentsFromLocalCache();
+    const list = loadIncidentsFromLocalCache().filter((item) => item.id !== inc.id);
     list.unshift(inc);
     localStorage.setItem('multei_cached_incidents', JSON.stringify(list));
   } catch {}
+
+  try {
+    const entries = loadRegionCacheEntries().map((entry) => {
+      const distKm = distanceBetween([entry.centerLat, entry.centerLng], [inc.latitude, inc.longitude]);
+      if (distKm * 1000 <= entry.radiusMeters) {
+        const filtered = (entry.incidents || []).filter((item) => item.id !== inc.id);
+        return {
+          ...entry,
+          incidents: [inc, ...filtered]
+        };
+      }
+      return entry;
+    });
+    saveRegionCacheEntries(entries);
+  } catch {}
+
+  const isUrbana = inc.natureza === 'urbana';
+  adjustCachedStats({
+    totalGeralDelta: 1,
+    infracoesTransitoDelta: isUrbana ? 0 : 1,
+    mobilidadeUrbanaDelta: isUrbana ? 1 : 0,
+    resolvidosDelta: 0
+  });
 }
+
+function removeIncidentFromLocalCache(id: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const cached = loadIncidentsFromLocalCache();
+    const updated = cached.filter((inc) => inc.id !== id);
+    localStorage.setItem('multei_cached_incidents', JSON.stringify(updated));
+  } catch {}
+
+  try {
+    const entries = loadRegionCacheEntries().map((entry) => ({
+      ...entry,
+      incidents: (entry.incidents || []).filter((inc) => inc.id !== id)
+    }));
+    saveRegionCacheEntries(entries);
+  } catch {}
+}
+
+function markIncidentResolvedInLocalCache(ocorrenciaId: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const cached = loadIncidentsFromLocalCache();
+    const updated = cached.map((item) =>
+      item.id === ocorrenciaId
+        ? {
+            ...item,
+            resolvido_em_validacao: true,
+            status_resolucao: 'em_validacao'
+          }
+        : item
+    );
+    localStorage.setItem('multei_cached_incidents', JSON.stringify(updated));
+  } catch {}
+
+  try {
+    const entries = loadRegionCacheEntries().map((entry) => ({
+      ...entry,
+      incidents: (entry.incidents || []).map((item) =>
+        item.id === ocorrenciaId
+          ? {
+              ...item,
+              resolvido_em_validacao: true,
+              status_resolucao: 'em_validacao'
+            }
+          : item
+      )
+    }));
+    saveRegionCacheEntries(entries);
+  } catch {}
+}
+
