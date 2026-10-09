@@ -607,27 +607,19 @@ const handleIncidentCreated = (newIncident) => {
 };
 
 const handleIncidentReported = (reportedData) => {
-  const targetId = typeof reportedData === 'object' && reportedData?.id 
-    ? String(reportedData.id) 
-    : (reportedData ? String(reportedData) : (selectedIncident.value?.id ? String(selectedIncident.value.id) : ''));
+  const targetId = typeof reportedData === 'object' && reportedData?.id
+    ? String(reportedData.id).trim()
+    : (typeof reportedData === 'string' ? reportedData.trim() : (selectedIncident.value?.id ? String(selectedIncident.value.id).trim() : ''));
 
   const targetObj = (typeof reportedData === 'object' && reportedData) ? reportedData : selectedIncident.value;
 
-  incidents.value = incidents.value.filter(inc => {
-    // 1. Comparação por ID
-    if (targetId && inc.id && String(inc.id) === targetId) {
-      return false;
+  incidents.value = incidents.value.filter((inc) => {
+    // 1. Se ambos possuem ID, compara exclusivamente pelo ID para manter outras ocorrências no mesmo endereço
+    if (targetId && inc?.id) {
+      return String(inc.id).trim() !== targetId;
     }
-    // 2. Comparação por referência de objeto
+    // 2. Fallback por referência direta de objeto caso algum item em memória não tenha ID
     if (targetObj && inc === targetObj) {
-      return false;
-    }
-    // 3. Comparação por coordenadas geográficas
-    if (targetObj &&
-        typeof inc.latitude === 'number' && typeof targetObj.latitude === 'number' &&
-        typeof inc.longitude === 'number' && typeof targetObj.longitude === 'number' &&
-        Math.abs(inc.latitude - targetObj.latitude) < 0.00005 &&
-        Math.abs(inc.longitude - targetObj.longitude) < 0.00005) {
       return false;
     }
     return true;

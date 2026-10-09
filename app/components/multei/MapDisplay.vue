@@ -717,7 +717,7 @@ const updateMarkers = () => {
   clearSpiderGraphics();
 
   if (clusterer.value) {
-    clusterer.value.clearMarkers();
+    clusterer.value.clearMarkers(true);
   }
 
   const incidents = (props.incidents || []).filter(inc => isValidCoord(inc?.latitude, inc?.longitude));
