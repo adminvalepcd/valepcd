@@ -42,15 +42,22 @@
             {{ visibleIncidentsCount }} na região
           </span>
 
-          <button
-            type="button"
-            class="badge-status is-clickable-gps"
-            :class="locationState === 'granted' ? 'is-gps' : 'is-gps-off'"
-            :aria-pressed="locationState === 'granted'"
-            :title="locationState === 'granted' ? 'GPS ativo. Clique para desativar o GPS' : 'GPS desativado. Clique para ativar sua localização GPS'"
-            @click="handleGpsToggle"
+          <span
+            v-if="locationState === 'granted'"
+            class="badge-status is-gps"
+            title="Localização GPS ativa"
           >
-            📍 {{ locationState === 'granted' ? 'GPS Ativo' : (locationState === 'requesting' ? 'GPS...' : 'Ativar GPS') }}
+            📍 GPS Ativo
+          </span>
+          <button
+            v-else
+            type="button"
+            class="badge-status is-clickable-gps is-gps-off"
+            :disabled="locationState === 'requesting'"
+            title="GPS desativado. Clique para ativar sua localização no navegador"
+            @click="handleGpsActivateClick"
+          >
+            📍 {{ locationState === 'requesting' ? 'GPS...' : 'Ativar GPS' }}
           </button>
         </div>
       </div>
@@ -721,17 +728,39 @@ const requestLocation = async () => {
   }
 };
 
-const handleGpsToggle = async () => {
-  if (locationState.value === 'granted') {
-    locationState.value = 'disabled';
+const handleGpsActivateClick = async () => {
+  if (locationState.value === 'granted' || locationState.value === 'requesting') {
     return;
   }
   await requestLocation();
 };
 
+let geoPermissionStatus = null;
+const handleGeoPermissionChange = () => {
+  if (!geoPermissionStatus) return;
+  if (geoPermissionStatus.state === 'denied') {
+    locationState.value = 'denied';
+  } else if (geoPermissionStatus.state === 'prompt') {
+    locationState.value = 'idle';
+  } else if (geoPermissionStatus.state === 'granted') {
+    requestLocation();
+  }
+};
+
 onMounted(async () => {
   if (typeof document !== 'undefined') {
     document.addEventListener('mousedown', handleDocumentClick);
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem('multei_gps_disabled');
+    } catch {}
+  }
+  if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
+    try {
+      geoPermissionStatus = await navigator.permissions.query({ name: 'geolocation' });
+      geoPermissionStatus.addEventListener('change', handleGeoPermissionChange);
+    } catch {}
   }
   await requestLocation();
 });
@@ -741,6 +770,12 @@ onMounted(async () => {
     if (boundsFetchDebounceTimer) clearTimeout(boundsFetchDebounceTimer);
     if (typeof document !== 'undefined') {
       document.removeEventListener('mousedown', handleDocumentClick);
+    }
+    if (geoPermissionStatus) {
+      try {
+        geoPermissionStatus.removeEventListener('change', handleGeoPermissionChange);
+      } catch {}
+      geoPermissionStatus = null;
     }
   });
 </script>

@@ -571,6 +571,7 @@ const handleActivateGpsForReport = async () => {
     selectedLocation.longitude = coords.longitude;
     setGpsAnchorLocation(coords.latitude, coords.longitude);
     locationSource.value = 'device';
+    updateAddress(coords.latitude, coords.longitude);
     emit('gpsEnabled', coords);
   } catch (err) {
     console.warn('[CreateIncidentModal] Falha ao ativar GPS:', err);
@@ -1394,6 +1395,11 @@ const handleRefreshGps = async () => {
 onMounted(async () => {
   // Verifica se há cooldown ativo persistido no localStorage (inclusive após F5 / recarregar a página)
   checkExistingCooldown();
+
+  if (!props.isGpsEnabled) {
+    locationSource.value = 'fallback';
+    return;
+  }
 
   const isDefaultSP = Math.abs(props.currentLocation.latitude - (-23.55052)) < 0.0001 &&
                       Math.abs(props.currentLocation.longitude - (-46.633308)) < 0.0001;

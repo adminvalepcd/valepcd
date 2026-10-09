@@ -392,6 +392,8 @@ const updateUserLocationDot = (lat, lng) => {
   }
 };
 
+let myLocationSvgEl = null;
+
 watch(() => props.showUserLocationDot, (visible) => {
   const targetMap = visible ? map.value : null;
   if (userLocationHalo) {
@@ -399,6 +401,17 @@ watch(() => props.showUserLocationDot, (visible) => {
   }
   if (userLocationMarker) {
     userLocationMarker.setMap(targetMap);
+  }
+  if (visible && !userLocationMarker && props.initialCenter) {
+    const isDefaultSP =
+      Math.abs(props.initialCenter.latitude - (-23.55052)) < 0.0001 &&
+      Math.abs(props.initialCenter.longitude - (-46.633308)) < 0.0001;
+    if (!isDefaultSP) {
+      updateUserLocationDot(props.initialCenter.latitude, props.initialCenter.longitude);
+    }
+  }
+  if (myLocationSvgEl) {
+    myLocationSvgEl.style.fill = visible ? '#1a73e8' : '#666666';
   }
 });
 
@@ -428,8 +441,9 @@ const createMyLocationControl = (mapInstance, googleMaps) => {
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('width', '20');
   svg.setAttribute('height', '20');
-  svg.style.fill = '#666666';
+  svg.style.fill = props.showUserLocationDot ? '#1a73e8' : '#666666';
   svg.style.transition = 'fill 0.2s ease, transform 0.3s ease';
+  myLocationSvgEl = svg;
 
   const path = document.createElementNS(svgNS, 'path');
   path.setAttribute(
