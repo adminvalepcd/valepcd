@@ -52,7 +52,10 @@ export default defineNuxtConfig({
         exclude: [
           '/blog', '/blog/**',
           '/en/blog', '/en/blog/**',
-          '/es/blog', '/es/blog/**'
+          '/es/blog', '/es/blog/**',
+          '/multei/painel',
+          '/en/multei/painel',
+          '/es/multei/painel'
         ]
       },
       blog: {

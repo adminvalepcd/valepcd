@@ -1,5 +1,5 @@
 import { useNuxtApp } from '#app';
-import { getApps, getApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getFirestore,
   collection,
@@ -7,10 +7,13 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   getDocs,
+  getDocsFromServer,
   onSnapshot,
   increment,
   query,
+  where,
   orderBy,
   startAt,
   endAt,
@@ -24,6 +27,19 @@ import {
   type FirebaseStorage
 } from 'firebase/storage';
 import {
+  getAuth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  sendPasswordResetEmail,
+  inMemoryPersistence,
+  setPersistence,
+  signOut,
+  onAuthStateChanged,
+  type Auth,
+  type User
+} from 'firebase/auth';
+import {
   geohashForLocation,
   geohashQueryBounds,
   distanceBetween
@@ -36,6 +52,74 @@ export const RESOLVIDOS_COLLECTION = 'resolvidos';
 export const REPORTADAS_COLLECTION = 'reportadas';
 export const ESTATISTICAS_COLLECTION = 'estatisticas';
 export const ESTATISTICAS_DOC_ID = 'resumo';
+export const USUARIOS_COLLECTION = 'usuarios';
+
+export type MulteiUserRole = 'admin' | 'parceria' | 'parceiro';
+
+export interface MulteiPanelUserProfile {
+  uid: string;
+  email: string;
+  nome?: string;
+  sobrenome?: string;
+  nomeCompleto?: string;
+  role: MulteiUserRole;
+  cidade?: string;
+  estado?: string;
+  ativo?: boolean;
+}
+
+export interface MulteiPanelManagedUser {
+  id: string;
+  uid: string;
+  role: 'admin' | 'parceria';
+  nome: string;
+  sobrenome: string;
+  nomeCompleto: string;
+  email: string;
+  cidade: string;
+  estado: string;
+  ativo: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ReportHistoryEntry {
+  motivo: string;
+  data: string;
+  apos_revisao?: boolean;
+}
+
+export interface ReportedIncidentPanelItem {
+  id: string;
+  ocorrenciaId: string;
+  data: string;
+  data_report: string;
+  ultima_data_report: string;
+  latitude: number;
+  longitude: number;
+  geohash: string;
+  fotoUrl: string;
+  natureza: string;
+  descricao: string;
+  rua: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  classificacao: string;
+  verificacao: string;
+  ativo: boolean;
+  motivo_denuncia: string;
+  motivo_report: string;
+  total_reports: number;
+  outras_revisoes_solicitadas: boolean;
+  historico_reports: ReportHistoryEntry[];
+  revisada: boolean;
+  resultado_revisao?: 'procedente' | 'improcedente' | '';
+  data_revisao?: string;
+  revisado_por?: string;
+  observacao_admin?: string;
+  legacyDocIds?: string[];
+}
 
 export type MulteiLiveCategory = 'infracoesTransito' | 'mobilidadeUrbana' | 'resolvidos';
 
@@ -106,16 +190,18 @@ export function normalizeVerificacao(raw?: unknown): 'exclusiva' | 'transferenci
 }
 
 /**
- * Obtém as instâncias do Firestore ($db) e Storage ($storage) do plugin Nuxt
+ * Obtém as instâncias do Firestore ($db), Storage ($storage) e Auth ($auth) do plugin Nuxt
  * ou diretamente do app Firebase inicializado (seguro após chamadas await).
  */
-function getFirebaseServices(): { db: Firestore; storage: FirebaseStorage } {
+function getFirebaseServices(): { db: Firestore; storage: FirebaseStorage; auth: Auth } {
   try {
     const nuxtApp = useNuxtApp();
     if (nuxtApp?.$db && nuxtApp?.$storage) {
+      const app = getApps().length > 0 ? getApp() : undefined;
       return {
         db: nuxtApp.$db as Firestore,
-        storage: nuxtApp.$storage as FirebaseStorage
+        storage: nuxtApp.$storage as FirebaseStorage,
+        auth: (nuxtApp.$auth as Auth) || (app ? getAuth(app) : ({} as Auth))
       };
     }
   } catch {
@@ -126,7 +212,8 @@ function getFirebaseServices(): { db: Firestore; storage: FirebaseStorage } {
     const app = getApp();
     return {
       db: getFirestore(app),
-      storage: getStorage(app)
+      storage: getStorage(app),
+      auth: getAuth(app)
     };
   }
 
@@ -184,6 +271,16 @@ function mapDocToIncident(docId: string, data: Record<string, any>): ReportedInc
   const fotoUrl = data.fotoUrl || data.foto || data.image || '';
   const descParts = [ruaVal, bairroVal, cidadeVal, estadoVal].filter(Boolean);
 
+  const fotoResolucaoVal = String(
+    data.foto_resolucao || data.fotoResolucaoUrl || data.foto_resolvido || ''
+  ).trim();
+  const isResolvido = Boolean(
+    data.resolvido === true ||
+      String(data.resolvido).toLowerCase() === 'true' ||
+      String(data.status_resolucao || '').toLowerCase() === 'resolvido' ||
+      (fotoResolucaoVal && String(data.status_resolucao || '').toLowerCase() !== 'em_validacao')
+  );
+
   return {
     id: String(docId || data.id),
     timestamp: data.data || data.timestamp || new Date().toISOString(),
@@ -203,14 +300,25 @@ function mapDocToIncident(docId: string, data: Record<string, any>): ReportedInc
     description: data.description || (descParts.length > 0 ? descParts.join(' - ') : 'Infração registrada'),
     ativo: true,
     motivo_denuncia: data.motivo_denuncia ? String(data.motivo_denuncia) : '',
-    resolvido_em_validacao: Boolean(
-      data.resolvido_em_validacao === true ||
-      String(data.resolvido_em_validacao).toLowerCase() === 'true' ||
-      data.status_resolucao === 'em_validacao'
-    ),
-    status_resolucao: data.status_resolucao
-      ? String(data.status_resolucao)
-      : (data.resolvido_em_validacao ? 'em_validacao' : '')
+    resolvido_em_validacao: isResolvido
+      ? false
+      : Boolean(
+          data.resolvido_em_validacao === true ||
+            String(data.resolvido_em_validacao).toLowerCase() === 'true' ||
+            data.status_resolucao === 'em_validacao'
+        ),
+    status_resolucao: isResolvido
+      ? 'resolvido'
+      : data.status_resolucao
+        ? String(data.status_resolucao)
+        : data.resolvido_em_validacao
+          ? 'em_validacao'
+          : '',
+    resolvido: isResolvido,
+    foto_resolucao: fotoResolucaoVal,
+    descricao_resolucao: data.descricao_resolucao ? String(data.descricao_resolucao).trim() : '',
+    data_resolucao: data.data_resolucao ? String(data.data_resolucao).trim() : '',
+    resolvido_por: data.resolvido_por ? String(data.resolvido_por).trim() : ''
   };
 }
 
@@ -627,14 +735,16 @@ export async function saveIncidentToFirebase(
 }
 
 /**
- * Reporta / desativa uma ocorrência no Firestore marcando `ativo: false`, preenchendo `motivo_denuncia`
- * e criando uma nova entrada na coleção `reportadas` com todos os dados da ocorrência + o motivo do report.
+ * Reporta uma ocorrência no Firestore consolidando na mesma entrada da coleção `reportadas` (`reportadas/{ocorrenciaId}`).
+ * - Se for o 1º report (ainda não validada como improcedente pelo admin), marca `ativo: false` em `ocorrencias` e atualiza as estatísticas.
+ * - Se a ocorrência já foi validada como `improcedente` pelo admin (Opção A), mantém `ativo: true` no mapa,
+ *   e apenas incrementa `total_reports` (2ª, 3ª vez reportada) e `historico_reports` no mesmo documento em `reportadas`.
  */
 export async function reportIncidentInFirebase(
   id: string,
   reason: string,
   incidentData?: Partial<ReportedIncident>
-): Promise<boolean> {
+): Promise<{ success: boolean; deactivated: boolean; totalReports: number }> {
   const cleanId = (id || '').trim();
   if (!cleanId) {
     throw new Error('ID da ocorrência ausente para denúncia.');
@@ -645,87 +755,160 @@ export async function reportIncidentInFirebase(
     throw new Error('Motivo da denúncia ausente.');
   }
 
-  removeIncidentFromLocalCache(cleanId);
-
   const { db } = getFirebaseServices();
   const docRef = doc(db, OCORRENCIAS_COLLECTION, cleanId);
+  let targetReportDocRef = doc(db, REPORTADAS_COLLECTION, cleanId);
 
   let wasActive = true;
   let wasUrbana = incidentData?.natureza === 'urbana';
   let existingData: Record<string, any> = {};
+  let existingReportData: Record<string, any> = {};
+
   try {
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      existingData = snap.data() || {};
+    const [ocorrenciaSnap, reportSnap] = await Promise.all([
+      getDoc(docRef),
+      getDoc(targetReportDocRef)
+    ]);
+
+    if (ocorrenciaSnap.exists()) {
+      existingData = ocorrenciaSnap.data() || {};
       wasActive = existingData.ativo !== false && String(existingData.ativo).toLowerCase() !== 'false';
       wasUrbana = existingData.natureza === 'urbana';
+    }
+
+    if (reportSnap.exists()) {
+      existingReportData = reportSnap.data() || {};
+    } else {
+      // Verifica se já existe um documento na coleção reportadas para o mesmo ocorrenciaId (mesmo com ID gerado automaticamente no passado)
+      const legacyQuery = query(
+        collection(db, REPORTADAS_COLLECTION),
+        where('ocorrenciaId', '==', cleanId)
+      );
+      const legacySnap = await getDocs(legacyQuery);
+      if (!legacySnap.empty) {
+        // Reutiliza o próprio documento existente para não criar um segundo registro duplicado
+        targetReportDocRef = legacySnap.docs[0].ref;
+        legacySnap.forEach((docItem) => {
+          const d = docItem.data() || {};
+          existingReportData = { ...existingReportData, ...d };
+        });
+      }
     }
   } catch {}
 
   const reportedAtIso = new Date().toISOString();
-  const latitude = Number(existingData.latitude ?? incidentData?.latitude ?? 0);
-  const longitude = Number(existingData.longitude ?? incidentData?.longitude ?? 0);
+
+  // Verifica se já foi revisada e considerada improcedente pelo administrador (Opção A)
+  const alreadyApprovedImprocedente =
+    (existingReportData.revisada === true && existingReportData.resultado_revisao === 'improcedente') ||
+    (existingData.revisada_admin === true && existingData.resultado_revisao === 'improcedente');
+
+  const previousHistory: ReportHistoryEntry[] = Array.isArray(existingReportData.historico_reports)
+    ? [...existingReportData.historico_reports]
+    : existingReportData.motivo_report || existingReportData.motivo_denuncia
+      ? [
+          {
+            motivo: String(existingReportData.motivo_report || existingReportData.motivo_denuncia),
+            data: String(existingReportData.data_report || existingReportData.data || reportedAtIso)
+          }
+        ]
+      : [];
+
+  previousHistory.push({
+    motivo: cleanReason,
+    data: reportedAtIso,
+    apos_revisao: alreadyApprovedImprocedente
+  });
+
+  const previousTotal = Number(existingReportData.total_reports || 0);
+  const totalReports = Math.max(previousHistory.length, previousTotal + 1);
+  const outrasRevisoesSolicitadas = totalReports > 1;
+
+  const latitude = Number(existingData.latitude ?? existingReportData.latitude ?? incidentData?.latitude ?? 0);
+  const longitude = Number(existingData.longitude ?? existingReportData.longitude ?? incidentData?.longitude ?? 0);
   const geohash =
     existingData.geohash ||
+    existingReportData.geohash ||
     incidentData?.geohash ||
     (latitude && longitude ? geohashForLocation([latitude, longitude]) : '');
 
-  const reportDocRef = doc(collection(db, REPORTADAS_COLLECTION));
+  const shouldStayActiveOnMap = alreadyApprovedImprocedente;
+
   const reportDocData = {
     ...existingData,
-    id: reportDocRef.id,
+    ...existingReportData,
+    id: targetReportDocRef.id,
     ocorrenciaId: cleanId,
-    data: existingData.data || incidentData?.timestamp || reportedAtIso,
+    data: existingData.data || existingReportData.data || incidentData?.timestamp || reportedAtIso,
     latitude,
     longitude,
     geohash,
-    fotoUrl: existingData.fotoUrl || incidentData?.fotoUrl || incidentData?.maskedImageUrl || '',
-    natureza: existingData.natureza || incidentData?.natureza || 'infracao_veicular',
-    descricao: existingData.descricao ?? incidentData?.descricao ?? '',
-    rua: existingData.rua ?? incidentData?.rua ?? '',
-    bairro: existingData.bairro ?? incidentData?.bairro ?? '',
-    cidade: existingData.cidade ?? incidentData?.cidade ?? '',
-    estado: existingData.estado ?? incidentData?.estado ?? '',
-    classificacao: existingData.classificacao ?? incidentData?.classificacao ?? '',
-    verificacao: existingData.verificacao ?? incidentData?.verificacao ?? '',
-    ativo: false,
+    fotoUrl:
+      existingData.fotoUrl ||
+      existingReportData.fotoUrl ||
+      incidentData?.fotoUrl ||
+      incidentData?.maskedImageUrl ||
+      '',
+    natureza: existingData.natureza || existingReportData.natureza || incidentData?.natureza || 'infracao_veicular',
+    descricao: existingData.descricao ?? existingReportData.descricao ?? incidentData?.descricao ?? '',
+    rua: existingData.rua ?? existingReportData.rua ?? incidentData?.rua ?? '',
+    bairro: existingData.bairro ?? existingReportData.bairro ?? incidentData?.bairro ?? '',
+    cidade: existingData.cidade ?? existingReportData.cidade ?? incidentData?.cidade ?? '',
+    estado: existingData.estado ?? existingReportData.estado ?? incidentData?.estado ?? '',
+    classificacao: existingData.classificacao ?? existingReportData.classificacao ?? incidentData?.classificacao ?? '',
+    verificacao: existingData.verificacao ?? existingReportData.verificacao ?? incidentData?.verificacao ?? '',
+    ativo: shouldStayActiveOnMap,
     motivo_denuncia: cleanReason,
     motivo_report: cleanReason,
-    data_report: reportedAtIso
+    data_report: existingReportData.data_report || reportedAtIso,
+    ultima_data_report: reportedAtIso,
+    total_reports: totalReports,
+    outras_revisoes_solicitadas: outrasRevisoesSolicitadas,
+    historico_reports: previousHistory,
+    revisada: existingReportData.revisada === true ? true : false,
+    resultado_revisao: existingReportData.resultado_revisao || ''
   };
 
-  await setDoc(reportDocRef, reportDocData);
+  await setDoc(targetReportDocRef, reportDocData, { merge: true });
 
-  await updateDoc(docRef, {
-    ativo: false,
-    motivo_denuncia: cleanReason
-  });
+  if (!shouldStayActiveOnMap) {
+    removeIncidentFromLocalCache(cleanId);
 
-  if (wasActive) {
-    adjustCachedStats({
-      totalGeralDelta: -1,
-      infracoesTransitoDelta: wasUrbana ? 0 : -1,
-      mobilidadeUrbanaDelta: wasUrbana ? -1 : 0,
-      resolvidosDelta: 0
+    await updateDoc(docRef, {
+      ativo: false,
+      motivo_denuncia: cleanReason
     });
-    void notifyMulteiLiveDelta(wasUrbana ? 'mobilidadeUrbana' : 'infracoesTransito', -1);
-    try {
-      const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
-      await setDoc(
-        statsRef,
-        {
-          totalGeral: increment(-1),
-          [wasUrbana ? 'mobilidadeUrbana' : 'infracoesTransito']: increment(-1),
-          updatedAt: reportedAtIso
-        },
-        { merge: true }
-      );
-    } catch (statsErr) {
-      console.warn('[firebaseService] Aviso ao decrementar estatísticas:', statsErr);
+
+    if (wasActive) {
+      adjustCachedStats({
+        totalGeralDelta: -1,
+        infracoesTransitoDelta: wasUrbana ? 0 : -1,
+        mobilidadeUrbanaDelta: wasUrbana ? -1 : 0,
+        resolvidosDelta: 0
+      });
+      void notifyMulteiLiveDelta(wasUrbana ? 'mobilidadeUrbana' : 'infracoesTransito', -1);
+      try {
+        const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+        await setDoc(
+          statsRef,
+          {
+            totalGeral: increment(-1),
+            [wasUrbana ? 'mobilidadeUrbana' : 'infracoesTransito']: increment(-1),
+            updatedAt: reportedAtIso
+          },
+          { merge: true }
+        );
+      } catch (statsErr) {
+        console.warn('[firebaseService] Aviso ao decrementar estatísticas:', statsErr);
+      }
     }
   }
 
-  return true;
+  return {
+    success: true,
+    deactivated: !shouldStayActiveOnMap,
+    totalReports
+  };
 }
 
 /**
@@ -1425,3 +1608,1072 @@ export async function getCachedIncidentImageUrl(url: string): Promise<string> {
 
   return url;
 }
+
+/**
+ * Resolve o perfil do usuário autenticado na coleção `usuarios` do Firestore (`admin` ou `parceiro`).
+ * Caso a coleção `usuarios` ainda esteja vazia no primeiro acesso, registra o primeiro usuário autenticado como `admin`.
+ */
+export async function resolveMulteiPanelUserProfile(user: User): Promise<MulteiPanelUserProfile> {
+  const { db, auth } = getFirebaseServices();
+  const email = (user.email || '').trim().toLowerCase();
+  const authDisplayName = (user.displayName || '').trim();
+
+  const normalizeDocFields = (rawDoc: Record<string, any>): Record<string, any> => {
+    const out: Record<string, any> = { ...rawDoc };
+    for (const [k, v] of Object.entries(rawDoc || {})) {
+      out[k.trim().toLowerCase()] = v;
+    }
+    return out;
+  };
+
+  const hasNameInDoc = (rawDoc: Record<string, any>): boolean => {
+    const d = normalizeDocFields(rawDoc);
+    return Boolean(
+      String(d.nome ?? d.name ?? d.primeiro_nome ?? d.sobrenome ?? d.lastname ?? '').trim()
+    );
+  };
+
+  const isDocActive = (rawDoc: Record<string, any>): boolean => {
+    const d = normalizeDocFields(rawDoc);
+    if (d.ativo === false || String(d.ativo).trim().toLowerCase() === 'false') {
+      return false;
+    }
+    return true;
+  };
+
+  const buildProfileFromDoc = (rawDoc: Record<string, any>): MulteiPanelUserProfile => {
+    const d = normalizeDocFields(rawDoc);
+    const rawRole = String(d.role || d.tipo || d.cargo || d.perfil || 'admin').trim().toLowerCase();
+    const role: MulteiUserRole =
+      rawRole === 'parceria' || rawRole === 'parceiro' ? 'parceria' : 'admin';
+    const nome = String(d.nome ?? d.name ?? d.primeiro_nome ?? '').trim() || undefined;
+    const sobrenome = String(d.sobrenome ?? d.lastname ?? d.ultimo_nome ?? '').trim() || undefined;
+    const joinedName = [nome, sobrenome].filter(Boolean).join(' ').trim();
+    const nomeCompleto = joinedName || authDisplayName || undefined;
+    const ativo = isDocActive(rawDoc);
+
+    return {
+      uid: user.uid,
+      email: d.email ? String(d.email).trim() : email,
+      nome: nome || nomeCompleto,
+      sobrenome,
+      nomeCompleto,
+      role,
+      cidade: d.cidade ? String(d.cidade).trim() : undefined,
+      estado: d.estado ? String(d.estado).trim() : undefined,
+      ativo
+    };
+  };
+
+  const fetchCollectionDocsFresh = async (colName: string) => {
+    const colRef = collection(db, colName);
+    try {
+      return await getDocsFromServer(colRef);
+    } catch {
+      return await getDocs(colRef);
+    }
+  };
+
+  const candidateCollections = [USUARIOS_COLLECTION, 'usarios', 'usuários'];
+  let fallbackDocData: Record<string, any> | null = null;
+
+  for (const colName of candidateCollections) {
+    try {
+      const snap = await fetchCollectionDocsFresh(colName);
+      if (snap.empty) continue;
+
+      // 1. Procura documento correspondente ao usuário autenticado (por uid ou email)
+      for (const docSnap of snap.docs) {
+        const raw = docSnap.data() || {};
+        const d = normalizeDocFields(raw);
+        const docEmail = String(d.email || d['e-mail'] || '').trim().toLowerCase();
+        const docUid = String(d.uid || d.id || '').trim();
+        const isMatch =
+          docSnap.id === user.uid ||
+          (email && docSnap.id.toLowerCase() === email) ||
+          (email && docEmail === email) ||
+          (docUid && docUid === user.uid);
+
+        if (isMatch) {
+          if (!isDocActive(raw)) {
+            await signOut(auth);
+            const disabledErr: any = new Error('Sua conta está desativada no painel. Entre em contato com o administrador.');
+            disabledErr.code = 'auth/user-disabled';
+            throw disabledErr;
+          }
+          if (hasNameInDoc(raw)) {
+            return buildProfileFromDoc(raw);
+          }
+          if (!fallbackDocData) {
+            fallbackDocData = raw;
+          }
+        }
+      }
+
+      if (fallbackDocData) {
+        break;
+      }
+
+      // 2. Fallback legado: caso exista apenas 1 documento na coleção sem vínculo de email/uid
+      if (snap.docs.length === 1) {
+        const onlyRaw = snap.docs[0].data() || {};
+        const onlyNorm = normalizeDocFields(onlyRaw);
+        const onlyEmail = String(onlyNorm.email || onlyNorm['e-mail'] || '').trim();
+        const onlyUid = String(onlyNorm.uid || '').trim();
+        if (!onlyEmail && !onlyUid) {
+          fallbackDocData = onlyRaw;
+        }
+      }
+    } catch (err: any) {
+      if (err?.code === 'auth/user-disabled') {
+        throw err;
+      }
+      console.warn(`[firebaseService] Aviso ao ler coleção '${colName}':`, err);
+    }
+  }
+
+  if (fallbackDocData) {
+    return buildProfileFromDoc(fallbackDocData);
+  }
+
+  return {
+    uid: user.uid,
+    email,
+    nome: authDisplayName || undefined,
+    nomeCompleto: authDisplayName || undefined,
+    role: 'admin',
+    ativo: true
+  };
+}
+
+export async function refreshCurrentMulteiPanelProfile(): Promise<MulteiPanelUserProfile | null> {
+  if (typeof window === 'undefined') return null;
+  try {
+    const { auth } = getFirebaseServices();
+    if (!auth.currentUser) return null;
+    return await resolveMulteiPanelUserProfile(auth.currentUser);
+  } catch {
+    return null;
+  }
+}
+
+export async function signInMulteiPanel(
+  email: string,
+  password: string
+): Promise<MulteiPanelUserProfile> {
+  const { auth } = getFirebaseServices();
+  const cleanEmail = (email || '').trim();
+  if (!cleanEmail || !password) {
+    throw new Error('Preencha o e-mail e a senha.');
+  }
+  const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+  return await resolveMulteiPanelUserProfile(cred.user);
+}
+
+export async function signOutMulteiPanel(): Promise<void> {
+  const { auth } = getFirebaseServices();
+  await signOut(auth);
+}
+
+export function subscribeToMulteiPanelAuth(
+  onChange: (profile: MulteiPanelUserProfile | null) => void
+): () => void {
+  if (typeof window === 'undefined') return () => {};
+  try {
+    const { auth } = getFirebaseServices();
+    return onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        onChange(null);
+        return;
+      }
+      try {
+        const profile = await resolveMulteiPanelUserProfile(user);
+        onChange(profile);
+      } catch {
+        onChange(null);
+      }
+    });
+  } catch {
+    onChange(null);
+    return () => {};
+  }
+}
+
+/**
+ * Lista todos os usuários cadastrados na coleção `usuarios` para a aba de Gestão de Usuários.
+ */
+export async function fetchPanelUsersFromFirebase(): Promise<MulteiPanelManagedUser[]> {
+  const { db } = getFirebaseServices();
+  const colRef = collection(db, USUARIOS_COLLECTION);
+  let snap;
+  try {
+    snap = await getDocsFromServer(colRef);
+  } catch {
+    snap = await getDocs(colRef);
+  }
+
+  const normalizeDocFields = (rawDoc: Record<string, any>): Record<string, any> => {
+    const out: Record<string, any> = { ...rawDoc };
+    for (const [k, v] of Object.entries(rawDoc || {})) {
+      out[k.trim().toLowerCase()] = v;
+    }
+    return out;
+  };
+
+  const users: MulteiPanelManagedUser[] = snap.docs.map((docSnap) => {
+    const raw = docSnap.data() || {};
+    const d = normalizeDocFields(raw);
+    const rawRole = String(d.role || d.tipo || d.cargo || d.perfil || 'admin').trim().toLowerCase();
+    const role: 'admin' | 'parceria' =
+      rawRole === 'parceria' || rawRole === 'parceiro' ? 'parceria' : 'admin';
+    const nome = String(d.nome ?? d.name ?? d.primeiro_nome ?? '').trim();
+    const sobrenome = String(d.sobrenome ?? d.lastname ?? d.ultimo_nome ?? '').trim();
+    const email = String(d.email ?? d['e-mail'] ?? '').trim().toLowerCase();
+    const nomeCompleto = [nome, sobrenome].filter(Boolean).join(' ').trim() || nome || email || docSnap.id;
+    const cidade = String(d.cidade ?? '').trim();
+    const rawEstado = String(d.estado ?? '').trim();
+    const estado = (normalizeState(rawEstado) || rawEstado).toUpperCase();
+    const ativo = !(d.ativo === false || String(d.ativo).trim().toLowerCase() === 'false');
+
+    return {
+      id: docSnap.id,
+      uid: String(d.uid || docSnap.id).trim(),
+      role,
+      nome,
+      sobrenome,
+      nomeCompleto,
+      email,
+      cidade,
+      estado,
+      ativo,
+      createdAt: d.createdat || d.criado_em || undefined,
+      updatedAt: d.updatedat || d.atualizado_em || undefined
+    };
+  });
+
+  users.sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto, 'pt-BR'));
+  return users;
+}
+
+export interface CreatePanelUserPayload {
+  role: 'admin' | 'parceria';
+  nome: string;
+  sobrenome: string;
+  email: string;
+  senha: string;
+  cidade: string;
+  estado: string;
+  ativo?: boolean;
+}
+
+export interface UpdatePanelUserPayload {
+  role: 'admin' | 'parceria';
+  nome: string;
+  sobrenome: string;
+  email: string;
+  cidade: string;
+  estado: string;
+  ativo: boolean;
+}
+
+/**
+ * Cria um novo usuário no Firebase Authentication usando uma instância secundária isolada
+ * (para não desconectar o administrador logado) e grava os metadados na coleção `usuarios`
+ * SEM salvar a senha no Firestore.
+ */
+export async function createPanelUserInFirebase(
+  payload: CreatePanelUserPayload
+): Promise<MulteiPanelManagedUser> {
+  const { db } = getFirebaseServices();
+
+  const cleanRole: 'admin' | 'parceria' = payload.role === 'parceria' ? 'parceria' : 'admin';
+  const cleanNome = (payload.nome || '').trim();
+  const cleanSobrenome = (payload.sobrenome || '').trim();
+  const cleanEmail = (payload.email || '').trim().toLowerCase();
+  const rawPassword = payload.senha || '';
+  const cleanCidade = (payload.cidade || '').trim();
+  const rawEstado = (payload.estado || '').trim();
+  const cleanEstado = (normalizeState(rawEstado) || rawEstado).toUpperCase();
+  const isAtivo = payload.ativo !== false;
+
+  if (!cleanNome) {
+    throw new Error('Informe o nome do usuário.');
+  }
+  if (!cleanSobrenome) {
+    throw new Error('Informe o sobrenome do usuário.');
+  }
+  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    throw new Error('Informe um endereço de e-mail válido.');
+  }
+  if (!rawPassword || rawPassword.length < 6) {
+    throw new Error('A senha deve ter pelo menos 6 caracteres.');
+  }
+  if (!cleanCidade) {
+    throw new Error('Informe a cidade do usuário.');
+  }
+  if (!cleanEstado || cleanEstado.length !== 2) {
+    throw new Error('Informe a UF (estado com 2 letras, ex: SP).');
+  }
+
+  // Usa um App Firebase secundário com persistência em memória para criar o usuário no Firebase Auth
+  // sem alterar a sessão do administrador autenticado no app principal.
+  const primaryApp = getApp();
+  const secondaryAppName = 'MulteiAdminUserCreator';
+  const existingSecondary = getApps().find((a) => a.name === secondaryAppName);
+  const secondaryApp = existingSecondary || initializeApp(primaryApp.options, secondaryAppName);
+  const secondaryAuth = getAuth(secondaryApp);
+
+  await setPersistence(secondaryAuth, inMemoryPersistence);
+
+  const userCredential = await createUserWithEmailAndPassword(
+    secondaryAuth,
+    cleanEmail,
+    rawPassword
+  );
+  const createdUid = userCredential.user.uid;
+  const displayName = `${cleanNome} ${cleanSobrenome}`.trim();
+
+  try {
+    await updateProfile(userCredential.user, { displayName });
+  } catch {
+    // Falha não-crítica ao atualizar displayName no Auth
+  }
+
+  await signOut(secondaryAuth);
+
+  const nowIso = new Date().toISOString();
+  // IMPORTANTE: A senha NUNCA é salva no documento do Firestore.
+  const firestoreDocData = {
+    uid: createdUid,
+    role: cleanRole,
+    nome: cleanNome,
+    sobrenome: cleanSobrenome,
+    email: cleanEmail,
+    cidade: cleanCidade,
+    estado: cleanEstado,
+    ativo: isAtivo,
+    createdAt: nowIso,
+    updatedAt: nowIso
+  };
+
+  await setDoc(doc(db, USUARIOS_COLLECTION, createdUid), firestoreDocData, { merge: true });
+
+  return {
+    id: createdUid,
+    uid: createdUid,
+    role: cleanRole,
+    nome: cleanNome,
+    sobrenome: cleanSobrenome,
+    nomeCompleto: displayName,
+    email: cleanEmail,
+    cidade: cleanCidade,
+    estado: cleanEstado,
+    ativo: isAtivo,
+    createdAt: nowIso,
+    updatedAt: nowIso
+  };
+}
+
+/**
+ * Atualiza os dados cadastrais de um usuário na coleção `usuarios` (sem armazenar senha).
+ */
+export async function updatePanelUserInFirebase(
+  docId: string,
+  payload: UpdatePanelUserPayload
+): Promise<void> {
+  const { db } = getFirebaseServices();
+  if (!docId) {
+    throw new Error('ID do usuário inválido.');
+  }
+
+  const cleanRole: 'admin' | 'parceria' = payload.role === 'parceria' ? 'parceria' : 'admin';
+  const cleanNome = (payload.nome || '').trim();
+  const cleanSobrenome = (payload.sobrenome || '').trim();
+  const cleanEmail = (payload.email || '').trim().toLowerCase();
+  const cleanCidade = (payload.cidade || '').trim();
+  const rawEstado = (payload.estado || '').trim();
+  const cleanEstado = (normalizeState(rawEstado) || rawEstado).toUpperCase();
+
+  if (!cleanNome) {
+    throw new Error('Informe o nome do usuário.');
+  }
+  if (!cleanSobrenome) {
+    throw new Error('Informe o sobrenome do usuário.');
+  }
+  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    throw new Error('Informe um endereço de e-mail válido.');
+  }
+  if (!cleanCidade) {
+    throw new Error('Informe a cidade do usuário.');
+  }
+  if (!cleanEstado || cleanEstado.length !== 2) {
+    throw new Error('Informe a UF (estado com 2 letras, ex: SP).');
+  }
+
+  const nowIso = new Date().toISOString();
+  await setDoc(
+    doc(db, USUARIOS_COLLECTION, docId),
+    {
+      role: cleanRole,
+      nome: cleanNome,
+      sobrenome: cleanSobrenome,
+      email: cleanEmail,
+      cidade: cleanCidade,
+      estado: cleanEstado,
+      ativo: Boolean(payload.ativo),
+      updatedAt: nowIso
+    },
+    { merge: true }
+  );
+}
+
+/**
+ * Ativa ou desativa um usuário na coleção `usuarios`.
+ */
+export async function togglePanelUserActiveInFirebase(
+  docId: string,
+  ativo: boolean
+): Promise<void> {
+  const { db } = getFirebaseServices();
+  if (!docId) {
+    throw new Error('ID do usuário inválido.');
+  }
+  await setDoc(
+    doc(db, USUARIOS_COLLECTION, docId),
+    {
+      ativo: Boolean(ativo),
+      updatedAt: new Date().toISOString()
+    },
+    { merge: true }
+  );
+}
+
+/**
+ * Exclui o registro do usuário na coleção `usuarios`.
+ */
+export async function deletePanelUserFromFirebase(docId: string): Promise<void> {
+  const { db } = getFirebaseServices();
+  if (!docId) {
+    throw new Error('ID do usuário inválido.');
+  }
+  await deleteDoc(doc(db, USUARIOS_COLLECTION, docId));
+}
+
+/**
+ * Envia e-mail oficial do Firebase Authentication para redefinição de senha do usuário.
+ */
+export async function sendPanelUserPasswordReset(email: string): Promise<void> {
+  const { auth } = getFirebaseServices();
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail) {
+    throw new Error('E-mail inválido para redefinição de senha.');
+  }
+  await sendPasswordResetEmail(auth, cleanEmail);
+}
+
+/**
+ * Busca todas as ocorrências reportadas na coleção `reportadas`, consolidando múltiplos reports
+ * da mesma `ocorrenciaId` para exibir o histórico completo e o selo de 2ª/3ª vez reportada.
+ */
+export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncidentPanelItem[]> {
+  const { db } = getFirebaseServices();
+  const snap = await getDocs(collection(db, REPORTADAS_COLLECTION));
+
+  const groupedByOcorrencia = new Map<string, ReportedIncidentPanelItem>();
+
+  snap.forEach((docSnap) => {
+    const d = docSnap.data() || {};
+    const ocorrenciaId = String(d.ocorrenciaId || docSnap.id).trim();
+    if (!ocorrenciaId) return;
+
+    const rawHistory: ReportHistoryEntry[] = Array.isArray(d.historico_reports)
+      ? d.historico_reports.map((h: any) => ({
+          motivo: String(h?.motivo || ''),
+          data: String(h?.data || d.data_report || d.data || ''),
+          apos_revisao: Boolean(h?.apos_revisao)
+        }))
+      : [
+          {
+            motivo: String(d.motivo_report || d.motivo_denuncia || 'Sem motivo informado'),
+            data: String(d.data_report || d.data || new Date().toISOString())
+          }
+        ];
+
+    const dataReport = String(d.data_report || d.data || new Date().toISOString());
+    const ultimaDataReport = String(d.ultima_data_report || dataReport);
+    const isRevisada =
+      d.revisada === true ||
+      String(d.revisada).toLowerCase() === 'true' ||
+      d.status_revisao === 'revisada';
+
+    const resultadoRevisao: 'procedente' | 'improcedente' | '' =
+      d.resultado_revisao === 'procedente' || d.resultado_revisao === 'improcedente'
+        ? d.resultado_revisao
+        : '';
+
+    const existing = groupedByOcorrencia.get(ocorrenciaId);
+    if (!existing) {
+      const totalReports = Math.max(Number(d.total_reports || 1), rawHistory.length);
+      groupedByOcorrencia.set(ocorrenciaId, {
+        id: docSnap.id,
+        ocorrenciaId,
+        data: String(d.data || dataReport),
+        data_report: dataReport,
+        ultima_data_report: ultimaDataReport,
+        latitude: Number(d.latitude ?? d.lat ?? 0),
+        longitude: Number(d.longitude ?? d.lng ?? d.lon ?? 0),
+        geohash: String(d.geohash || ''),
+        fotoUrl: String(d.fotoUrl || d.foto || d.image || ''),
+        natureza: String(d.natureza || 'infracao_veicular'),
+        descricao: String(d.descricao || ''),
+        rua: String(d.rua || ''),
+        bairro: String(d.bairro || ''),
+        cidade: String(d.cidade || ''),
+        estado: String(d.estado || ''),
+        classificacao: String(d.classificacao || ''),
+        verificacao: normalizeVerificacao(d.verificacao ?? d.verification),
+        ativo: Boolean(d.ativo === true || String(d.ativo).toLowerCase() === 'true'),
+        motivo_denuncia: String(d.motivo_denuncia || d.motivo_report || ''),
+        motivo_report: String(d.motivo_report || d.motivo_denuncia || ''),
+        total_reports: totalReports,
+        outras_revisoes_solicitadas: Boolean(d.outras_revisoes_solicitadas || totalReports > 1),
+        historico_reports: rawHistory,
+        revisada: isRevisada,
+        resultado_revisao: resultadoRevisao,
+        data_revisao: d.data_revisao ? String(d.data_revisao) : undefined,
+        revisado_por: d.revisado_por ? String(d.revisado_por) : undefined,
+        observacao_admin: d.observacao_admin ? String(d.observacao_admin) : undefined,
+        legacyDocIds: [docSnap.id]
+      });
+    } else {
+      // Mescla caso existam documentos antigos separados para a mesma ocorrenciaId
+      const mergedHistory = [...existing.historico_reports];
+      for (const h of rawHistory) {
+        const isDup = mergedHistory.some(
+          (item) => item.motivo === h.motivo && item.data === h.data
+        );
+        if (!isDup) {
+          mergedHistory.push(h);
+        }
+      }
+      mergedHistory.sort((a, b) => (new Date(a.data).getTime() || 0) - (new Date(b.data).getTime() || 0));
+
+      const mergedTotal = Math.max(
+        existing.total_reports,
+        Number(d.total_reports || 1),
+        mergedHistory.length
+      );
+
+      const isCanonicalId = docSnap.id === ocorrenciaId;
+      existing.id = isCanonicalId ? docSnap.id : existing.id;
+      existing.total_reports = mergedTotal;
+      existing.outras_revisoes_solicitadas = mergedTotal > 1;
+      existing.historico_reports = mergedHistory;
+      if (new Date(ultimaDataReport).getTime() > new Date(existing.ultima_data_report).getTime()) {
+        existing.ultima_data_report = ultimaDataReport;
+        existing.motivo_report = String(d.motivo_report || d.motivo_denuncia || existing.motivo_report);
+        existing.motivo_denuncia = existing.motivo_report;
+      }
+      if (isRevisada) {
+        existing.revisada = true;
+        existing.resultado_revisao = resultadoRevisao || existing.resultado_revisao;
+        existing.data_revisao = d.data_revisao ? String(d.data_revisao) : existing.data_revisao;
+        existing.revisado_por = d.revisado_por ? String(d.revisado_por) : existing.revisado_por;
+        existing.observacao_admin = d.observacao_admin
+          ? String(d.observacao_admin)
+          : existing.observacao_admin;
+      }
+      existing.legacyDocIds = Array.from(new Set([...(existing.legacyDocIds || []), docSnap.id]));
+    }
+  });
+
+  const list = Array.from(groupedByOcorrencia.values());
+
+  // Se houver documentos duplicados da mesma ocorrenciaId (ex: um ID legado aleatório + outro com ocorrenciaId),
+  // consolida todos os dados em `item.id` e remove os documentos duplicados extras.
+  await Promise.all(
+    list.map(async (item) => {
+      const extraDocIds = (item.legacyDocIds || []).filter((docId) => docId && docId !== item.id);
+      if (extraDocIds.length === 0) return;
+      try {
+        const canonicalRef = doc(db, REPORTADAS_COLLECTION, item.id);
+        const { legacyDocIds, ...cleanItemData } = item;
+        await setDoc(canonicalRef, cleanItemData, { merge: true });
+        await Promise.all(
+          extraDocIds.map((dupId) =>
+            deleteDoc(doc(db, REPORTADAS_COLLECTION, dupId)).catch(() => {})
+          )
+        );
+        item.legacyDocIds = [item.id];
+      } catch {}
+    })
+  );
+
+  list.sort((a, b) => {
+    const timeA = new Date(a.ultima_data_report || a.data_report).getTime() || 0;
+    const timeB = new Date(b.ultima_data_report || b.data_report).getTime() || 0;
+    return timeB - timeA;
+  });
+
+  return list;
+}
+
+/**
+ * Aplica a validação do administrador sobre uma ocorrência reportada:
+ * - `decision === 'procedente'`: A denúncia procede (a foto é imprópria). Mantém `ativo: false` em `ocorrencias` e marca como `revisada: true` em `reportadas`.
+ * - `decision === 'improcedente'`: A denúncia não procede (a foto é legítima). Volta `ativo: true` em `ocorrencias`, marca como `revisada: true` em `reportadas` e devolve `+1` às estatísticas caso estivesse inativa.
+ */
+export async function reviewReportedIncidentInFirebase(params: {
+  item: ReportedIncidentPanelItem;
+  decision: 'procedente' | 'improcedente';
+  observacaoAdmin?: string;
+  reviewerEmail?: string;
+}): Promise<ReportedIncidentPanelItem> {
+  const { item, decision, observacaoAdmin = '', reviewerEmail = '' } = params;
+  const ocorrenciaId = (item.ocorrenciaId || item.id || '').trim();
+  if (!ocorrenciaId) {
+    throw new Error('ID da ocorrência inválido para revisão.');
+  }
+
+  const { db } = getFirebaseServices();
+  const ocorrenciaRef = doc(db, OCORRENCIAS_COLLECTION, ocorrenciaId);
+
+  let wasActiveInOcorrencias = false;
+  let isUrbana = item.natureza === 'urbana';
+
+  try {
+    const ocorrenciaSnap = await getDoc(ocorrenciaRef);
+    if (ocorrenciaSnap.exists()) {
+      const d = ocorrenciaSnap.data() || {};
+      wasActiveInOcorrencias =
+        d.ativo !== undefined && d.ativo !== ''
+          ? d.ativo === true || String(d.ativo).toLowerCase() === 'true'
+          : true;
+      isUrbana = d.natureza === 'urbana';
+    }
+  } catch {}
+
+  const nowIso = new Date().toISOString();
+  const targetAtivo = decision === 'improcedente';
+
+  // 1. Atualiza o documento na coleção `ocorrencias`
+  await setDoc(
+    ocorrenciaRef,
+    {
+      ativo: targetAtivo,
+      revisada_admin: true,
+      resultado_revisao: decision,
+      data_revisao: nowIso,
+      ...(targetAtivo ? { motivo_denuncia: '' } : {})
+    },
+    { merge: true }
+  );
+
+  // 2. Atualiza apenas o documento existente na coleção `reportadas` (sem criar segundo documento)
+  const targetReportDocId = (item.id || ocorrenciaId).trim();
+  const reportUpdatePayload = {
+    ocorrenciaId,
+    ativo: targetAtivo,
+    revisada: true,
+    status_revisao: 'revisada',
+    resultado_revisao: decision,
+    data_revisao: nowIso,
+    revisado_por: reviewerEmail,
+    observacao_admin: observacaoAdmin.trim(),
+    total_reports: item.total_reports,
+    outras_revisoes_solicitadas: item.total_reports > 1,
+    historico_reports: item.historico_reports
+  };
+
+  await setDoc(doc(db, REPORTADAS_COLLECTION, targetReportDocId), reportUpdatePayload, {
+    merge: true
+  });
+
+  // Caso existam documentos duplicados legados com outro ID para a mesma ocorrenciaId, remove as duplicatas
+  const extraDocIds = (item.legacyDocIds || []).filter(
+    (docId) => docId && docId !== targetReportDocId
+  );
+  if (extraDocIds.length > 0) {
+    await Promise.all(
+      extraDocIds.map((dupId) =>
+        deleteDoc(doc(db, REPORTADAS_COLLECTION, dupId)).catch(() => {})
+      )
+    );
+  }
+
+  // 3. Ajusta as estatísticas e emite o evento ao vivo caso o status `ativo` da ocorrência tenha mudado
+  const category: MulteiLiveCategory = isUrbana ? 'mobilidadeUrbana' : 'infracoesTransito';
+
+  if (decision === 'improcedente' && !wasActiveInOcorrencias) {
+    // A ocorrência estava inativa (ativo: false) e voltou a ficar ativa (ativo: true) -> soma +1
+    adjustCachedStats({
+      totalGeralDelta: 1,
+      infracoesTransitoDelta: isUrbana ? 0 : 1,
+      mobilidadeUrbanaDelta: isUrbana ? 1 : 0,
+      resolvidosDelta: 0
+    });
+    void notifyMulteiLiveDelta(category, 1);
+    try {
+      const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+      await setDoc(
+        statsRef,
+        {
+          totalGeral: increment(1),
+          [category]: increment(1),
+          updatedAt: nowIso
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn('[firebaseService] Aviso ao incrementar estatísticas após improcedente:', err);
+    }
+  } else if (decision === 'procedente' && wasActiveInOcorrencias) {
+    // A ocorrência estava ativa (ativo: true) e passou a ficar inativa (ativo: false) -> subtrai -1 silenciosamente
+    removeIncidentFromLocalCache(ocorrenciaId);
+    adjustCachedStats({
+      totalGeralDelta: -1,
+      infracoesTransitoDelta: isUrbana ? 0 : -1,
+      mobilidadeUrbanaDelta: isUrbana ? -1 : 0,
+      resolvidosDelta: 0
+    });
+    void notifyMulteiLiveDelta(category, -1);
+    try {
+      const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+      await setDoc(
+        statsRef,
+        {
+          totalGeral: increment(-1),
+          [category]: increment(-1),
+          updatedAt: nowIso
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn('[firebaseService] Aviso ao decrementar estatísticas após procedente:', err);
+    }
+  }
+
+  return {
+    ...item,
+    ativo: targetAtivo,
+    revisada: true,
+    resultado_revisao: decision,
+    data_revisao: nowIso,
+    revisado_por: reviewerEmail,
+    observacao_admin: observacaoAdmin.trim()
+  };
+}
+
+function normalizeCityKey(raw?: string): string {
+  if (!raw) return '';
+  return raw
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Lista as ocorrências ativas da coleção `ocorrencias` para a aba "Denúncias" (Parcerias / Admin):
+ * - Filtra exclusivamente pela cidade cadastrada do usuário (`cidade`), caso definida.
+ * - Se `center` for informado (modo "Ao meu redor"), busca ocorrências num raio de 5 km (padrão) do GPS da pessoa.
+ */
+export async function fetchPartnerIncidentsFromFirebase(options: {
+  cidade?: string;
+  estado?: string;
+  center?: { latitude: number; longitude: number } | null;
+  radiusKm?: number;
+}): Promise<ReportedIncident[]> {
+  const { db } = getFirebaseServices();
+  const colRef = collection(db, OCORRENCIAS_COLLECTION);
+  const targetCityKey = normalizeCityKey(options.cidade);
+  const targetStateKey = normalizeState(options.estado || '').toUpperCase();
+  const radiusMeters = (options.radiusKm ?? 5) * 1000;
+
+  let docsList: Array<{ id: string; data: Record<string, any> }> = [];
+
+  if (
+    options.center &&
+    Number.isFinite(options.center.latitude) &&
+    Number.isFinite(options.center.longitude)
+  ) {
+    const queryBounds = geohashQueryBounds(
+      [options.center.latitude, options.center.longitude],
+      radiusMeters
+    );
+    const snapshots = await Promise.all(
+      queryBounds.map(([startHash, endHash]) => {
+        const q = query(colRef, orderBy('geohash'), startAt(startHash), endAt(endHash));
+        return getDocsFromServer(q).catch(() => getDocs(q));
+      })
+    );
+    const seen = new Set<string>();
+    for (const snap of snapshots) {
+      snap.forEach((docSnap) => {
+        if (seen.has(docSnap.id)) return;
+        seen.add(docSnap.id);
+        docsList.push({ id: docSnap.id, data: docSnap.data() || {} });
+      });
+    }
+  } else {
+    let snap;
+    try {
+      snap = await getDocsFromServer(colRef);
+    } catch {
+      snap = await getDocs(colRef);
+    }
+    snap.forEach((docSnap) => {
+      docsList.push({ id: docSnap.id, data: docSnap.data() || {} });
+    });
+  }
+
+  const results: ReportedIncident[] = [];
+
+  for (const item of docsList) {
+    const incident = mapDocToIncident(item.id, item.data);
+    if (!incident) continue;
+
+    if (targetCityKey) {
+      const incCityKey = normalizeCityKey(incident.cidade);
+      // Exige que pertença à cidade cadastrada (ou, se estiver no modo GPS 5km e um registro antigo não tiver cidade preenchida, permite pelo raio físico)
+      if (incCityKey && incCityKey !== targetCityKey) {
+        continue;
+      }
+      if (!incCityKey && !options.center) {
+        continue;
+      }
+    }
+
+    if (targetStateKey && incident.estado) {
+      const incStateKey = normalizeState(incident.estado).toUpperCase();
+      if (incStateKey && incStateKey !== targetStateKey) {
+        continue;
+      }
+    }
+
+    if (
+      options.center &&
+      Number.isFinite(options.center.latitude) &&
+      Number.isFinite(options.center.longitude)
+    ) {
+      const distKm = distanceBetween(
+        [options.center.latitude, options.center.longitude],
+        [incident.latitude, incident.longitude]
+      );
+      if (distKm * 1000 > radiusMeters) {
+        continue;
+      }
+    }
+
+    results.push(incident);
+  }
+
+  if (
+    options.center &&
+    Number.isFinite(options.center.latitude) &&
+    Number.isFinite(options.center.longitude)
+  ) {
+    const cLat = options.center.latitude;
+    const cLng = options.center.longitude;
+    results.sort((a, b) => {
+      const dA = distanceBetween([cLat, cLng], [a.latitude, a.longitude]);
+      const dB = distanceBetween([cLat, cLng], [b.latitude, b.longitude]);
+      return dA - dB;
+    });
+  } else {
+    results.sort((a, b) => {
+      const timeA = new Date(a.timestamp).getTime() || 0;
+      const timeB = new Date(b.timestamp).getTime() || 0;
+      return timeB - timeA;
+    });
+  }
+
+  return results;
+}
+
+export interface ResolveUrbanIncidentByPartnerPayload {
+  ocorrenciaId: string;
+  foto: string;
+  descricao: string;
+  resolvidoPor?: string;
+  incident?: Partial<ReportedIncident>;
+}
+
+/**
+ * Registra a resolução definitiva de um problema de acesso urbano (`natureza === 'urbana'`)
+ * declarada por um Parceiro Municipal (ou Admin), fazendo upload da foto do "Depois" e
+ * gravando diretamente no documento da coleção `ocorrencias` (`resolvido: true`, `foto_resolucao`, `descricao_resolucao`, `data_resolucao`).
+ */
+export async function resolveUrbanIncidentByPartnerInFirebase(
+  payload: ResolveUrbanIncidentByPartnerPayload
+): Promise<{
+  success: boolean;
+  ocorrenciaId: string;
+  fotoResolucaoUrl: string;
+  dataResolucao: string;
+  descricaoResolucao: string;
+}> {
+  const ocorrenciaId = (payload.ocorrenciaId || '').trim();
+  if (!ocorrenciaId) {
+    throw new Error('ID da ocorrência ausente para registro de resolução.');
+  }
+
+  const descricaoResolucao = (payload.descricao || '').trim().slice(0, 300);
+  if (descricaoResolucao.length < 10) {
+    throw new Error('Informe uma descrição da correção com pelo menos 10 caracteres.');
+  }
+
+  if (!payload.foto) {
+    throw new Error('Envie uma nova foto comprovando que o problema de acesso urbano foi corrigido.');
+  }
+
+  const { db, storage } = getFirebaseServices();
+  const ocorrenciaRef = doc(db, OCORRENCIAS_COLLECTION, ocorrenciaId);
+
+  let alreadyCountedInStats = false;
+  let existingData: Record<string, any> = {};
+
+  try {
+    const snap = await getDoc(ocorrenciaRef);
+    if (snap.exists()) {
+      existingData = snap.data() || {};
+      alreadyCountedInStats = Boolean(
+        existingData.resolvido === true ||
+          String(existingData.resolvido).toLowerCase() === 'true' ||
+          existingData.resolvido_em_validacao === true ||
+          String(existingData.resolvido_em_validacao).toLowerCase() === 'true' ||
+          existingData.status_resolucao === 'resolvido' ||
+          existingData.status_resolucao === 'em_validacao'
+      );
+    }
+  } catch {}
+
+  const { bytes, contentType } = base64ToUint8Array(payload.foto);
+  let fotoResolucaoUrl = '';
+  const storageSuffix = `${ocorrenciaId}_${Date.now()}`;
+
+  try {
+    const primaryRef = storageRef(storage, `ocorrencias/resolvido_${storageSuffix}.webp`);
+    await uploadBytes(primaryRef, bytes, {
+      contentType: contentType || 'image/webp',
+      cacheControl: 'public, max-age=31536000, immutable'
+    });
+    fotoResolucaoUrl = await getDownloadURL(primaryRef);
+  } catch {
+    const fallbackRef = storageRef(storage, `resolvidos/${storageSuffix}.webp`);
+    await uploadBytes(fallbackRef, bytes, {
+      contentType: contentType || 'image/webp',
+      cacheControl: 'public, max-age=31536000, immutable'
+    });
+    fotoResolucaoUrl = await getDownloadURL(fallbackRef);
+  }
+
+  await seedIncidentImageCache(fotoResolucaoUrl, bytes, contentType || 'image/webp');
+
+  const dataResolucao = new Date().toISOString();
+  const resolvidoPor = (payload.resolvidoPor || '').trim();
+
+  // 1. Grava os dados de resolução diretamente no documento da coleção `ocorrencias`
+  await setDoc(
+    ocorrenciaRef,
+    {
+      resolvido: true,
+      status_resolucao: 'resolvido',
+      resolvido_em_validacao: false,
+      foto_resolucao: fotoResolucaoUrl,
+      descricao_resolucao: descricaoResolucao,
+      data_resolucao: dataResolucao,
+      ...(resolvidoPor ? { resolvido_por: resolvidoPor } : {})
+    },
+    { merge: true }
+  );
+
+  // 2. Mantém registro espelhado na coleção `resolvidos`
+  try {
+    const inc = payload.incident || {};
+    await setDoc(
+      doc(db, RESOLVIDOS_COLLECTION, ocorrenciaId),
+      {
+        id: ocorrenciaId,
+        ocorrenciaId,
+        data: dataResolucao,
+        fotoUrl: fotoResolucaoUrl,
+        descricao: descricaoResolucao,
+        status: 'resolvido',
+        natureza: 'urbana',
+        latitude: Number(existingData.latitude ?? inc.latitude ?? 0),
+        longitude: Number(existingData.longitude ?? inc.longitude ?? 0),
+        rua: existingData.rua || inc.rua || '',
+        bairro: existingData.bairro || inc.bairro || '',
+        cidade: existingData.cidade || inc.cidade || '',
+        estado: existingData.estado || inc.estado || '',
+        ocorrenciaFotoUrl: existingData.fotoUrl || inc.fotoUrl || inc.maskedImageUrl || '',
+        ocorrenciaDescricao: existingData.descricao || inc.descricao || '',
+        resolvido_por: resolvidoPor
+      },
+      { merge: true }
+    );
+  } catch {}
+
+  // 3. Caso ainda não tivesse incrementado o contador de `resolvidos`, incrementa +1
+  if (!alreadyCountedInStats) {
+    adjustCachedStats({
+      totalGeralDelta: 0,
+      infracoesTransitoDelta: 0,
+      mobilidadeUrbanaDelta: 0,
+      resolvidosDelta: 1
+    });
+    void notifyMulteiLiveDelta('resolvidos', 1);
+    try {
+      const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+      await setDoc(
+        statsRef,
+        {
+          resolvidos: increment(1),
+          updatedAt: dataResolucao
+        },
+        { merge: true }
+      );
+    } catch {}
+  }
+
+  // 4. Atualiza os caches locais e regionais para que o mapa exiba imediatamente o pino verde com check e Antes/Depois
+  if (typeof window !== 'undefined') {
+    const applyPatch = (item: ReportedIncident): ReportedIncident =>
+      item.id === ocorrenciaId
+        ? {
+            ...item,
+            resolvido: true,
+            status_resolucao: 'resolvido',
+            resolvido_em_validacao: false,
+            foto_resolucao: fotoResolucaoUrl,
+            descricao_resolucao: descricaoResolucao,
+            data_resolucao: dataResolucao,
+            resolvido_por: resolvidoPor
+          }
+        : item;
+
+    try {
+      const cached = loadIncidentsFromLocalCache().map(applyPatch);
+      localStorage.setItem('multei_cached_incidents', JSON.stringify(cached));
+    } catch {}
+
+    try {
+      const entries = loadRegionCacheEntries().map((entry) => ({
+        ...entry,
+        incidents: (entry.incidents || []).map(applyPatch)
+      }));
+      saveRegionCacheEntries(entries);
+    } catch {}
+  }
+
+  return {
+    success: true,
+    ocorrenciaId,
+    fotoResolucaoUrl,
+    dataResolucao,
+    descricaoResolucao
+  };
+}
+
+

@@ -8,6 +8,7 @@ import {
   type Firestore
 } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
+import { getAuth } from 'firebase/auth'
 
 export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig()
@@ -40,6 +41,7 @@ export default defineNuxtPlugin(() => {
   }
 
   const storage = getStorage(app)
+  const auth = getAuth(app)
 
   if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -50,7 +52,8 @@ export default defineNuxtPlugin(() => {
   return {
     provide: {
       db,
-      storage
+      storage,
+      auth
     }
   }
 })

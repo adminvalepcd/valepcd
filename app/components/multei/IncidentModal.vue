@@ -6,6 +6,7 @@
     <div 
       ref="modalCardRef"
       class="modal-card"
+      :class="{ 'is-resolved-modal': isIncidentResolved }"
       role="dialog"
       aria-modal="true"
       aria-labelledby="incident-modal-title"
@@ -13,77 +14,195 @@
     >
       <div class="modal-card-body">
         <div class="modal-header">
-          <h2 id="incident-modal-title" class="modal-title">Detalhes da Ocorrência</h2>
+          <h2 id="incident-modal-title" class="modal-title">
+            {{ isIncidentResolved ? '✅ Problema Urbano Corrigido' : 'Detalhes da Ocorrência' }}
+          </h2>
           <button class="btn-close" @click="emit('close')" aria-label="Fechar">✕</button>
         </div>
 
-        <div class="modal-image-wrapper">
-          <div class="photo-stage" :class="{ 'is-loading': isLoadingPhoto }">
-            <div
-              v-if="isLoadingPhoto"
-              class="image-loading-placeholder"
-              role="status"
-              aria-live="polite"
-            >
-              <LoadingSpinner />
-              <span class="image-loading-text">Carregando foto...</span>
+        <!-- MODO RESOLVIDO: Comparativo ANTES e DEPOIS com datas destacadas -->
+        <div v-if="isIncidentResolved" class="before-after-section">
+          <div class="before-after-grid">
+            <!-- Coluna ANTES -->
+            <div class="ba-card ba-card-before">
+              <div class="ba-card-header ba-header-before">
+                <span class="ba-tag">🚧 ANTES • Denúncia</span>
+              </div>
+
+              <div class="ba-photo-stage">
+                <img
+                  v-if="currentPhoto"
+                  :src="currentPhoto"
+                  alt="Foto de antes: problema de acesso urbano reportado"
+                  class="ba-photo-img is-clickable"
+                  title="Clique para ampliar a foto do Antes"
+                  @click="openExpandedPhoto(currentPhoto)"
+                />
+                <div v-else class="image-empty-placeholder">
+                  <span>📷 Foto original indisponível</span>
+                </div>
+              </div>
+
+              <div class="ba-date-highlight ba-date-before">
+                <span class="ba-date-label">📅 Data da denúncia</span>
+                <strong class="ba-date-value">{{ formattedDate || 'Não informada' }}</strong>
+              </div>
+
+              <p v-if="incident.descricao" class="ba-desc-text">
+                <strong>Relato inicial:</strong> {{ incident.descricao }}
+              </p>
             </div>
 
-            <img 
-              v-if="currentPhoto && !hasPhotoLoadError"
-              ref="photoImgRef"
-              :src="currentPhoto" 
-              alt="Foto da infração com dados sensíveis ocultos" 
-              class="incident-image is-clickable"
-              :class="{ 'is-hidden-while-loading': isLoadingPhoto }"
-              title="Clique para ver em tamanho original"
-              @load="handlePhotoLoaded"
-              @error="handlePhotoError"
-              @click="!isLoadingPhoto && (isPhotoExpanded = true)"
-            />
+            <!-- Coluna DEPOIS -->
+            <div class="ba-card ba-card-after">
+              <div class="ba-card-header ba-header-after">
+                <span class="ba-tag">✅ DEPOIS • Resolução</span>
+              </div>
 
-            <div v-else-if="!isLoadingPhoto" class="image-empty-placeholder">
-              <span>📷 Foto da infração indisponível</span>
-            </div>
+              <div class="ba-photo-stage">
+                <img
+                  v-if="resolvedAfterPhoto"
+                  :src="resolvedAfterPhoto"
+                  alt="Foto de depois: problema de acesso urbano corrigido"
+                  class="ba-photo-img is-clickable"
+                  title="Clique para ampliar a foto do Depois"
+                  @click="openExpandedPhoto(resolvedAfterPhoto)"
+                />
+                <div v-else class="image-empty-placeholder">
+                  <span>📷 Foto da resolução indisponível</span>
+                </div>
+              </div>
 
-            <div
-              v-if="verificationBadge"
-              class="verification-photo-badge"
-              :class="`is-${verificationBadge.type}`"
-              :title="verificationBadge.label"
-            >
-              <span class="verification-badge-icon" aria-hidden="true">{{ verificationBadge.icon }}</span>
-              <span class="verification-badge-text">{{ verificationBadge.label }}</span>
-            </div>
+              <div class="ba-date-highlight ba-date-after">
+                <span class="ba-date-label">✅ Data da resolução</span>
+                <strong class="ba-date-value">{{ formattedResolutionDate || 'Confirmada' }}</strong>
+              </div>
 
-            <div
-              v-if="isResolutionPending"
-              class="photo-resolution-watermark"
-              aria-label="Em revisão de resolução"
-            >
-              <span class="photo-resolution-watermark-stamp">Em revisão de resolução</span>
+              <p v-if="incident.descricao_resolucao" class="ba-desc-text">
+                <strong>Correção realizada:</strong> {{ incident.descricao_resolucao }}
+              </p>
             </div>
           </div>
-          <p class="privacy-note">
-            Áreas sensíveis (placas e rostos) foram ocultadas automaticamente por IA. Se seu rosto apareceu, <button type="button" class="btn-link-report" @click="handleOpenReport">reporte a ocorrência</button>.
-          </p>
+
+          <div class="modal-info-list ba-location-box">
+            <div class="info-row">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+              </svg>
+              <div>
+                <p class="info-label">Localização:</p>
+                <p v-if="incident.cidade" class="info-city">📍 {{ incident.cidade }}{{ incident.estado ? ` - ${incident.estado}` : '' }}</p>
+                <p v-if="displayAddress" class="info-address">{{ displayAddress }}</p>
+              </div>
+            </div>
+          </div>
         </div>
+
+        <!-- MODO PADRÃO (Ocorrência ainda não resolvida) -->
+        <template v-else>
+          <div class="modal-image-wrapper">
+            <div class="photo-stage" :class="{ 'is-loading': isLoadingPhoto }">
+              <div
+                v-if="isLoadingPhoto"
+                class="image-loading-placeholder"
+                role="status"
+                aria-live="polite"
+              >
+                <LoadingSpinner />
+                <span class="image-loading-text">Carregando foto...</span>
+              </div>
+
+              <img 
+                v-if="currentPhoto && !hasPhotoLoadError"
+                ref="photoImgRef"
+                :src="currentPhoto" 
+                alt="Foto da infração com dados sensíveis ocultos" 
+                class="incident-image is-clickable"
+                :class="{ 'is-hidden-while-loading': isLoadingPhoto }"
+                title="Clique para ver em tamanho original"
+                @load="handlePhotoLoaded"
+                @error="handlePhotoError"
+                @click="!isLoadingPhoto && openExpandedPhoto(currentPhoto)"
+              />
+
+              <div v-else-if="!isLoadingPhoto" class="image-empty-placeholder">
+                <span>📷 Foto da infração indisponível</span>
+              </div>
+
+              <div
+                v-if="verificationBadge"
+                class="verification-photo-badge"
+                :class="`is-${verificationBadge.type}`"
+                :title="verificationBadge.label"
+              >
+                <span class="verification-badge-icon" aria-hidden="true">{{ verificationBadge.icon }}</span>
+                <span class="verification-badge-text">{{ verificationBadge.label }}</span>
+              </div>
+
+              <div
+                v-if="isResolutionPending"
+                class="photo-resolution-watermark"
+                aria-label="Em revisão de resolução"
+              >
+                <span class="photo-resolution-watermark-stamp">Em revisão de resolução</span>
+              </div>
+            </div>
+            <p class="privacy-note">
+              Áreas sensíveis (placas e rostos) foram ocultadas automaticamente por IA. Se seu rosto apareceu, <button type="button" class="btn-link-report" @click="handleOpenReport">reporte a ocorrência</button>.
+            </p>
+          </div>
+
+          <div class="modal-info-list">
+            <div v-if="incident.descricao" class="info-row">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+              </svg>
+              <div>
+                <p class="info-label">Breve descrição:</p>
+                <p class="info-val">{{ incident.descricao }}</p>
+              </div>
+            </div>
+
+            <div class="info-row">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+              </svg>
+              <div>
+                <p class="info-label">Data e Hora:</p>
+                <p class="info-val">{{ formattedDate }}</p>
+              </div>
+            </div>
+            
+            <div class="info-row">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+              </svg>
+              <div>
+                <p class="info-label">Localização:</p>
+                <p v-if="incident.cidade" class="info-city">📍 {{ incident.cidade }}{{ incident.estado ? ` - ${incident.estado}` : '' }}</p>
+                <p v-if="displayAddress" class="info-address">{{ displayAddress }}</p>
+              </div>
+            </div>
+          </div>
+        </template>
 
         <!-- Visualização da foto em tamanho original acima do modal -->
         <div 
-          v-if="isPhotoExpanded && currentPhoto" 
+          v-if="isPhotoExpanded && expandedPhotoUrl" 
           class="photo-expanded-overlay" 
           title="Clique para fechar"
           @click.stop="isPhotoExpanded = false"
         >
           <div class="photo-expanded-stage">
             <img 
-              :src="currentPhoto" 
-              alt="Foto da infração em tamanho original" 
+              :src="expandedPhotoUrl" 
+              alt="Foto em tamanho original" 
               class="photo-expanded-img" 
             />
             <div
-              v-if="isResolutionPending"
+              v-if="isResolutionPending && !isIncidentResolved"
               class="photo-resolution-watermark"
               aria-label="Em revisão de resolução"
             >
@@ -92,42 +211,8 @@
           </div>
         </div>
 
-        <div class="modal-info-list">
-          <div v-if="incident.descricao" class="info-row">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-            </svg>
-            <div>
-              <p class="info-label">Breve descrição:</p>
-              <p class="info-val">{{ incident.descricao }}</p>
-            </div>
-          </div>
-
-          <div class="info-row">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-            </svg>
-            <div>
-              <p class="info-label">Data e Hora:</p>
-              <p class="info-val">{{ formattedDate }}</p>
-            </div>
-          </div>
-          
-          <div class="info-row">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-            </svg>
-            <div>
-              <p class="info-label">Localização:</p>
-              <p v-if="incident.cidade" class="info-city">📍 {{ incident.cidade }}{{ incident.estado ? ` - ${incident.estado}` : '' }}</p>
-              <p v-if="displayAddress" class="info-address">{{ displayAddress }}</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <div class="modal-footer-actions">
+        <div class="modal-footer" :class="{ 'is-resolved-footer': isIncidentResolved }">
+          <div v-if="!isIncidentResolved" class="modal-footer-actions">
             <button
               type="button"
               class="btn-report"
@@ -374,11 +459,29 @@ const config = useRuntimeConfig();
 const geminiClient = initializeGeminiClient(config.public?.geminiApiKey);
 
 const currentPhoto = ref(props.incident?.fotoUrl || props.incident?.maskedImageUrl || '');
+const resolvedAfterPhoto = ref(props.incident?.foto_resolucao || '');
 const isLoadingPhoto = ref(Boolean(currentPhoto.value));
 const hasPhotoLoadError = ref(false);
 const isPhotoExpanded = ref(false);
+const expandedPhotoUrl = ref('');
 const addressText = ref('');
 const isResolving = ref(false);
+
+const isIncidentResolved = computed(() =>
+  Boolean(
+    props.incident?.resolvido === true ||
+      String(props.incident?.resolvido).toLowerCase() === 'true' ||
+      String(props.incident?.status_resolucao || '').toLowerCase() === 'resolvido' ||
+      (props.incident?.foto_resolucao &&
+        String(props.incident?.status_resolucao || '').toLowerCase() !== 'em_validacao')
+  )
+);
+
+const openExpandedPhoto = (src) => {
+  if (!src) return;
+  expandedPhotoUrl.value = src;
+  isPhotoExpanded.value = true;
+};
 
 const verificationBadge = computed(() => {
   if (props.incident?.natureza === 'urbana') {
@@ -446,16 +549,24 @@ const cleanStreetAndNeighborhood = (rawAddress, city, state) => {
   return addr;
 };
 
-const formattedDate = computed(() => {
-  if (!props.incident?.timestamp) return '';
-  const d = new Date(props.incident.timestamp);
-  if (isNaN(d.getTime())) return String(props.incident.timestamp);
+const formatDateTimeValue = (rawVal) => {
+  if (!rawVal) return '';
+  const d = new Date(rawVal);
+  if (isNaN(d.getTime())) return String(rawVal);
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const year = d.getFullYear();
   const hours = String(d.getHours()).padStart(2, '0');
   const minutes = String(d.getMinutes()).padStart(2, '0');
   return `${day}/${month}/${year} às ${hours}:${minutes}`;
+};
+
+const formattedDate = computed(() => {
+  return formatDateTimeValue(props.incident?.timestamp || props.incident?.data);
+});
+
+const formattedResolutionDate = computed(() => {
+  return formatDateTimeValue(props.incident?.data_resolucao);
 });
 
 const displayAddress = computed(() => {
@@ -482,6 +593,7 @@ const resolveSuccess = ref(false);
 const localMarkedResolved = ref(false);
 
 const isResolutionPending = computed(() => {
+  if (isIncidentResolved.value) return false;
   return Boolean(
     localMarkedResolved.value ||
     props.incident?.resolvido_em_validacao === true ||
@@ -505,7 +617,20 @@ const handlePhotoError = () => {
 
 const loadPhotoIfNeeded = async () => {
   const nextPhoto = props.incident?.fotoUrl || props.incident?.maskedImageUrl || '';
+  const nextResolvedPhoto = props.incident?.foto_resolucao || '';
   hasPhotoLoadError.value = false;
+
+  if (nextResolvedPhoto) {
+    getCachedIncidentImageUrl(nextResolvedPhoto)
+      .then((url) => {
+        resolvedAfterPhoto.value = url;
+      })
+      .catch(() => {
+        resolvedAfterPhoto.value = nextResolvedPhoto;
+      });
+  } else {
+    resolvedAfterPhoto.value = '';
+  }
 
   if (!nextPhoto) {
     currentPhoto.value = '';
@@ -688,11 +813,13 @@ const handleSubmitReport = async () => {
 
   try {
     const id = props.incident.id || '';
-    await reportIncidentInFirebase(id, reportReason.value.trim(), props.incident);
+    const res = await reportIncidentInFirebase(id, reportReason.value.trim(), props.incident);
 
     reportSuccess.value = true;
-    // Emite imediatamente para que o mapa e o array reflitam a remoção em tempo real
-    emit('incidentReported', props.incident);
+    // Emite imediatamente para que o mapa reflita a remoção em tempo real (a menos que já tenha sido validada como improcedente antes)
+    if (!res || res.deactivated !== false) {
+      emit('incidentReported', props.incident);
+    }
     setTimeout(() => {
       emit('close');
     }, 1500);
@@ -1402,5 +1529,143 @@ watch(() => props.incident, () => {
   font-size: 0.9rem;
   color: #475569;
   line-height: 1.4;
+}
+
+/* Modo Resolvido: Comparativo Antes e Depois */
+.modal-card.is-resolved-modal {
+  max-width: 720px;
+}
+
+.before-after-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.15rem;
+}
+
+.before-after-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.ba-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface-alt, #f8fafc);
+  border: 2px solid #cbd5e1;
+}
+
+.ba-card-before {
+  border-color: #d97706;
+}
+
+.ba-card-after {
+  border-color: #16a34a;
+}
+
+.ba-card-header {
+  padding: 0.5rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ba-header-before {
+  background: #fef3c7;
+  color: #92400e;
+  border-bottom: 1.5px solid #f59e0b;
+}
+
+.ba-header-after {
+  background: #dcfce7;
+  color: #166534;
+  border-bottom: 1.5px solid #22c55e;
+}
+
+.ba-photo-stage {
+  width: 100%;
+  height: 210px;
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.ba-photo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: zoom-in;
+  transition: transform 0.2s ease;
+}
+
+.ba-photo-img:hover {
+  transform: scale(1.02);
+}
+
+.ba-date-highlight {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.84rem;
+}
+
+.ba-date-before {
+  background: #fffbeb;
+  color: #78350f;
+  border-top: 1px solid #fde68a;
+  border-bottom: 1px solid #fde68a;
+}
+
+.ba-date-after {
+  background: #f0fdf4;
+  color: #14532d;
+  border-top: 1px solid #bbf7d0;
+  border-bottom: 1px solid #bbf7d0;
+}
+
+.ba-date-label {
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.9;
+}
+
+.ba-date-value {
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.ba-desc-text {
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text, #1e293b);
+}
+
+.ba-location-box {
+  margin-bottom: 0;
+}
+
+.modal-footer.is-resolved-footer {
+  justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  .before-after-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ba-photo-stage {
+    height: 190px;
+  }
 }
 </style>

@@ -50,4 +50,9 @@ export interface ReportedIncident {
   motivo_denuncia?: string;
   resolvido_em_validacao?: boolean;
   status_resolucao?: string;
+  resolvido?: boolean;
+  foto_resolucao?: string;
+  descricao_resolucao?: string;
+  data_resolucao?: string;
+  resolvido_por?: string;
 }

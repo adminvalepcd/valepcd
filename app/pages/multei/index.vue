@@ -172,7 +172,7 @@
       <MulteiMapDisplay
         :incidents="filteredIncidents"
         :initial-center="initialCenter"
-        :initial-zoom="15"
+        :initial-zoom="initialCenter.zoom || 15"
         :show-user-location-dot="locationState === 'granted'"
         height="100vh"
         @marker-click="handleMarkerClick"
@@ -756,6 +756,30 @@ onMounted(async () => {
       geoPermissionStatus.addEventListener('change', handleGeoPermissionChange);
     } catch {}
   }
+
+  const route = useRoute();
+  const qLat = Number(route.query?.lat);
+  const qLng = Number(route.query?.lng);
+  const qZoom = Number(route.query?.zoom) || 18;
+  if (Number.isFinite(qLat) && Number.isFinite(qLng) && (qLat !== 0 || qLng !== 0)) {
+    const targetCoords = {
+      latitude: qLat,
+      longitude: qLng,
+      zoom: qZoom,
+      isSearchResult: true
+    };
+    initialCenter.value = targetCoords;
+    currentMapCenter.value = {
+      latitude: qLat,
+      longitude: qLng
+    };
+    await loadIncidents('nearby', {
+      latitude: qLat,
+      longitude: qLng
+    });
+    return;
+  }
+
   await requestLocation();
 });
 

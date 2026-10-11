@@ -776,12 +776,44 @@ const updateMarkers = () => {
     anchor: new googleMaps.Point(16, 40)
   };
 
+  // Pino personalizado para ocorrência de acesso urbano RESOLVIDA (Verde + ícone de Check ✓)
+  const resolvidoPinIcon = {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="32" height="42">
+        <defs>
+          <filter id="resolvido-pin-shadow" x="-20%" y="-10%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+        <!-- Sombra no solo -->
+        <ellipse cx="16" cy="40" rx="4.5" ry="1.5" fill="#000000" opacity="0.25"/>
+        <!-- Corpo do pino em Verde -->
+        <path d="M16 1C8.82 1 3 6.82 3 14c0 9.5 11.8 23 12.3 23.6.4.4 1 .4 1.4 0C17.2 37 29 23.5 29 14 29 6.82 23.18 1 16 1z" fill="#16a34a" stroke="#ffffff" stroke-width="1.8" filter="url(#resolvido-pin-shadow)"/>
+        <!-- Círculo branco de alto contraste -->
+        <circle cx="16" cy="14" r="7.8" fill="#ffffff"/>
+        <!-- Ícone de Check Verde -->
+        <path d="M12.2 14.3l2.5 2.5 5.3-5.4" fill="none" stroke="#15803d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `),
+    scaledSize: new googleMaps.Size(32, 42),
+    anchor: new googleMaps.Point(16, 40)
+  };
+
+  const isIncidentResolved = (inc) =>
+    Boolean(
+      inc?.resolvido === true ||
+        String(inc?.resolvido).toLowerCase() === 'true' ||
+        String(inc?.status_resolucao || '').toLowerCase() === 'resolvido' ||
+        (inc?.foto_resolucao && String(inc?.status_resolucao || '').toLowerCase() !== 'em_validacao')
+    );
+
   // Desenha os pontos de ancoragem e linhas conectoras de desdobramento (spiderfy)
   multiGroups.forEach(group => {
+    const isAllResolved = group.indices.every(idx => isIncidentResolved(incidents[idx]));
     const isAllUrbana = group.indices.every(
       idx => String(incidents[idx]?.natureza || '').trim().toLowerCase() === 'urbana'
     );
-    const groupColor = isAllUrbana ? '#ca8a04' : '#86007D';
+    const groupColor = isAllResolved ? '#16a34a' : isAllUrbana ? '#ca8a04' : '#86007D';
 
     const anchorDot = new googleMaps.Circle({
       center: group.center,
@@ -798,13 +830,15 @@ const updateMarkers = () => {
     group.indices.forEach(idx => {
       const pos = positions[idx];
       if (pos) {
-        const isUrbana = String(incidents[idx]?.natureza || '').trim().toLowerCase() === 'urbana';
+        const inc = incidents[idx];
+        const isResolved = isIncidentResolved(inc);
+        const isUrbana = String(inc?.natureza || '').trim().toLowerCase() === 'urbana';
         const line = new googleMaps.Polyline({
           path: [
             group.center,
             { lat: pos.lat, lng: pos.lng }
           ],
-          strokeColor: isUrbana ? '#ca8a04' : '#86007D',
+          strokeColor: isResolved ? '#16a34a' : isUrbana ? '#ca8a04' : '#86007D',
           strokeOpacity: 0.8,
           strokeWeight: 2,
           map: showSpider ? map.value : null,
@@ -817,12 +851,19 @@ const updateMarkers = () => {
 
   const newMarkers = incidents.map((incident, index) => {
     const pos = positions[index] || { lat: incident.latitude, lng: incident.longitude };
+    const isResolved = isIncidentResolved(incident);
     const natureza = String(incident?.natureza || 'infracao_veicular').trim().toLowerCase();
-    const pinIcon = natureza === 'urbana' ? urbanaPinIcon : pcdPinIcon;
+    const pinIcon = isResolved
+      ? resolvidoPinIcon
+      : natureza === 'urbana'
+        ? urbanaPinIcon
+        : pcdPinIcon;
 
     const marker = markRaw(new googleMaps.Marker({
       position: { lat: pos.lat, lng: pos.lng },
-      title: incident.description || (incident.cidade ? `${incident.cidade} - ${incident.estado}` : `Ocorrência registrada em ${new Date(incident.timestamp).toLocaleTimeString()}`),
+      title: isResolved
+        ? `Problema de acesso urbano resolvido • ${incident.cidade || ''}`
+        : incident.description || (incident.cidade ? `${incident.cidade} - ${incident.estado}` : `Ocorrência registrada em ${new Date(incident.timestamp).toLocaleTimeString()}`),
       icon: pinIcon,
       map: clusterer.value ? null : map.value
     }));
