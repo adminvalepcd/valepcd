@@ -37,6 +37,15 @@ export const REPORTADAS_COLLECTION = 'reportadas';
 export const ESTATISTICAS_COLLECTION = 'estatisticas';
 export const ESTATISTICAS_DOC_ID = 'resumo';
 
+export type MulteiLiveCategory = 'infracoesTransito' | 'mobilidadeUrbana' | 'resolvidos';
+
+export interface MulteiLiveDeltaEvent {
+  id: number;
+  category: MulteiLiveCategory;
+  delta: 1 | -1;
+  timestamp: number;
+}
+
 export interface MulteiStats {
   totalGeral: number;
   infracoesTransito: number;
@@ -559,10 +568,11 @@ export async function saveIncidentToFirebase(
 
   await setDoc(newDocRef, docData);
 
-  // 5. Atualiza contadores em `estatisticas/resumo` (Option B - 1 documento único)
+  // 5. Atualiza contadores em `estatisticas/resumo` (Option B - 1 documento único) e emite +1 ao vivo no backend Nuxt
   if (docData.ativo) {
+    const isUrbana = docData.natureza === 'urbana';
+    void notifyMulteiLiveDelta(isUrbana ? 'mobilidadeUrbana' : 'infracoesTransito', 1);
     try {
-      const isUrbana = docData.natureza === 'urbana';
       const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
       await setDoc(
         statsRef,
@@ -698,6 +708,7 @@ export async function reportIncidentInFirebase(
       mobilidadeUrbanaDelta: wasUrbana ? -1 : 0,
       resolvidosDelta: 0
     });
+    void notifyMulteiLiveDelta(wasUrbana ? 'mobilidadeUrbana' : 'infracoesTransito', -1);
     try {
       const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
       await setDoc(
@@ -819,13 +830,14 @@ export async function submitUrbanResolutionToFirebase(
     data_sinalizacao_resolvido: dataIso
   });
 
-  // Atualiza contador de resolvidos em `estatisticas/resumo`
+  // Atualiza contador de resolvidos em `estatisticas/resumo` e emite +1 ao vivo no backend Nuxt
   adjustCachedStats({
     totalGeralDelta: 0,
     infracoesTransitoDelta: 0,
     mobilidadeUrbanaDelta: 0,
     resolvidosDelta: 1
   });
+  void notifyMulteiLiveDelta('resolvidos', 1);
   try {
     const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
     await setDoc(
@@ -848,6 +860,56 @@ export async function submitUrbanResolutionToFirebase(
     id,
     fotoUrl
   };
+}
+
+const LIVE_BROADCAST_CHANNEL_NAME = 'multei_live_stats_channel_v1';
+
+/**
+ * Envia o evento anônimo de +1 (ou -1) para o backend do Nuxt (`/api/multei/live`)
+ * e sincroniza abas abertas no mesmo navegador via `BroadcastChannel`.
+ */
+export async function notifyMulteiLiveDelta(
+  category: MulteiLiveCategory,
+  delta: 1 | -1 = 1
+): Promise<void> {
+  if (typeof window === 'undefined') return;
+
+  let dispatchedEvent: MulteiLiveDeltaEvent | null = null;
+
+  try {
+    const res = await fetch('/api/multei/live', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ category, delta })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.event && typeof data.event.id === 'number') {
+        dispatchedEvent = data.event as MulteiLiveDeltaEvent;
+      }
+    }
+  } catch {
+    // Falha silenciosa de rede — fallback local via BroadcastChannel abaixo
+  }
+
+  if (!dispatchedEvent) {
+    dispatchedEvent = {
+      id: Date.now(),
+      category,
+      delta,
+      timestamp: Date.now()
+    };
+  }
+
+  try {
+    if ('BroadcastChannel' in window) {
+      const bc = new BroadcastChannel(LIVE_BROADCAST_CHANNEL_NAME);
+      bc.postMessage(dispatchedEvent);
+      bc.close();
+    }
+  } catch {}
 }
 
 function loadCachedStatsEntry(): { stats: MulteiStats; fetchedAt: number } | null {
@@ -901,12 +963,14 @@ function adjustCachedStats(deltas: {
 
 /**
  * Recalcula as métricas a partir das coleções `ocorrencias` e `resolvidos`
- * e grava o documento único `estatisticas/resumo` (executado apenas na primeira inicialização).
+ * e grava o documento único `estatisticas/resumo`.
  */
-export async function recalculateAndSyncMulteiStats(): Promise<MulteiStats> {
-  const cached = loadCachedStatsEntry();
-  if (cached && Date.now() - cached.fetchedAt < STATS_CACHE_TTL_MS) {
-    return cached.stats;
+export async function recalculateAndSyncMulteiStats(forceRefresh = false): Promise<MulteiStats> {
+  if (!forceRefresh) {
+    const cached = loadCachedStatsEntry();
+    if (cached && Date.now() - cached.fetchedAt < STATS_CACHE_TTL_MS) {
+      return cached.stats;
+    }
   }
 
   const { db } = getFirebaseServices();
@@ -958,67 +1022,231 @@ export async function recalculateAndSyncMulteiStats(): Promise<MulteiStats> {
 }
 
 /**
- * Escuta em tempo real o documento único `estatisticas/resumo` (consome apenas 1 leitura).
- * Utiliza cache local imediato e evita varreduras repetidas caso o documento agregador ainda não exista.
+ * Realiza UMA ÚNICA busca no Firebase ao carregar ou atualizar (F5) a página `/multei/sobre`,
+ * sem manter conexão `onSnapshot` aberta no Firestore.
  */
-export function subscribeToMulteiStats(
-  onUpdate: (stats: MulteiStats) => void,
-  onError?: (err: unknown) => void
-): () => void {
+export async function fetchMulteiStatsOnce(
+  onCached?: (stats: MulteiStats) => void
+): Promise<MulteiStats> {
   const cachedEntry = loadCachedStatsEntry();
-  if (cachedEntry?.stats) {
-    onUpdate(cachedEntry.stats);
+  if (cachedEntry?.stats && onCached) {
+    onCached(cachedEntry.stats);
   }
 
   try {
     const { db } = getFirebaseServices();
     const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
-    let isSeeding = false;
+    const snap = await getDoc(statsRef);
 
-    const unsubscribe = onSnapshot(
-      statsRef,
-      async (snap) => {
-        if (snap.exists()) {
-          const d = snap.data() || {};
-          if (typeof d.totalGeral === 'number') {
-            const infracoesTransito = Math.max(0, Number(d.infracoesTransito || 0));
-            const mobilidadeUrbana = Math.max(0, Number(d.mobilidadeUrbana || 0));
-            const resolvidos = Math.max(0, Number(d.resolvidos || 0));
-            const totalGeral = Math.max(infracoesTransito + mobilidadeUrbana, Number(d.totalGeral || 0));
-            const nextStats: MulteiStats = {
-              totalGeral,
-              infracoesTransito,
-              mobilidadeUrbana,
-              resolvidos,
-              updatedAt: d.updatedAt ? String(d.updatedAt) : undefined
-            };
-            saveCachedStatsEntry(nextStats);
-            onUpdate(nextStats);
-            return;
-          }
-        }
-
-        if (!isSeeding) {
-          isSeeding = true;
-          try {
-            const seeded = await recalculateAndSyncMulteiStats();
-            onUpdate(seeded);
-          } catch (seedErr) {
-            if (onError) onError(seedErr);
-          }
-        }
-      },
-      (err) => {
-        console.warn('[firebaseService] Erro ao escutar estatisticas/resumo:', err);
-        if (onError && !cachedEntry?.stats) onError(err);
+    if (snap.exists()) {
+      const d = snap.data() || {};
+      if (typeof d.totalGeral === 'number') {
+        const infracoesTransito = Math.max(0, Number(d.infracoesTransito || 0));
+        const mobilidadeUrbana = Math.max(0, Number(d.mobilidadeUrbana || 0));
+        const resolvidos = Math.max(0, Number(d.resolvidos || 0));
+        const totalGeral = Math.max(infracoesTransito + mobilidadeUrbana, Number(d.totalGeral || 0));
+        const nextStats: MulteiStats = {
+          totalGeral,
+          infracoesTransito,
+          mobilidadeUrbana,
+          resolvidos,
+          updatedAt: d.updatedAt ? String(d.updatedAt) : undefined
+        };
+        saveCachedStatsEntry(nextStats);
+        return nextStats;
       }
-    );
+    }
 
-    return unsubscribe;
+    return await recalculateAndSyncMulteiStats(true);
   } catch (err) {
-    if (onError && !cachedEntry?.stats) onError(err);
-    return () => {};
+    console.warn('[firebaseService] Aviso ao buscar estatísticas únicas no Firebase:', err);
+    if (cachedEntry?.stats) {
+      return cachedEntry.stats;
+    }
+    throw err;
   }
+}
+
+/**
+ * Conecta ao canal de eventos em tempo real gerenciado pelo backend do Nuxt (`/api/multei/live`)
+ * via Server-Sent Events (SSE) + fallback de polling leve + BroadcastChannel entre abas,
+ * aplicando incrementos (+1 / -1) na tela sem novas consultas ao Firebase.
+ */
+export function subscribeToMulteiLiveEvents(
+  onDelta: (evt: MulteiLiveDeltaEvent) => void
+): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  const seenEventIds = new Set<number>();
+  let lastSeenId = 0;
+  let eventSource: EventSource | null = null;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let broadcastChannel: BroadcastChannel | null = null;
+  let isClosed = false;
+
+  const processIncomingEvent = (raw: unknown) => {
+    if (isClosed || !raw || typeof raw !== 'object') return;
+    const evt = raw as Partial<MulteiLiveDeltaEvent>;
+    const id = Number(evt.id);
+    const delta = evt.delta === -1 ? -1 : evt.delta === 1 ? 1 : null;
+    const category = evt.category;
+
+    if (
+      !Number.isFinite(id) ||
+      !delta ||
+      (category !== 'infracoesTransito' &&
+        category !== 'mobilidadeUrbana' &&
+        category !== 'resolvidos')
+    ) {
+      return;
+    }
+
+    if (seenEventIds.has(id)) return;
+    seenEventIds.add(id);
+    if (id > lastSeenId) {
+      lastSeenId = id;
+    }
+
+    adjustCachedStats({
+      totalGeralDelta: category === 'resolvidos' ? 0 : delta,
+      infracoesTransitoDelta: category === 'infracoesTransito' ? delta : 0,
+      mobilidadeUrbanaDelta: category === 'mobilidadeUrbana' ? delta : 0,
+      resolvidosDelta: category === 'resolvidos' ? delta : 0
+    });
+
+    onDelta({
+      id,
+      category,
+      delta,
+      timestamp: Number(evt.timestamp) || Date.now()
+    });
+  };
+
+  // 1. Conexão SSE com o backend do Nuxt
+  if ('EventSource' in window) {
+    try {
+      eventSource = new EventSource('/api/multei/live');
+
+      eventSource.addEventListener('connected', (e: MessageEvent) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          if (typeof parsed?.latestId === 'number' && parsed.latestId > lastSeenId) {
+            lastSeenId = parsed.latestId;
+          }
+        } catch {}
+      });
+
+      eventSource.addEventListener('multei-delta', (e: MessageEvent) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          processIncomingEvent(parsed);
+        } catch {}
+      });
+    } catch {}
+  }
+
+  // 2. Fallback de reconciliação leve no backend Nuxt (caso o container Serverless reconecte o stream SSE)
+  pollTimer = setInterval(async () => {
+    if (isClosed) return;
+    try {
+      const url = `/api/multei/live?mode=poll&since=${encodeURIComponent(lastSeenId)}`;
+      const res = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (lastSeenId === 0 && typeof data?.latestId === 'number') {
+        lastSeenId = data.latestId;
+        return;
+      }
+      if (Array.isArray(data?.events)) {
+        for (const item of data.events) {
+          processIncomingEvent(item);
+        }
+      }
+      if (typeof data?.latestId === 'number' && data.latestId > lastSeenId) {
+        lastSeenId = data.latestId;
+      }
+    } catch {}
+  }, 8_000);
+
+  // 3. Sincronização instantânea entre abas do mesmo navegador
+  if ('BroadcastChannel' in window) {
+    try {
+      broadcastChannel = new BroadcastChannel(LIVE_BROADCAST_CHANNEL_NAME);
+      broadcastChannel.onmessage = (e: MessageEvent) => {
+        processIncomingEvent(e.data);
+      };
+    } catch {}
+  }
+
+  return () => {
+    isClosed = true;
+    if (eventSource) {
+      try {
+        eventSource.close();
+      } catch {}
+      eventSource = null;
+    }
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    if (broadcastChannel) {
+      try {
+        broadcastChannel.close();
+      } catch {}
+      broadcastChannel = null;
+    }
+  };
+}
+
+/**
+ * Mantido por compatibilidade: busca inicialmente do Firebase uma única vez
+ * e assina o canal de eventos em tempo real do backend Nuxt.
+ */
+export function subscribeToMulteiStats(
+  onUpdate: (stats: MulteiStats) => void,
+  onError?: (err: unknown) => void
+): () => void {
+  let currentStats: MulteiStats = {
+    totalGeral: 0,
+    infracoesTransito: 0,
+    mobilidadeUrbana: 0,
+    resolvidos: 0
+  };
+
+  fetchMulteiStatsOnce((cached) => {
+    currentStats = { ...cached };
+    onUpdate(currentStats);
+  })
+    .then((fresh) => {
+      currentStats = { ...fresh };
+      onUpdate(currentStats);
+    })
+    .catch((err) => {
+      if (onError) onError(err);
+    });
+
+  const unsubscribeLive = subscribeToMulteiLiveEvents((evt) => {
+    if (evt.category === 'infracoesTransito') {
+      currentStats.infracoesTransito = Math.max(0, currentStats.infracoesTransito + evt.delta);
+      currentStats.totalGeral = Math.max(
+        currentStats.infracoesTransito + currentStats.mobilidadeUrbana,
+        currentStats.totalGeral + evt.delta
+      );
+    } else if (evt.category === 'mobilidadeUrbana') {
+      currentStats.mobilidadeUrbana = Math.max(0, currentStats.mobilidadeUrbana + evt.delta);
+      currentStats.totalGeral = Math.max(
+        currentStats.infracoesTransito + currentStats.mobilidadeUrbana,
+        currentStats.totalGeral + evt.delta
+      );
+    } else if (evt.category === 'resolvidos') {
+      currentStats.resolvidos = Math.max(0, currentStats.resolvidos + evt.delta);
+    }
+    currentStats.updatedAt = new Date(evt.timestamp).toISOString();
+    onUpdate({ ...currentStats });
+  });
+
+  return unsubscribeLive;
 }
 
 function loadIncidentsFromLocalCache(): ReportedIncident[] {

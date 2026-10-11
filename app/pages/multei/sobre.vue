@@ -35,17 +35,30 @@
     <section class="metrics-showcase" aria-labelledby="metrics-heading">
       <h2 id="metrics-heading" class="sr-only">Indicadores em tempo real do sistema</h2>
 
+      <!-- Camada exclusiva para leitores de tela anunciar novas ocorrências em tempo real -->
+      <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {{ liveSrAnnouncement }}
+      </div>
+
       <!-- Card Destaque Principal: Total Geral -->
-      <div class="metric-hero-card">
+      <div class="metric-hero-card" :class="{ 'is-live-pulsing': activePulses.totalGeral }">
         <div class="metric-hero-glow" aria-hidden="true"></div>
         <div class="metric-hero-content">
           <div class="metric-hero-tag">
             <span class="metric-hero-icon" aria-hidden="true">📍</span>
             <span>Total Geral de Registros Ativos</span>
           </div>
-          <div class="metric-hero-value" :class="{ 'is-loading': isLoadingStats }">
-            {{ formatNumber(animatedStats.totalGeral) }}
-          </div>
+          <div class="metric-hero-value-row">
+            <div class="metric-hero-value" :class="{ 'is-loading': isLoadingStats }">
+              {{ formatNumber(animatedStats.totalGeral) }}
+            </div>
+            <transition name="plus-one-pop">
+              <span v-if="activeBadges.totalGeral" :key="badgeRenderKeys.totalGeral" class="live-plus-one-badge badge-hero-plus"
+                aria-hidden="true">
+                +1
+              </span>
+            </transition>
+            </div>
           <p class="metric-hero-caption">
             Ocorrências validadas por Inteligência Artificial e mapeadas pela comunidade em defesa da acessibilidade
           </p>
@@ -61,14 +74,22 @@
       <!-- Grid com as 3 Métricas Detalhadas -->
       <div class="metrics-grid">
         <!-- 1. Infrações de Trânsito -->
-        <article class="metric-card card-transito">
+        <article class="metric-card card-transito" :class="{ 'is-live-pulsing': activePulses.infracoesTransito }">
           <div class="metric-card-top">
             <span class="metric-badge badge-transito">🚗 Trânsito</span>
             <span class="metric-icon-circle" aria-hidden="true">🚨</span>
           </div>
-          <div class="metric-number" :class="{ 'is-loading': isLoadingStats }">
-            {{ formatNumber(animatedStats.infracoesTransito) }}
-          </div>
+          <div class="metric-number-row">
+            <div class="metric-number" :class="{ 'is-loading': isLoadingStats }">
+              {{ formatNumber(animatedStats.infracoesTransito) }}
+            </div>
+            <transition name="plus-one-pop">
+              <span v-if="activeBadges.infracoesTransito" :key="badgeRenderKeys.infracoesTransito"
+                class="live-plus-one-badge badge-transito-plus" aria-hidden="true">
+                +1
+              </span>
+            </transition>
+            </div>
           <h3 class="metric-label">Infrações de Trânsito</h3>
           <p class="metric-description">
             Veículos estacionados sem credencial em vagas PcD, bloqueando rampas, calçadas ou faixas de travessia.
@@ -76,14 +97,22 @@
         </article>
 
         <!-- 2. Mobilidade Urbana -->
-        <article class="metric-card card-urbana">
+        <article class="metric-card card-urbana" :class="{ 'is-live-pulsing': activePulses.mobilidadeUrbana }">
           <div class="metric-card-top">
             <span class="metric-badge badge-urbana">♿ Acessibilidade</span>
             <span class="metric-icon-circle" aria-hidden="true">🚧</span>
           </div>
-          <div class="metric-number" :class="{ 'is-loading': isLoadingStats }">
-            {{ formatNumber(animatedStats.mobilidadeUrbana) }}
-          </div>
+          <div class="metric-number-row">
+            <div class="metric-number" :class="{ 'is-loading': isLoadingStats }">
+              {{ formatNumber(animatedStats.mobilidadeUrbana) }}
+            </div>
+            <transition name="plus-one-pop">
+              <span v-if="activeBadges.mobilidadeUrbana" :key="badgeRenderKeys.mobilidadeUrbana"
+                class="live-plus-one-badge badge-urbana-plus" aria-hidden="true">
+                +1
+              </span>
+            </transition>
+            </div>
           <h3 class="metric-label">Mobilidade Urbana</h3>
           <p class="metric-description">
             Calçadas quebradas, ausência de rampas, piso tátil danificado, buracos e obstáculos estruturais nas vias.
@@ -91,14 +120,22 @@
         </article>
 
         <!-- 3. Resolvidos -->
-        <article class="metric-card card-resolvidos">
+        <article class="metric-card card-resolvidos" :class="{ 'is-live-pulsing': activePulses.resolvidos }">
           <div class="metric-card-top">
             <span class="metric-badge badge-resolvidos">✅ Transformação</span>
             <span class="metric-icon-circle" aria-hidden="true">🎉</span>
           </div>
-          <div class="metric-number" :class="{ 'is-loading': isLoadingStats }">
-            {{ formatNumber(animatedStats.resolvidos) }}
-          </div>
+          <div class="metric-number-row">
+            <div class="metric-number" :class="{ 'is-loading': isLoadingStats }">
+              {{ formatNumber(animatedStats.resolvidos) }}
+            </div>
+            <transition name="plus-one-pop">
+              <span v-if="activeBadges.resolvidos" :key="badgeRenderKeys.resolvidos"
+                class="live-plus-one-badge badge-resolvidos-plus" aria-hidden="true">
+                +1
+              </span>
+            </transition>
+            </div>
           <h3 class="metric-label">Problemas Resolvidos</h3>
           <p class="metric-description">
             Ocorrências de mobilidade urbana solucionadas ou com reparo registrado e comprovado pelos cidadãos.
@@ -210,7 +247,10 @@
 
 <script setup>
 import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
-import { subscribeToMulteiStats } from '~/services/firebaseService';
+  import {
+    fetchMulteiStatsOnce,
+    subscribeToMulteiLiveEvents
+  } from '~/services/firebaseService';
 
 const themeCookie = useCookie('theme', { default: () => 'light' });
 const currentTheme = useState('theme', () => themeCookie.value || 'light');
@@ -230,6 +270,7 @@ useHead({
 });
 
 const isLoadingStats = ref(true);
+  const liveSrAnnouncement = ref('');
 
 const stats = ref({
   totalGeral: 0,
@@ -245,8 +286,73 @@ const animatedStats = reactive({
   resolvidos: 0
 });
 
-let unsubscribeStats = null;
+  const activeBadges = reactive({
+    totalGeral: false,
+    infracoesTransito: false,
+    mobilidadeUrbana: false,
+    resolvidos: false
+  });
+
+  const badgeRenderKeys = reactive({
+    totalGeral: 0,
+    infracoesTransito: 0,
+    mobilidadeUrbana: 0,
+    resolvidos: 0
+  });
+
+  const activePulses = reactive({
+    totalGeral: false,
+    infracoesTransito: false,
+    mobilidadeUrbana: false,
+    resolvidos: false
+  });
+
+  let unsubscribeLiveEvents = null;
 let animationFrameIds = {};
+  let badgeTimers = {};
+  let pulseTimers = {};
+  let srAnnounceTimer = null;
+
+  const triggerPlusOneVisual = (key) => {
+    badgeRenderKeys[key] += 1;
+    activeBadges[key] = true;
+    activePulses[key] = true;
+
+    if (badgeTimers[key]) {
+      clearTimeout(badgeTimers[key]);
+    }
+    badgeTimers[key] = setTimeout(() => {
+      activeBadges[key] = false;
+    }, 1800);
+
+    if (pulseTimers[key]) {
+      clearTimeout(pulseTimers[key]);
+    }
+    pulseTimers[key] = setTimeout(() => {
+      activePulses[key] = false;
+    }, 1400);
+  };
+
+  const announceForScreenReader = (category) => {
+    let message = '';
+    if (category === 'infracoesTransito') {
+      message = '+1 ocorrência de infração de trânsito foi criada';
+    } else if (category === 'mobilidadeUrbana') {
+      message = '+1 ocorrência de mobilidade urbana foi criada';
+    } else if (category === 'resolvidos') {
+      message = '+1 registro de problema resolvido foi criado';
+    }
+    if (!message) return;
+
+    if (srAnnounceTimer) {
+      clearTimeout(srAnnounceTimer);
+    }
+    // Limpa brevemente para garantir que leitores de tela anunciem até mesmo eventos consecutivos idênticos
+    liveSrAnnouncement.value = '';
+    srAnnounceTimer = setTimeout(() => {
+      liveSrAnnouncement.value = message;
+    }, 50);
+  };
 
 const animateValue = (key, targetValue) => {
   if (typeof window === 'undefined') {
@@ -284,29 +390,98 @@ const animateValue = (key, targetValue) => {
   animationFrameIds[key] = requestAnimationFrame(step);
 };
 
+  const applyIncomingSnapshot = (incoming) => {
+    isLoadingStats.value = false;
+    stats.value = {
+      totalGeral: Number(incoming.totalGeral || 0),
+      infracoesTransito: Number(incoming.infracoesTransito || 0),
+      mobilidadeUrbana: Number(incoming.mobilidadeUrbana || 0),
+      resolvidos: Number(incoming.resolvidos || 0)
+    };
+    animateValue('totalGeral', stats.value.totalGeral);
+    animateValue('infracoesTransito', stats.value.infracoesTransito);
+    animateValue('mobilidadeUrbana', stats.value.mobilidadeUrbana);
+    animateValue('resolvidos', stats.value.resolvidos);
+  };
+
 const formatNumber = (val) => {
   const num = Number(val) || 0;
   return num.toLocaleString('pt-BR');
 };
 
 onMounted(() => {
-  unsubscribeStats = subscribeToMulteiStats((incoming) => {
+  // 1. Consulta única ao Firebase apenas ao abrir ou atualizar (F5) a página
+  fetchMulteiStatsOnce((cached) => {
+    applyIncomingSnapshot(cached);
+  })
+    .then((fresh) => {
+      applyIncomingSnapshot(fresh);
+    })
+    .catch(() => {
+      isLoadingStats.value = false;
+    });
+
+  // 2. Escuta eventos em tempo real (+1 / -1) gerenciados pelo backend do Nuxt sem consultar o Firebase novamente
+  unsubscribeLiveEvents = subscribeToMulteiLiveEvents((evt) => {
     isLoadingStats.value = false;
-    stats.value = incoming;
-    animateValue('totalGeral', incoming.totalGeral);
-    animateValue('infracoesTransito', incoming.infracoesTransito);
-    animateValue('mobilidadeUrbana', incoming.mobilidadeUrbana);
-    animateValue('resolvidos', incoming.resolvidos);
+    const { category, delta } = evt;
+
+    if (category === 'infracoesTransito') {
+      stats.value.infracoesTransito = Math.max(0, stats.value.infracoesTransito + delta);
+      stats.value.totalGeral = Math.max(
+        stats.value.infracoesTransito + stats.value.mobilidadeUrbana,
+        stats.value.totalGeral + delta
+      );
+      animateValue('infracoesTransito', stats.value.infracoesTransito);
+      animateValue('totalGeral', stats.value.totalGeral);
+
+      if (delta > 0) {
+        triggerPlusOneVisual('infracoesTransito');
+        triggerPlusOneVisual('totalGeral');
+        announceForScreenReader('infracoesTransito');
+      }
+    } else if (category === 'mobilidadeUrbana') {
+      stats.value.mobilidadeUrbana = Math.max(0, stats.value.mobilidadeUrbana + delta);
+      stats.value.totalGeral = Math.max(
+        stats.value.infracoesTransito + stats.value.mobilidadeUrbana,
+        stats.value.totalGeral + delta
+      );
+      animateValue('mobilidadeUrbana', stats.value.mobilidadeUrbana);
+      animateValue('totalGeral', stats.value.totalGeral);
+
+      if (delta > 0) {
+        triggerPlusOneVisual('mobilidadeUrbana');
+        triggerPlusOneVisual('totalGeral');
+        announceForScreenReader('mobilidadeUrbana');
+      }
+    } else if (category === 'resolvidos') {
+      stats.value.resolvidos = Math.max(0, stats.value.resolvidos + delta);
+      animateValue('resolvidos', stats.value.resolvidos);
+
+      if (delta > 0) {
+        triggerPlusOneVisual('resolvidos');
+        announceForScreenReader('resolvidos');
+      }
+    }
   });
 });
 
 onBeforeUnmount(() => {
-  if (typeof unsubscribeStats === 'function') {
-    unsubscribeStats();
+  if (typeof unsubscribeLiveEvents === 'function') {
+    unsubscribeLiveEvents();
   }
   Object.values(animationFrameIds).forEach((id) => {
     if (id) cancelAnimationFrame(id);
   });
+  Object.values(badgeTimers).forEach((id) => {
+    if (id) clearTimeout(id);
+  });
+  Object.values(pulseTimers).forEach((id) => {
+    if (id) clearTimeout(id);
+  });
+  if (srAnnounceTimer) {
+    clearTimeout(srAnnounceTimer);
+  }
 });
 </script>
 
@@ -544,7 +719,6 @@ onBeforeUnmount(() => {
 
 .gradient-text {
   color: var(--sp-accent-text);
-  text-decoration: underline;
   text-decoration-color: var(--sp-accent-underline);
   text-underline-offset: 6px;
 }
@@ -611,14 +785,27 @@ onBeforeUnmount(() => {
   margin-bottom: 0.85rem;
 }
 
+.metric-hero-value-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.65rem;
+}
+
 .metric-hero-value {
   font-size: clamp(3.5rem, 8vw, 5.5rem);
   font-weight: 900;
   line-height: 1;
   letter-spacing: -0.03em;
-  margin-bottom: 0.65rem;
+  margin-bottom: 0;
   color: #ffffff;
   font-variant-numeric: tabular-nums;
+}
+
+.metric-hero-card.is-live-pulsing {
+  border-color: #6ee7b7;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.35), 0 22px 45px -12px rgba(74, 4, 78, 0.55);
 }
 
 .metric-hero-caption {
@@ -671,7 +858,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
   display: flex;
   flex-direction: column;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
 .metric-card:hover {
@@ -689,6 +876,21 @@ onBeforeUnmount(() => {
 
 .card-resolvidos {
   border-top: 6px solid var(--sp-resolvidos-top);
+}
+
+.card-transito.is-live-pulsing {
+  border-color: var(--sp-transito-border);
+  box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.25), 0 16px 34px rgba(15, 23, 42, 0.12);
+}
+
+.card-urbana.is-live-pulsing {
+  border-color: var(--sp-urbana-border);
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.25), 0 16px 34px rgba(15, 23, 42, 0.12);
+}
+
+.card-resolvidos.is-live-pulsing {
+  border-color: var(--sp-resolvidos-border);
+  box-shadow: 0 0 0 3px rgba(4, 120, 87, 0.25), 0 16px 34px rgba(15, 23, 42, 0.12);
 }
 
 .metric-card-top {
@@ -739,13 +941,21 @@ onBeforeUnmount(() => {
   background: var(--sp-surface-alt);
 }
 
+.metric-number-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
 .metric-number {
   font-size: clamp(2.6rem, 5vw, 3.6rem);
   font-weight: 900;
   line-height: 1.05;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
 }
 
 .card-transito .metric-number {
@@ -758,6 +968,90 @@ onBeforeUnmount(() => {
 
 .card-resolvidos .metric-number {
   color: var(--sp-resolvidos-num);
+}
+
+/* Selo visual +1 de incremento em tempo real (Contraste AAA) */
+.live-plus-one-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.7rem;
+  border-radius: 9999px;
+  font-size: 0.95rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  user-select: none;
+  pointer-events: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+}
+
+.badge-hero-plus {
+  background: #ecfdf5;
+  color: #064e3b;
+  border: 2px solid #047857;
+  font-size: 1.1rem;
+  padding: 0.32rem 0.85rem;
+}
+
+.badge-transito-plus {
+  background: var(--sp-transito-bg);
+  color: var(--sp-transito-text);
+  border: 2px solid var(--sp-transito-border);
+}
+
+.badge-urbana-plus {
+  background: var(--sp-urbana-bg);
+  color: var(--sp-urbana-text);
+  border: 2px solid var(--sp-urbana-border);
+}
+
+.badge-resolvidos-plus {
+  background: var(--sp-resolvidos-bg);
+  color: var(--sp-resolvidos-text);
+  border: 2px solid var(--sp-resolvidos-border);
+}
+
+.plus-one-pop-enter-active {
+  animation: plus-one-float-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.plus-one-pop-leave-active {
+  animation: plus-one-float-out 0.45s ease-in forwards;
+}
+
+@keyframes plus-one-float-in {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.75);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes plus-one-float-out {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.9);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plus-one-pop-enter-active,
+  .plus-one-pop-leave-active {
+    animation: none;
+    transition: opacity 0.2s ease;
+  }
 }
 
 .is-loading {
