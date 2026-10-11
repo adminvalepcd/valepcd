@@ -45,16 +45,12 @@
     <section v-else-if="!userProfile" class="login-section" aria-labelledby="login-heading">
       <div class="login-card">
         <div class="login-header">
-          <span class="login-tag">Acesso Restrito</span>
           <h1 id="login-heading" class="login-title">Painel do Multei</h1>
-          <p class="login-subtitle">
-            Entre com suas credenciais de Administrador (moderação de ocorrências) ou Parceiro Municipal (relatórios da cidade).
-          </p>
         </div>
 
         <form class="login-form" novalidate @submit.prevent="handleLogin">
           <div class="form-field">
-            <label for="painel-email" class="field-label">E-mail de acesso</label>
+            <label for="painel-email" class="field-label">E-mail</label>
             <input
               id="painel-email"
               ref="emailInputRef"
@@ -104,7 +100,7 @@
           </p>
 
           <button type="submit" class="btn-login-submit" :disabled="isLoggingIn">
-            <span>{{ isLoggingIn ? 'Autenticando...' : 'Entrar no Painel' }}</span>
+            <span>{{ isLoggingIn ? 'Autenticando...' : 'Entrar' }}</span>
           </button>
         </form>
       </div>
