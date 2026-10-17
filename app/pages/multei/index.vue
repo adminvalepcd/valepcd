@@ -746,14 +746,11 @@ const groupDuplicateIncidents = (rawList) => {
         groupCount: 1
       });
     } else {
-      // Ordena para que as denúncias principais fiquem antes das possíveis duplicidades e em ordem cronológica
+      // Ordena em ordem decrescente de data/hora (da ocorrência mais recente para a mais antiga)
       const sortedGroup = [...group].sort((a, b) => {
-        const aDup = Boolean(a.possivel_duplicidade);
-        const bDup = Boolean(b.possivel_duplicidade);
-        if (aDup !== bDup) return aDup ? 1 : -1;
         const timeA = new Date(a.timestamp).getTime() || 0;
         const timeB = new Date(b.timestamp).getTime() || 0;
-        return timeA - timeB;
+        return timeB - timeA;
       });
 
       const primary = sortedGroup[0];

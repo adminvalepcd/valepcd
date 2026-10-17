@@ -531,7 +531,11 @@ const currentPageIndex = ref(0);
 
 const groupItems = computed(() => {
   if (Array.isArray(props.incident?.groupItems) && props.incident.groupItems.length > 0) {
-    return props.incident.groupItems;
+    return [...props.incident.groupItems].sort((a, b) => {
+      const timeA = new Date(a?.timestamp).getTime() || 0;
+      const timeB = new Date(b?.timestamp).getTime() || 0;
+      return timeB - timeA;
+    });
   }
   return props.incident ? [props.incident] : [];
 });

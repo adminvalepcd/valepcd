@@ -3223,11 +3223,7 @@ export async function fetchPartnerIncidentsFromFirebase(options: {
 
     if (targetCityKey) {
       const incCityKey = normalizeCityKey(incident.cidade);
-      // Exige que pertença à cidade cadastrada (ou, se estiver no modo GPS 5km e um registro antigo não tiver cidade preenchida, permite pelo raio físico)
-      if (incCityKey && incCityKey !== targetCityKey) {
-        continue;
-      }
-      if (!incCityKey && !options.center) {
+      if (incCityKey !== targetCityKey) {
         continue;
       }
     }

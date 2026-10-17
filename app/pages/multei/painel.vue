@@ -182,7 +182,7 @@
         >
           <span aria-hidden="true">📍</span>
           <span>Denúncias</span>
-          <span class="module-tab-badge">{{ partnerIncidents.length }}</span>
+          <span class="module-tab-badge">{{ partnerScopedIncidents.length }}</span>
         </button>
 
         <button
@@ -263,7 +263,7 @@
                   v-model="reportFilterBairro"
                   type="text"
                   list="report-bairros-datalist"
-                  placeholder="Todos os bairros (digite ou selecione)..."
+                  placeholder="Todos os bairros"
                   class="field-input filter-input-with-clear"
                 />
                 <button
@@ -867,7 +867,7 @@
                   v-model="denunciaFilterBairro"
                   type="text"
                   list="denuncia-bairros-datalist"
-                  placeholder="Todos os bairros (digite ou selecione)..."
+                  placeholder="Todos os bairros"
                   class="field-input filter-input-with-clear"
                 />
                 <button
@@ -900,11 +900,12 @@
             </div>
           </div>
 
-          <div v-if="hasActiveDenunciaFilters" class="filter-bar-footer">
+          <div v-if="hasActiveDenunciaFilters || !isAdminRole" class="filter-bar-footer">
             <span class="filter-active-summary">
-              Exibindo <strong>{{ pendingPartnerIncidents.length + resolvedPartnerIncidents.length }}</strong> de <strong>{{ partnerIncidents.length }}</strong> denúncias
+              Exibindo <strong>{{ pendingPartnerIncidents.length + resolvedPartnerIncidents.length }}</strong> de <strong>{{ partnerScopedIncidents.length }}</strong> denúncias
             </span>
             <button
+              v-if="hasActiveDenunciaFilters"
               type="button"
               class="btn-clear-all-filters"
               @click="clearDenunciaFilters"
@@ -2010,12 +2011,33 @@ const hasActiveDenunciaFilters = computed(() =>
   )
 );
 
+const partnerScopedIncidents = computed(() => {
+  if (isAdminRole.value) {
+    return partnerIncidents.value;
+  }
+  const partnerCity = normalizeSearchText(userProfile.value?.cidade || '');
+  const partnerUf = (normalizeState(userProfile.value?.estado || '') || userProfile.value?.estado || '')
+    .trim()
+    .toUpperCase();
+
+  return partnerIncidents.value.filter((inc) => {
+    if (partnerCity && normalizeSearchText(inc.cidade) !== partnerCity) {
+      return false;
+    }
+    if (partnerUf) {
+      const incUf = (normalizeState(inc.estado || '') || inc.estado || '').trim().toUpperCase();
+      if (incUf && incUf !== partnerUf) return false;
+    }
+    return true;
+  });
+});
+
 const availableDenunciaBairros = computed(() => {
   const targetUf = isAdminRole.value ? denunciaFilterEstado.value.trim().toUpperCase() : '';
   const targetCity = isAdminRole.value ? normalizeSearchText(denunciaFilterCidade.value) : '';
   const set = new Set<string>();
 
-  for (const inc of partnerIncidents.value) {
+  for (const inc of partnerScopedIncidents.value) {
     const incUf = (normalizeState(inc.estado || '') || inc.estado || '').trim().toUpperCase();
     if (targetUf && incUf !== targetUf) continue;
     if (targetCity && normalizeSearchText(inc.cidade) !== targetCity) continue;
@@ -2122,7 +2144,7 @@ const baseFilteredPartnerIncidents = computed(() => {
   const targetBairro = normalizeSearchText(denunciaFilterBairro.value);
   const targetNatureza = denunciaFilterNatureza.value;
 
-  return partnerIncidents.value.filter((inc) => {
+  return partnerScopedIncidents.value.filter((inc) => {
     if (targetUf) {
       const incUf = (normalizeState(inc.estado || '') || inc.estado || '').trim().toUpperCase();
       if (incUf !== targetUf) return false;
@@ -2609,7 +2631,14 @@ const handleSaveUser = async () => {
       await loadPanelUsers();
       if (userProfile.value && editingUserId.value === userProfile.value.uid) {
         const refreshed = await refreshCurrentMulteiPanelProfile();
-        if (refreshed) userProfile.value = refreshed;
+        if (refreshed) {
+          userProfile.value = refreshed;
+          if (refreshed.role !== 'admin') {
+            clearDenunciaFilters();
+            adminMainSection.value = 'denuncias';
+          }
+          await loadPartnerDenuncias();
+        }
       }
       userFeedbackSuccess.value = 'Dados do usuário atualizados com sucesso.';
       announceSr(userFeedbackSuccess.value);
@@ -3232,6 +3261,8 @@ onBeforeUnmount(() => {
   --pp-amber-border: #92400e;
   --pp-amber-text: #78350f;
 
+  --pp-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%230f172a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5'/%3E%3C/svg%3E");
+
   max-width: 1240px;
   margin: 0 auto;
   padding: 1.75rem 1.25rem 4rem;
@@ -3262,6 +3293,8 @@ onBeforeUnmount(() => {
   --pp-amber-bg: #451a03;
   --pp-amber-border: #fcd34d;
   --pp-amber-text: #fffbeb;
+
+  --pp-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23ffffff' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5'/%3E%3C/svg%3E");
 }
 
 .sr-only {
@@ -3611,6 +3644,37 @@ onBeforeUnmount(() => {
   color: var(--pp-text-primary);
   font-size: 0.96rem;
   font-family: inherit;
+}
+
+.field-input::placeholder {
+  color: var(--pp-text-secondary);
+  opacity: 1;
+  font-weight: 700;
+}
+
+.field-input:disabled {
+  opacity: 1;
+  color: var(--pp-text-secondary);
+  -webkit-text-fill-color: var(--pp-text-secondary);
+  cursor: not-allowed;
+}
+
+.field-input:disabled::placeholder {
+  color: var(--pp-text-secondary);
+  -webkit-text-fill-color: var(--pp-text-secondary);
+  opacity: 1;
+}
+
+select.field-input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 2.5rem;
+  background-image: var(--pp-select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.95rem center;
+  background-size: 14px 14px;
+  cursor: pointer;
 }
 
 .field-input:focus {

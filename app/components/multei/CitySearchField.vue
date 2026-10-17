@@ -150,7 +150,7 @@ const highlightedIndex = ref(-1);
 const capitalCity = computed(() => getCapitalByState(props.uf));
 
 const computedPlaceholder = computed(() => {
-  if (!props.uf) return 'Selecione o estado (UF) primeiro';
+  if (!props.uf) return 'Selecione o estado';
   return props.placeholder || `Buscar cidade em ${props.uf}...`;
 });
 
@@ -380,12 +380,12 @@ onBeforeUnmount(() => {
   left: 0.78rem;
   font-size: 0.9rem;
   pointer-events: none;
-  opacity: 0.8;
+  opacity: 1;
 }
 
 .city-search-input {
   width: 100%;
-  padding: 0.72rem 4.1rem 0.72rem 2.25rem;
+  padding: 0.68rem 4.3rem 0.68rem 2.25rem;
   border-radius: 12px;
   border: 2px solid var(--pp-border-strong, #64748b);
   background: var(--pp-surface-alt, #f8fafc);
@@ -395,28 +395,43 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
+.city-search-input::placeholder {
+  color: var(--pp-text-secondary, #1e293b);
+  opacity: 1;
+  font-weight: 700;
+}
+
 .city-search-input:focus {
   outline: 3px solid var(--pp-accent, #4a044e);
   outline-offset: 1px;
 }
 
 .city-search-input:disabled {
-  opacity: 0.6;
+  opacity: 1;
+  background: var(--pp-surface-alt, #f8fafc);
+  color: var(--pp-text-secondary, #1e293b);
+  -webkit-text-fill-color: var(--pp-text-secondary, #1e293b);
   cursor: not-allowed;
+}
+
+.city-search-input:disabled::placeholder {
+  color: var(--pp-text-secondary, #1e293b);
+  -webkit-text-fill-color: var(--pp-text-secondary, #1e293b);
+  opacity: 1;
 }
 
 .city-loading-indicator {
   position: absolute;
-  right: 3.6rem;
+  right: 3.8rem;
   font-size: 0.85rem;
 }
 
 .btn-city-clear {
   position: absolute;
-  right: 2.05rem;
+  right: 2.25rem;
   background: transparent;
   border: none;
-  color: var(--pp-text-secondary, #334155);
+  color: var(--pp-text-secondary, #1e293b);
   font-size: 0.88rem;
   font-weight: 900;
   cursor: pointer;
@@ -431,7 +446,7 @@ onBeforeUnmount(() => {
 
 .btn-city-toggle {
   position: absolute;
-  right: 0.5rem;
+  right: 0.8rem;
   background: transparent;
   border: none;
   color: var(--pp-text-primary, #0f172a);
