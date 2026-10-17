@@ -29,6 +29,13 @@ export interface IncidentAnalysisResult {
   apiError?: boolean;
 }
 
+export interface DuplicateComparisonResult {
+  isPossibleDuplicate: boolean;
+  confidence?: 'alta' | 'media' | 'baixa' | string;
+  reason?: string;
+  apiError?: boolean;
+}
+
 export interface ReportedIncident {
   id?: string;
   maskedImageUrl: string;
@@ -55,4 +62,9 @@ export interface ReportedIncident {
   descricao_resolucao?: string;
   data_resolucao?: string;
   resolvido_por?: string;
+  possivel_duplicidade?: boolean;
+  duplicidade_de_id?: string;
+  rotulo_duplicidade?: string;
+  groupItems?: ReportedIncident[];
 }
+

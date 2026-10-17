@@ -24,6 +24,7 @@ import {
   ref as storageRef,
   uploadBytes,
   getDownloadURL,
+  getBlob,
   type FirebaseStorage
 } from 'firebase/storage';
 import {
@@ -89,6 +90,13 @@ export interface ReportHistoryEntry {
   apos_revisao?: boolean;
 }
 
+export type ReportReviewDecision =
+  | 'procedente'
+  | 'improcedente'
+  | 'nao_duplicidade'
+  | 'indefinido'
+  | 'duplicidade';
+
 export interface ReportedIncidentPanelItem {
   id: string;
   ocorrenciaId: string;
@@ -114,11 +122,16 @@ export interface ReportedIncidentPanelItem {
   outras_revisoes_solicitadas: boolean;
   historico_reports: ReportHistoryEntry[];
   revisada: boolean;
-  resultado_revisao?: 'procedente' | 'improcedente' | '';
+  resultado_revisao?: ReportReviewDecision | '';
   data_revisao?: string;
   revisado_por?: string;
   observacao_admin?: string;
   legacyDocIds?: string[];
+  possivel_duplicidade?: boolean;
+  origem_duplicidade?: boolean;
+  duplicidade_de_id?: string;
+  rotulo_duplicidade?: string;
+  duplicidade_original_fotoUrl?: string;
 }
 
 export type MulteiLiveCategory = 'infracoesTransito' | 'mobilidadeUrbana' | 'resolvidos';
@@ -171,6 +184,10 @@ export interface SaveFirebaseIncidentPayload {
   verificacao?: 'exclusiva' | 'transferencia' | 'pedestre' | '' | string;
   natureza?: string;
   descricao?: string;
+  possivel_duplicidade?: boolean;
+  duplicidade_de_id?: string;
+  rotulo_duplicidade?: string;
+  motivo_duplicidade?: string;
 }
 
 export function normalizeVerificacao(raw?: unknown): 'exclusiva' | 'transferencia' | 'pedestre' | '' {
@@ -281,6 +298,16 @@ function mapDocToIncident(docId: string, data: Record<string, any>): ReportedInc
       (fotoResolucaoVal && String(data.status_resolucao || '').toLowerCase() !== 'em_validacao')
   );
 
+  const isPossivelDuplicidade = Boolean(
+    data.possivel_duplicidade === true ||
+      String(data.possivel_duplicidade).toLowerCase() === 'true' ||
+      String(data.rotulo_duplicidade || '').toLowerCase().includes('duplicidade')
+  );
+  const duplicidadeDeId = data.duplicidade_de_id ? String(data.duplicidade_de_id).trim() : '';
+  const rotuloDuplicidade = isPossivelDuplicidade
+    ? String(data.rotulo_duplicidade || 'Possível duplicidade').trim()
+    : '';
+
   return {
     id: String(docId || data.id),
     timestamp: data.data || data.timestamp || new Date().toISOString(),
@@ -318,7 +345,10 @@ function mapDocToIncident(docId: string, data: Record<string, any>): ReportedInc
     foto_resolucao: fotoResolucaoVal,
     descricao_resolucao: data.descricao_resolucao ? String(data.descricao_resolucao).trim() : '',
     data_resolucao: data.data_resolucao ? String(data.data_resolucao).trim() : '',
-    resolvido_por: data.resolvido_por ? String(data.resolvido_por).trim() : ''
+    resolvido_por: data.resolvido_por ? String(data.resolvido_por).trim() : '',
+    possivel_duplicidade: isPossivelDuplicidade,
+    duplicidade_de_id: duplicidadeDeId,
+    rotulo_duplicidade: rotuloDuplicidade
   };
 }
 
@@ -567,13 +597,179 @@ export async function fetchIncidentsByVisibleArea(options: {
   }
 }
 
+const recentIncidentBase64Memory = new Map<string, string>();
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Falha ao converter Blob em Data URL.'));
+      }
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Busca ocorrências de trânsito ativas registradas nos últimos `windowMs` (padrão: 2 minutos)
+ * dentro de um raio físico de `radiusMeters` (padrão: 10 metros) para verificação anti-duplicidade.
+ */
+export async function findRecentNearbyTrafficIncidents(
+  latitude: number,
+  longitude: number,
+  windowMs = 2 * 60 * 1000,
+  radiusMeters = 10
+): Promise<ReportedIncident[]> {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return [];
+  }
+
+  const now = Date.now();
+  const candidatesById = new Map<string, ReportedIncident>();
+
+  const checkAndAddCandidate = (inc: ReportedIncident | null | undefined) => {
+    if (!inc || !inc.id) return;
+    if (inc.ativo === false) return;
+    const nat = String(inc.natureza || 'infracao_veicular').trim().toLowerCase();
+    if (nat === 'urbana') return;
+
+    const incTime = new Date(inc.timestamp).getTime();
+    if (!Number.isFinite(incTime)) return;
+    const ageMs = now - incTime;
+    // Aceita registros feitos nos últimos 2 minutos (com tolerância de 60s para pequenas diferenças de relógio)
+    if (ageMs < -60_000 || ageMs > windowMs) return;
+
+    const distKm = distanceBetween([latitude, longitude], [inc.latitude, inc.longitude]);
+    const distMeters = distKm * 1000;
+    if (distMeters <= radiusMeters) {
+      candidatesById.set(inc.id, inc);
+    }
+  };
+
+  // 1. Verifica primeiramente no cache local (caso o registro anterior tenha acabado de ser enviado)
+  try {
+    const localList = loadIncidentsFromLocalCache();
+    for (const item of localList) {
+      checkAndAddCandidate(item);
+    }
+  } catch {}
+
+  // 2. Consulta diretamente no Firestore em um raio curto usando geohashQueryBounds
+  try {
+    const { db } = getFirebaseServices();
+    const colRef = collection(db, OCORRENCIAS_COLLECTION);
+    // Usa no mínimo 35m nos bounds de geohash para não perder bordas de células vizinhas e filtra exatamente <= 10m em seguida
+    const queryBounds = geohashQueryBounds([latitude, longitude], Math.max(radiusMeters, 35));
+    const snapshots = await Promise.all(
+      queryBounds.map(([startHash, endHash]) => {
+        const q = query(colRef, orderBy('geohash'), startAt(startHash), endAt(endHash));
+        return getDocsFromServer(q).catch(() => getDocs(q));
+      })
+    );
+
+    for (const snap of snapshots) {
+      snap.forEach((docSnap) => {
+        const mapped = mapDocToIncident(docSnap.id, docSnap.data() || {});
+        checkAndAddCandidate(mapped);
+      });
+    }
+  } catch (err) {
+    console.warn('[firebaseService] Aviso ao buscar ocorrências recentes em 10m:', err);
+  }
+
+  const results = Array.from(candidatesById.values());
+  // Ordena da mais antiga (original/primária) para a mais recente
+  results.sort((a, b) => {
+    const timeA = new Date(a.timestamp).getTime() || 0;
+    const timeB = new Date(b.timestamp).getTime() || 0;
+    return timeA - timeB;
+  });
+
+  return results;
+}
+
+/**
+ * Obtém a imagem de uma ocorrência existente em formato Base64 Data URL para comparação no Gemini.
+ */
+export async function fetchIncidentImageAsBase64(
+  incident: Partial<ReportedIncident>
+): Promise<string | null> {
+  if (!incident) return null;
+
+  const id = (incident.id || '').trim();
+  const rawUrl = (incident.fotoUrl || incident.maskedImageUrl || '').trim();
+
+  if (rawUrl.startsWith('data:image/')) {
+    return rawUrl;
+  }
+
+  if (id && recentIncidentBase64Memory.has(id)) {
+    return recentIncidentBase64Memory.get(id)!;
+  }
+  if (rawUrl && recentIncidentBase64Memory.has(rawUrl)) {
+    return recentIncidentBase64Memory.get(rawUrl)!;
+  }
+
+  // 1. Tenta obter do CacheStorage do navegador se já estiver em cache
+  if (typeof window !== 'undefined' && rawUrl && 'caches' in window) {
+    try {
+      const cache = await window.caches.open(IMAGE_CACHE_NAME);
+      const cachedResp = await cache.match(rawUrl, { ignoreVary: true });
+      if (cachedResp && cachedResp.ok && cachedResp.type !== 'opaque') {
+        const blob = await cachedResp.blob();
+        if (blob.size > 0) {
+          const base64 = await blobToDataUrl(blob);
+          if (id) recentIncidentBase64Memory.set(id, base64);
+          return base64;
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Tenta buscar via SDK oficial do Firebase Storage (`ocorrencias/{id}.webp`)
+  if (id) {
+    try {
+      const { storage } = getFirebaseServices();
+      const fileRef = storageRef(storage, `ocorrencias/${id}.webp`);
+      const blob = await getBlob(fileRef);
+      if (blob && blob.size > 0) {
+        const base64 = await blobToDataUrl(blob);
+        recentIncidentBase64Memory.set(id, base64);
+        return base64;
+      }
+    } catch {}
+  }
+
+  // 3. Fallback: tenta buscar via fetch direto da URL pública do Storage
+  if (rawUrl) {
+    try {
+      const resp = await fetch(rawUrl, { mode: 'cors', credentials: 'omit', cache: 'force-cache' });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        if (blob.size > 0) {
+          const base64 = await blobToDataUrl(blob);
+          if (id) recentIncidentBase64Memory.set(id, base64);
+          recentIncidentBase64Memory.set(rawUrl, base64);
+          return base64;
+        }
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
 /**
  * Salva uma nova ocorrência no Firebase:
  * 1. Gera um ID único do Firestore para a coleção `ocorrencias`
  * 2. Faz upload da foto anonimizada para `/ocorrencias/{id}.webp` no Firebase Storage
  * 3. Obtém a `downloadURL`
- * 4. Grava o documento em `ocorrencias/{id}` com `geohash` e `natureza`
- * 5. Atualiza o documento agregador `estatisticas/resumo`
+ * 4. Grava o documento em `ocorrencias/{id}` com `geohash`, `natureza` e metadados de duplicidade (se houver)
+ * 5. Atualiza o documento agregador `estatisticas/resumo` (apenas se não for possível duplicidade)
  */
 export async function saveIncidentToFirebase(
   incident: SaveFirebaseIncidentPayload
@@ -589,6 +785,9 @@ export async function saveIncidentToFirebase(
   estado?: string;
   classificacao?: string;
   verificacao?: string;
+  possivel_duplicidade?: boolean;
+  duplicidade_de_id?: string;
+  rotulo_duplicidade?: string;
 }> {
   let resolvedRua = (incident.rua || '').trim();
   let resolvedBairro = (incident.bairro || '').trim();
@@ -644,6 +843,10 @@ export async function saveIncidentToFirebase(
     });
     fotoUrl = await getDownloadURL(imageFileRef);
     await seedIncidentImageCache(fotoUrl, bytes, contentType || 'image/webp');
+    recentIncidentBase64Memory.set(id, incident.foto);
+    if (fotoUrl) {
+      recentIncidentBase64Memory.set(fotoUrl, incident.foto);
+    }
   }
 
   // 3. Calcula o geohash das coordenadas
@@ -653,9 +856,14 @@ export async function saveIncidentToFirebase(
   const dataIso = incident.data || new Date().toISOString();
 
   const resolvedDescricao = (incident.descricao || '').trim().slice(0, 300);
+  const isPossivelDuplicidade = Boolean(incident.possivel_duplicidade);
+  const duplicidadeDeId = isPossivelDuplicidade ? (incident.duplicidade_de_id || '').trim() : '';
+  const rotuloDuplicidade = isPossivelDuplicidade
+    ? (incident.rotulo_duplicidade || 'Possível duplicidade').trim()
+    : '';
 
   // 4. Monta e salva o documento na coleção "ocorrencias"
-  const docData = {
+  const docData: Record<string, any> = {
     id,
     data: dataIso,
     latitude,
@@ -671,13 +879,68 @@ export async function saveIncidentToFirebase(
     rua: resolvedRua,
     bairro: resolvedBairro,
     classificacao: resolvedClassificacao,
-    verificacao: resolvedVerificacao
+    verificacao: resolvedVerificacao,
+    possivel_duplicidade: isPossivelDuplicidade,
+    origem_duplicidade: isPossivelDuplicidade,
+    duplicidade_de_id: duplicidadeDeId,
+    rotulo_duplicidade: rotuloDuplicidade
   };
 
   await setDoc(newDocRef, docData);
 
-  // 5. Atualiza contadores em `estatisticas/resumo` (Option B - 1 documento único) e emite +1 ao vivo no backend Nuxt
-  if (docData.ativo) {
+  // 4b. Se for possível duplicidade, inclui automaticamente na coleção `reportadas` para averiguação no Painel Admin
+  if (isPossivelDuplicidade) {
+    const autoDuplicateReason = incident.motivo_duplicidade
+      ? `Possível duplicidade detectada pelo Gemini: ${incident.motivo_duplicidade}`
+      : 'Possível duplicidade detectada pelo sistema (registro nos últimos 2 min num raio de 10m com o mesmo veículo sob outro ângulo).';
+    try {
+      await setDoc(
+        doc(db, REPORTADAS_COLLECTION, id),
+        {
+          id,
+          ocorrenciaId: id,
+          data: dataIso,
+          data_report: dataIso,
+          ultima_data_report: dataIso,
+          latitude,
+          longitude,
+          geohash,
+          fotoUrl,
+          natureza: docData.natureza,
+          descricao: resolvedDescricao,
+          rua: resolvedRua,
+          bairro: resolvedBairro,
+          cidade: resolvedCidade,
+          estado: resolvedEstado,
+          classificacao: resolvedClassificacao,
+          verificacao: resolvedVerificacao,
+          ativo: docData.ativo,
+          possivel_duplicidade: true,
+          origem_duplicidade: true,
+          duplicidade_de_id: duplicidadeDeId,
+          rotulo_duplicidade: rotuloDuplicidade,
+          motivo_denuncia: autoDuplicateReason,
+          motivo_report: autoDuplicateReason,
+          total_reports: 1,
+          outras_revisoes_solicitadas: false,
+          historico_reports: [
+            {
+              motivo: autoDuplicateReason,
+              data: dataIso
+            }
+          ],
+          revisada: false,
+          resultado_revisao: ''
+        },
+        { merge: true }
+      );
+    } catch (repErr) {
+      console.warn('[firebaseService] Aviso ao registrar possível duplicidade em reportadas:', repErr);
+    }
+  }
+
+  // 5. Atualiza contadores em `estatisticas/resumo` (apenas se ativa e NÃO for possível duplicidade)
+  if (docData.ativo && !isPossivelDuplicidade) {
     const isUrbana = docData.natureza === 'urbana';
     void notifyMulteiLiveDelta(isUrbana ? 'mobilidadeUrbana' : 'infracoesTransito', 1);
     try {
@@ -716,7 +979,10 @@ export async function saveIncidentToFirebase(
       [resolvedRua, resolvedBairro, resolvedCidade, resolvedEstado].filter(Boolean).join(' - ') ||
       'Infração registrada',
     ativo: docData.ativo,
-    motivo_denuncia: docData.motivo_denuncia
+    motivo_denuncia: docData.motivo_denuncia,
+    possivel_duplicidade: isPossivelDuplicidade,
+    duplicidade_de_id: duplicidadeDeId,
+    rotulo_duplicidade: rotuloDuplicidade
   });
 
   return {
@@ -730,7 +996,10 @@ export async function saveIncidentToFirebase(
     cidade: resolvedCidade,
     estado: resolvedEstado,
     classificacao: resolvedClassificacao,
-    verificacao: resolvedVerificacao
+    verificacao: resolvedVerificacao,
+    possivel_duplicidade: isPossivelDuplicidade,
+    duplicidade_de_id: duplicidadeDeId,
+    rotulo_duplicidade: rotuloDuplicidade
   };
 }
 
@@ -761,6 +1030,7 @@ export async function reportIncidentInFirebase(
 
   let wasActive = true;
   let wasUrbana = incidentData?.natureza === 'urbana';
+  let wasPossibleDuplicate = Boolean(incidentData?.possivel_duplicidade);
   let existingData: Record<string, any> = {};
   let existingReportData: Record<string, any> = {};
 
@@ -774,6 +1044,10 @@ export async function reportIncidentInFirebase(
       existingData = ocorrenciaSnap.data() || {};
       wasActive = existingData.ativo !== false && String(existingData.ativo).toLowerCase() !== 'false';
       wasUrbana = existingData.natureza === 'urbana';
+      wasPossibleDuplicate = Boolean(
+        existingData.possivel_duplicidade === true ||
+          String(existingData.possivel_duplicidade).toLowerCase() === 'true'
+      );
     }
 
     if (reportSnap.exists()) {
@@ -857,6 +1131,20 @@ export async function reportIncidentInFirebase(
     estado: existingData.estado ?? existingReportData.estado ?? incidentData?.estado ?? '',
     classificacao: existingData.classificacao ?? existingReportData.classificacao ?? incidentData?.classificacao ?? '',
     verificacao: existingData.verificacao ?? existingReportData.verificacao ?? incidentData?.verificacao ?? '',
+    possivel_duplicidade: wasPossibleDuplicate,
+    duplicidade_de_id:
+      existingData.duplicidade_de_id ??
+      existingReportData.duplicidade_de_id ??
+      incidentData?.duplicidade_de_id ??
+      '',
+    rotulo_duplicidade: wasPossibleDuplicate
+      ? String(
+          existingData.rotulo_duplicidade ||
+            existingReportData.rotulo_duplicidade ||
+            incidentData?.rotulo_duplicidade ||
+            'Possível duplicidade'
+        )
+      : '',
     ativo: shouldStayActiveOnMap,
     motivo_denuncia: cleanReason,
     motivo_report: cleanReason,
@@ -879,7 +1167,7 @@ export async function reportIncidentInFirebase(
       motivo_denuncia: cleanReason
     });
 
-    if (wasActive) {
+    if (wasActive && !wasPossibleDuplicate) {
       adjustCachedStats({
         totalGeralDelta: -1,
         infracoesTransitoDelta: wasUrbana ? 0 : -1,
@@ -1172,6 +1460,12 @@ export async function recalculateAndSyncMulteiStats(forceRefresh = false): Promi
         ? d.ativo === true || String(d.ativo).toLowerCase() === 'true'
         : true;
     if (!isAtivo) return;
+
+    const isPossivelDuplicidade = Boolean(
+      d.possivel_duplicidade === true ||
+        String(d.possivel_duplicidade).toLowerCase() === 'true'
+    );
+    if (isPossivelDuplicidade) return;
 
     if (d.natureza === 'urbana') {
       mobilidadeUrbana++;
@@ -1466,13 +1760,15 @@ function saveIncidentToLocalCache(inc: ReportedIncident) {
     saveRegionCacheEntries(entries);
   } catch {}
 
-  const isUrbana = inc.natureza === 'urbana';
-  adjustCachedStats({
-    totalGeralDelta: 1,
-    infracoesTransitoDelta: isUrbana ? 0 : 1,
-    mobilidadeUrbanaDelta: isUrbana ? 1 : 0,
-    resolvidosDelta: 0
-  });
+  if (!inc.possivel_duplicidade) {
+    const isUrbana = inc.natureza === 'urbana';
+    adjustCachedStats({
+      totalGeralDelta: 1,
+      infracoesTransitoDelta: isUrbana ? 0 : 1,
+      mobilidadeUrbanaDelta: isUrbana ? 1 : 0,
+      resolvidosDelta: 0
+    });
+  }
 }
 
 function removeIncidentFromLocalCache(id: string) {
@@ -1746,11 +2042,106 @@ export async function resolveMulteiPanelUserProfile(user: User): Promise<MulteiP
   };
 }
 
+const PANEL_SESSION_STORAGE_KEY = 'multei_panel_session_meta_v1';
+export const PANEL_SESSION_MAX_DURATION_MS = 24 * 60 * 60 * 1000; // 24 horas
+
+interface PanelSessionMeta {
+  uid: string;
+  loginAt: number;
+  expiresAt: number;
+}
+
+function savePanelSessionMeta(uid: string, loginAt = Date.now()): PanelSessionMeta {
+  const meta: PanelSessionMeta = {
+    uid,
+    loginAt,
+    expiresAt: loginAt + PANEL_SESSION_MAX_DURATION_MS
+  };
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(PANEL_SESSION_STORAGE_KEY, JSON.stringify(meta));
+    } catch {}
+  }
+  return meta;
+}
+
+function clearPanelSessionMeta(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(PANEL_SESSION_STORAGE_KEY);
+  } catch {}
+}
+
+function getValidPanelSessionMeta(user: User): PanelSessionMeta | null {
+  if (typeof window === 'undefined' || !user?.uid) return null;
+
+  try {
+    const raw = localStorage.getItem(PANEL_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<PanelSessionMeta>;
+    if (
+      !parsed ||
+      parsed.uid !== user.uid ||
+      typeof parsed.loginAt !== 'number' ||
+      typeof parsed.expiresAt !== 'number' ||
+      !Number.isFinite(parsed.loginAt) ||
+      !Number.isFinite(parsed.expiresAt)
+    ) {
+      return null;
+    }
+
+    const now = Date.now();
+    // Proteção contra adulteração: loginAt não pode estar no futuro e a janela não pode exceder 24h
+    if (
+      parsed.loginAt <= 0 ||
+      parsed.loginAt > now + 60_000 ||
+      parsed.expiresAt - parsed.loginAt > PANEL_SESSION_MAX_DURATION_MS
+    ) {
+      return null;
+    }
+
+    // Caso o Firebase Auth informe lastSignInTime, também valida que não ultrapassou 24h no servidor
+    if (user.metadata?.lastSignInTime) {
+      const firebaseSignInMs = Date.parse(user.metadata.lastSignInTime);
+      if (!Number.isFinite(firebaseSignInMs) || now - firebaseSignInMs >= PANEL_SESSION_MAX_DURATION_MS) {
+        return null;
+      }
+    }
+
+    return {
+      uid: parsed.uid,
+      loginAt: parsed.loginAt,
+      expiresAt: parsed.expiresAt
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Retorna o tempo restante (em ms) da sessão de 24h.
+ * Comportamento Fail-Close: se não for possível ler ou validar a janela de 24 horas,
+ * retorna `0` para encerrar a sessão e exigir novo login imediatamente.
+ */
+export function getPanelSessionRemainingMs(user?: User | null): number {
+  if (!user) return 0;
+  const meta = getValidPanelSessionMeta(user);
+  if (!meta) return 0;
+  const remaining = meta.expiresAt - Date.now();
+  return remaining > 0 ? remaining : 0;
+}
+
 export async function refreshCurrentMulteiPanelProfile(): Promise<MulteiPanelUserProfile | null> {
   if (typeof window === 'undefined') return null;
   try {
     const { auth } = getFirebaseServices();
     if (!auth.currentUser) return null;
+    if (getPanelSessionRemainingMs(auth.currentUser) <= 0) {
+      clearPanelSessionMeta();
+      await signOut(auth);
+      return null;
+    }
     return await resolveMulteiPanelUserProfile(auth.currentUser);
   } catch {
     return null;
@@ -1767,25 +2158,83 @@ export async function signInMulteiPanel(
     throw new Error('Preencha o e-mail e a senha.');
   }
   const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+  savePanelSessionMeta(cred.user.uid, Date.now());
   return await resolveMulteiPanelUserProfile(cred.user);
 }
 
 export async function signOutMulteiPanel(): Promise<void> {
+  clearPanelSessionMeta();
   const { auth } = getFirebaseServices();
   await signOut(auth);
 }
 
 export function subscribeToMulteiPanelAuth(
-  onChange: (profile: MulteiPanelUserProfile | null) => void
+  onChange: (profile: MulteiPanelUserProfile | null) => void,
+  onSessionExpired?: () => void
 ): () => void {
   if (typeof window === 'undefined') return () => {};
   try {
     const { auth } = getFirebaseServices();
-    return onAuthStateChanged(auth, async (user) => {
+    let expiryTimeout: ReturnType<typeof setTimeout> | null = null;
+    let checkInterval: ReturnType<typeof setInterval> | null = null;
+
+    const clearTimers = () => {
+      if (expiryTimeout) {
+        clearTimeout(expiryTimeout);
+        expiryTimeout = null;
+      }
+      if (checkInterval) {
+        clearInterval(checkInterval);
+        checkInterval = null;
+      }
+    };
+
+    const expireSessionNow = async () => {
+      clearTimers();
+      clearPanelSessionMeta();
+      try {
+        await signOut(auth);
+      } catch {}
+      onSessionExpired?.();
+      onChange(null);
+    };
+
+    const verifyActiveSession = () => {
+      const current = auth.currentUser;
+      if (!current) return;
+      if (getPanelSessionRemainingMs(current) <= 0) {
+        void expireSessionNow();
+      }
+    };
+
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      verifyActiveSession();
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    const unsubscribeFirebase = onAuthStateChanged(auth, async (user) => {
+      clearTimers();
       if (!user) {
+        clearPanelSessionMeta();
         onChange(null);
         return;
       }
+
+      const remainingMs = getPanelSessionRemainingMs(user);
+      if (remainingMs <= 0) {
+        await expireSessionNow();
+        return;
+      }
+
+      expiryTimeout = setTimeout(() => {
+        void expireSessionNow();
+      }, remainingMs);
+
+      checkInterval = setInterval(verifyActiveSession, 60_000);
+
       try {
         const profile = await resolveMulteiPanelUserProfile(user);
         onChange(profile);
@@ -1793,6 +2242,13 @@ export function subscribeToMulteiPanelAuth(
         onChange(null);
       }
     });
+
+    return () => {
+      clearTimers();
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      unsubscribeFirebase();
+    };
   } catch {
     onChange(null);
     return () => {};
@@ -2072,14 +2528,33 @@ export async function sendPanelUserPasswordReset(email: string): Promise<void> {
 }
 
 /**
- * Busca todas as ocorrências reportadas na coleção `reportadas`, consolidando múltiplos reports
- * da mesma `ocorrenciaId` para exibir o histórico completo e o selo de 2ª/3ª vez reportada.
+ * Busca todas as ocorrências reportadas na coleção `reportadas` (e sincroniza eventuais
+ * ocorrências com `possivel_duplicidade: true` da coleção `ocorrencias`), consolidando múltiplos reports
+ * da mesma `ocorrenciaId` para exibir o histórico completo, selo de 2ª/3ª vez reportada e opções de duplicidade.
  */
 export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncidentPanelItem[]> {
   const { db } = getFirebaseServices();
-  const snap = await getDocs(collection(db, REPORTADAS_COLLECTION));
+  const [snap, dupOcorrenciasSnap] = await Promise.all([
+    getDocs(collection(db, REPORTADAS_COLLECTION)),
+    getDocs(
+      query(collection(db, OCORRENCIAS_COLLECTION), where('possivel_duplicidade', '==', true))
+    ).catch(() => null)
+  ]);
 
   const groupedByOcorrencia = new Map<string, ReportedIncidentPanelItem>();
+
+  const parseResultadoRevisao = (raw: unknown): ReportReviewDecision | '' => {
+    if (
+      raw === 'procedente' ||
+      raw === 'improcedente' ||
+      raw === 'nao_duplicidade' ||
+      raw === 'indefinido' ||
+      raw === 'duplicidade'
+    ) {
+      return raw;
+    }
+    return '';
+  };
 
   snap.forEach((docSnap) => {
     const d = docSnap.data() || {};
@@ -2106,10 +2581,26 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
       String(d.revisada).toLowerCase() === 'true' ||
       d.status_revisao === 'revisada';
 
-    const resultadoRevisao: 'procedente' | 'improcedente' | '' =
-      d.resultado_revisao === 'procedente' || d.resultado_revisao === 'improcedente'
-        ? d.resultado_revisao
-        : '';
+    const resultadoRevisao = parseResultadoRevisao(d.resultado_revisao);
+
+    const isPossivelDuplicidade = Boolean(
+      d.possivel_duplicidade === true ||
+        String(d.possivel_duplicidade).toLowerCase() === 'true' ||
+        String(d.rotulo_duplicidade || '').toLowerCase().includes('duplicidade')
+    );
+    const duplicidadeDeId = d.duplicidade_de_id ? String(d.duplicidade_de_id).trim() : '';
+    const isOrigemDuplicidade = Boolean(
+      d.origem_duplicidade === true ||
+        String(d.origem_duplicidade).toLowerCase() === 'true' ||
+        isPossivelDuplicidade ||
+        Boolean(duplicidadeDeId) ||
+        resultadoRevisao === 'nao_duplicidade' ||
+        resultadoRevisao === 'indefinido' ||
+        resultadoRevisao === 'duplicidade'
+    );
+    const rotuloDuplicidade = isPossivelDuplicidade
+      ? String(d.rotulo_duplicidade || 'Possível duplicidade').trim()
+      : '';
 
     const existing = groupedByOcorrencia.get(ocorrenciaId);
     if (!existing) {
@@ -2143,7 +2634,11 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
         data_revisao: d.data_revisao ? String(d.data_revisao) : undefined,
         revisado_por: d.revisado_por ? String(d.revisado_por) : undefined,
         observacao_admin: d.observacao_admin ? String(d.observacao_admin) : undefined,
-        legacyDocIds: [docSnap.id]
+        legacyDocIds: [docSnap.id],
+        possivel_duplicidade: isPossivelDuplicidade,
+        origem_duplicidade: isOrigemDuplicidade,
+        duplicidade_de_id: duplicidadeDeId,
+        rotulo_duplicidade: rotuloDuplicidade
       });
     } else {
       // Mescla caso existam documentos antigos separados para a mesma ocorrenciaId
@@ -2169,6 +2664,14 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
       existing.total_reports = mergedTotal;
       existing.outras_revisoes_solicitadas = mergedTotal > 1;
       existing.historico_reports = mergedHistory;
+      if (isPossivelDuplicidade) {
+        existing.possivel_duplicidade = true;
+        existing.duplicidade_de_id = duplicidadeDeId || existing.duplicidade_de_id;
+        existing.rotulo_duplicidade = rotuloDuplicidade || existing.rotulo_duplicidade || 'Possível duplicidade';
+      }
+      if (isOrigemDuplicidade) {
+        existing.origem_duplicidade = true;
+      }
       if (new Date(ultimaDataReport).getTime() > new Date(existing.ultima_data_report).getTime()) {
         existing.ultima_data_report = ultimaDataReport;
         existing.motivo_report = String(d.motivo_report || d.motivo_denuncia || existing.motivo_report);
@@ -2187,7 +2690,81 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
     }
   });
 
+  // Garante que qualquer ocorrência com `possivel_duplicidade: true` em `ocorrencias` apareça em `reportadas`
+  if (dupOcorrenciasSnap && !dupOcorrenciasSnap.empty) {
+    dupOcorrenciasSnap.forEach((docSnap) => {
+      const ocorrenciaId = docSnap.id;
+      if (groupedByOcorrencia.has(ocorrenciaId)) return;
+      const d = docSnap.data() || {};
+      const dataIso = String(d.data || new Date().toISOString());
+      const defaultReason =
+        'Possível duplicidade detectada pelo sistema (registro nos últimos 2 min num raio de 10m com o mesmo veículo sob outro ângulo).';
+      const isRevisada = Boolean(d.revisada_admin === true);
+      const resultadoRevisao = parseResultadoRevisao(d.resultado_revisao);
+      const isAtivo =
+        d.ativo !== undefined && d.ativo !== ''
+          ? d.ativo === true || String(d.ativo).toLowerCase() === 'true'
+          : true;
+
+      groupedByOcorrencia.set(ocorrenciaId, {
+        id: ocorrenciaId,
+        ocorrenciaId,
+        data: dataIso,
+        data_report: dataIso,
+        ultima_data_report: dataIso,
+        latitude: Number(d.latitude ?? d.lat ?? 0),
+        longitude: Number(d.longitude ?? d.lng ?? d.lon ?? 0),
+        geohash: String(d.geohash || ''),
+        fotoUrl: String(d.fotoUrl || d.foto || d.image || ''),
+        natureza: String(d.natureza || 'infracao_veicular'),
+        descricao: String(d.descricao || ''),
+        rua: String(d.rua || ''),
+        bairro: String(d.bairro || ''),
+        cidade: String(d.cidade || ''),
+        estado: String(d.estado || ''),
+        classificacao: String(d.classificacao || ''),
+        verificacao: normalizeVerificacao(d.verificacao ?? d.verification),
+        ativo: isAtivo,
+        motivo_denuncia: String(d.motivo_denuncia || defaultReason),
+        motivo_report: String(d.motivo_denuncia || defaultReason),
+        total_reports: 1,
+        outras_revisoes_solicitadas: false,
+        historico_reports: [
+          {
+            motivo: String(d.motivo_denuncia || defaultReason),
+            data: dataIso
+          }
+        ],
+        revisada: isRevisada,
+        resultado_revisao: resultadoRevisao,
+        data_revisao: d.data_revisao ? String(d.data_revisao) : undefined,
+        legacyDocIds: [ocorrenciaId],
+        possivel_duplicidade: true,
+        origem_duplicidade: true,
+        duplicidade_de_id: d.duplicidade_de_id ? String(d.duplicidade_de_id).trim() : '',
+        rotulo_duplicidade: String(d.rotulo_duplicidade || 'Possível duplicidade').trim()
+      });
+    });
+  }
+
   const list = Array.from(groupedByOcorrencia.values());
+
+  // Busca a foto da ocorrência original (`duplicidade_de_id`) quando houver vínculo de possível duplicidade
+  await Promise.all(
+    list.map(async (item) => {
+      if (!item.duplicidade_de_id) return;
+      try {
+        const origSnap = await getDoc(doc(db, OCORRENCIAS_COLLECTION, item.duplicidade_de_id));
+        if (origSnap.exists()) {
+          const origData = origSnap.data() || {};
+          const origPhoto = String(origData.fotoUrl || origData.foto || origData.image || '').trim();
+          if (origPhoto) {
+            item.duplicidade_original_fotoUrl = origPhoto;
+          }
+        }
+      } catch {}
+    })
+  );
 
   // Se houver documentos duplicados da mesma ocorrenciaId (ex: um ID legado aleatório + outro com ocorrenciaId),
   // consolida todos os dados em `item.id` e remove os documentos duplicados extras.
@@ -2197,7 +2774,7 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
       if (extraDocIds.length === 0) return;
       try {
         const canonicalRef = doc(db, REPORTADAS_COLLECTION, item.id);
-        const { legacyDocIds, ...cleanItemData } = item;
+        const { legacyDocIds, duplicidade_original_fotoUrl, ...cleanItemData } = item;
         await setDoc(canonicalRef, cleanItemData, { merge: true });
         await Promise.all(
           extraDocIds.map((dupId) =>
@@ -2219,13 +2796,18 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
 }
 
 /**
- * Aplica a validação do administrador sobre uma ocorrência reportada:
- * - `decision === 'procedente'`: A denúncia procede (a foto é imprópria). Mantém `ativo: false` em `ocorrencias` e marca como `revisada: true` em `reportadas`.
- * - `decision === 'improcedente'`: A denúncia não procede (a foto é legítima). Volta `ativo: true` em `ocorrencias`, marca como `revisada: true` em `reportadas` e devolve `+1` às estatísticas caso estivesse inativa.
+ * Aplica a validação do administrador sobre uma ocorrência reportada ou com possível duplicidade:
+ * - Para reports tradicionais:
+ *   - `decision === 'procedente'`: A denúncia procede (inativa a ocorrência).
+ *   - `decision === 'improcedente'`: A denúncia não procede (mantém/ativa a ocorrência no mapa).
+ * - Para averiguação de Possível Duplicidade:
+ *   - `decision === 'nao_duplicidade'`: Marca que NÃO é duplicidade (`possivel_duplicidade: false`, `ativo: true`) e INCREMENTA (+1) a contagem de denúncias.
+ *   - `decision === 'indefinido'`: Mantém ativa como possível duplicidade (`possivel_duplicidade: true`, `ativo: true`), SEM incrementar na contagem.
+ *   - `decision === 'duplicidade'`: Confirma que É duplicidade e INATIVA a denúncia (`ativo: false`), sem incrementar na contagem.
  */
 export async function reviewReportedIncidentInFirebase(params: {
   item: ReportedIncidentPanelItem;
-  decision: 'procedente' | 'improcedente';
+  decision: ReportReviewDecision;
   observacaoAdmin?: string;
   reviewerEmail?: string;
 }): Promise<ReportedIncidentPanelItem> {
@@ -2238,8 +2820,9 @@ export async function reviewReportedIncidentInFirebase(params: {
   const { db } = getFirebaseServices();
   const ocorrenciaRef = doc(db, OCORRENCIAS_COLLECTION, ocorrenciaId);
 
-  let wasActiveInOcorrencias = false;
+  let wasActiveInOcorrencias = Boolean(item.ativo);
   let isUrbana = item.natureza === 'urbana';
+  let wasPossivelDuplicidadeInOcorrencias = Boolean(item.possivel_duplicidade);
 
   try {
     const ocorrenciaSnap = await getDoc(ocorrenciaRef);
@@ -2250,17 +2833,52 @@ export async function reviewReportedIncidentInFirebase(params: {
           ? d.ativo === true || String(d.ativo).toLowerCase() === 'true'
           : true;
       isUrbana = d.natureza === 'urbana';
+      wasPossivelDuplicidadeInOcorrencias = Boolean(
+        d.possivel_duplicidade === true ||
+          String(d.possivel_duplicidade).toLowerCase() === 'true'
+      );
     }
   } catch {}
 
+  // Uma ocorrência só estava contabilizada nas estatísticas se estava ativa E não estava marcada como possível duplicidade
+  const wasCountedInStats = wasActiveInOcorrencias && !wasPossivelDuplicidadeInOcorrencias;
+
+  const isDuplicityDecision =
+    decision === 'nao_duplicidade' || decision === 'indefinido' || decision === 'duplicidade';
+
+  let targetAtivo = true;
+  let targetPossivelDuplicidade = wasPossivelDuplicidadeInOcorrencias;
+  let targetRotuloDuplicidade = wasPossivelDuplicidadeInOcorrencias ? 'Possível duplicidade' : '';
+
+  if (decision === 'nao_duplicidade') {
+    targetAtivo = true;
+    targetPossivelDuplicidade = false;
+    targetRotuloDuplicidade = '';
+  } else if (decision === 'indefinido') {
+    targetAtivo = true;
+    targetPossivelDuplicidade = true;
+    targetRotuloDuplicidade = 'Possível duplicidade';
+  } else if (decision === 'duplicidade') {
+    targetAtivo = false;
+    targetPossivelDuplicidade = true;
+    targetRotuloDuplicidade = 'Possível duplicidade';
+  } else if (decision === 'improcedente') {
+    targetAtivo = true;
+  } else if (decision === 'procedente') {
+    targetAtivo = false;
+  }
+
+  const shouldBeCountedInStats = targetAtivo && !targetPossivelDuplicidade;
   const nowIso = new Date().toISOString();
-  const targetAtivo = decision === 'improcedente';
 
   // 1. Atualiza o documento na coleção `ocorrencias`
   await setDoc(
     ocorrenciaRef,
     {
       ativo: targetAtivo,
+      possivel_duplicidade: targetPossivelDuplicidade,
+      rotulo_duplicidade: targetRotuloDuplicidade,
+      ...(isDuplicityDecision ? { origem_duplicidade: true } : {}),
       revisada_admin: true,
       resultado_revisao: decision,
       data_revisao: nowIso,
@@ -2274,6 +2892,9 @@ export async function reviewReportedIncidentInFirebase(params: {
   const reportUpdatePayload = {
     ocorrenciaId,
     ativo: targetAtivo,
+    possivel_duplicidade: targetPossivelDuplicidade,
+    rotulo_duplicidade: targetRotuloDuplicidade,
+    ...(isDuplicityDecision || item.origem_duplicidade ? { origem_duplicidade: true } : {}),
     revisada: true,
     status_revisao: 'revisada',
     resultado_revisao: decision,
@@ -2301,11 +2922,39 @@ export async function reviewReportedIncidentInFirebase(params: {
     );
   }
 
-  // 3. Ajusta as estatísticas e emite o evento ao vivo caso o status `ativo` da ocorrência tenha mudado
+  // 3. Atualiza cache local de ocorrências do mapa
+  if (!targetAtivo) {
+    removeIncidentFromLocalCache(ocorrenciaId);
+  } else if (typeof window !== 'undefined') {
+    const patchCacheItem = (inc: ReportedIncident): ReportedIncident =>
+      inc.id === ocorrenciaId
+        ? {
+            ...inc,
+            ativo: true,
+            possivel_duplicidade: targetPossivelDuplicidade,
+            rotulo_duplicidade: targetRotuloDuplicidade
+          }
+        : inc;
+
+    try {
+      const cached = loadIncidentsFromLocalCache().map(patchCacheItem);
+      localStorage.setItem('multei_cached_incidents', JSON.stringify(cached));
+    } catch {}
+
+    try {
+      const entries = loadRegionCacheEntries().map((entry) => ({
+        ...entry,
+        incidents: (entry.incidents || []).map(patchCacheItem)
+      }));
+      saveRegionCacheEntries(entries);
+    } catch {}
+  }
+
+  // 4. Ajusta as estatísticas e emite o evento ao vivo conforme a transição de contabilização
   const category: MulteiLiveCategory = isUrbana ? 'mobilidadeUrbana' : 'infracoesTransito';
 
-  if (decision === 'improcedente' && !wasActiveInOcorrencias) {
-    // A ocorrência estava inativa (ativo: false) e voltou a ficar ativa (ativo: true) -> soma +1
+  if (!wasCountedInStats && shouldBeCountedInStats) {
+    // Ex: marcada como "Não é duplicidade" (ou improcedente em ocorrência comum que estava inativa) -> incrementa +1 na contagem
     adjustCachedStats({
       totalGeralDelta: 1,
       infracoesTransitoDelta: isUrbana ? 0 : 1,
@@ -2325,11 +2974,10 @@ export async function reviewReportedIncidentInFirebase(params: {
         { merge: true }
       );
     } catch (err) {
-      console.warn('[firebaseService] Aviso ao incrementar estatísticas após improcedente:', err);
+      console.warn('[firebaseService] Aviso ao incrementar estatísticas na revisão:', err);
     }
-  } else if (decision === 'procedente' && wasActiveInOcorrencias) {
-    // A ocorrência estava ativa (ativo: true) e passou a ficar inativa (ativo: false) -> subtrai -1 silenciosamente
-    removeIncidentFromLocalCache(ocorrenciaId);
+  } else if (wasCountedInStats && !shouldBeCountedInStats) {
+    // Estava contabilizada e passou a não contabilizar (ex: procedente, duplicidade ou indefinido após nao_duplicidade) -> subtrai -1
     adjustCachedStats({
       totalGeralDelta: -1,
       infracoesTransitoDelta: isUrbana ? 0 : -1,
@@ -2349,13 +2997,16 @@ export async function reviewReportedIncidentInFirebase(params: {
         { merge: true }
       );
     } catch (err) {
-      console.warn('[firebaseService] Aviso ao decrementar estatísticas após procedente:', err);
+      console.warn('[firebaseService] Aviso ao decrementar estatísticas na revisão:', err);
     }
   }
 
   return {
     ...item,
     ativo: targetAtivo,
+    possivel_duplicidade: targetPossivelDuplicidade,
+    rotulo_duplicidade: targetRotuloDuplicidade,
+    origem_duplicidade: Boolean(isDuplicityDecision || item.origem_duplicidade),
     revisada: true,
     resultado_revisao: decision,
     data_revisao: nowIso,

@@ -351,6 +351,15 @@
                     >
                       🔁 {{ item.total_reports }}ª vez reportada
                     </span>
+
+                    <!-- Selo de Possível Duplicidade -->
+                    <span
+                      v-if="isDuplicityReviewItem(item)"
+                      class="duplicity-panel-badge"
+                      title="O Gemini identificou que este veículo pode ser o mesmo de outra denúncia recente num raio de 10m"
+                    >
+                      ⚠️ {{ item.rotulo_duplicidade || 'Possível duplicidade' }}
+                    </span>
                   </div>
 
                   <div class="report-item-location">
@@ -369,9 +378,9 @@
                     <span
                       v-if="item.revisada"
                       class="verdict-mini-badge"
-                      :class="item.resultado_revisao === 'procedente' ? 'verdict-procedente' : 'verdict-improcedente'"
+                      :class="getVerdictMiniBadgeClass(item.resultado_revisao)"
                     >
-                      {{ item.resultado_revisao === 'procedente' ? '🚫 Procedente' : '✅ Improcedente' }}
+                      {{ getVerdictMiniBadgeLabel(item.resultado_revisao) }}
                     </span>
                     <span v-else class="verdict-mini-badge verdict-pendente">
                       ⏳ Pendente
@@ -411,6 +420,14 @@
                   </span>
 
                   <span
+                    v-if="isDuplicityReviewItem(selectedItem)"
+                    class="duplicity-panel-badge repeat-badge-lg"
+                    :title="selectedItem.duplicidade_de_id ? `Duplicidade vinculada ao ID: ${selectedItem.duplicidade_de_id}` : 'Possível duplicidade detectada pelo Gemini'"
+                  >
+                    ⚠️ {{ selectedItem.rotulo_duplicidade || 'Possível duplicidade' }}
+                  </span>
+
+                  <span
                     class="map-visibility-badge"
                     :class="selectedItem.ativo ? 'is-map-active' : 'is-map-inactive'"
                   >
@@ -423,9 +440,56 @@
 
               <!-- Grid Interno: Foto + Painel de Decisão -->
               <div class="detail-content-split">
-                <!-- Bloco da Foto -->
+                <!-- Bloco da Foto (com comparativo da 1ª denúncia caso seja possível duplicidade) -->
                 <div class="detail-photo-box">
-                  <div v-if="selectedItem.fotoUrl" class="photo-wrapper">
+                  <div
+                    v-if="isDuplicityReviewItem(selectedItem) && selectedItem.duplicidade_original_fotoUrl"
+                    class="duplicity-photo-compare-grid"
+                  >
+                    <div class="duplicity-photo-compare-col">
+                      <span class="duplicity-compare-label">
+                        1ª Denúncia (Original • ID: {{ selectedItem.duplicidade_de_id }})
+                      </span>
+                      <div class="photo-wrapper">
+                        <img
+                          :src="selectedItem.duplicidade_original_fotoUrl"
+                          :alt="`Foto da 1ª ocorrência ${selectedItem.duplicidade_de_id}`"
+                          class="detail-photo-img"
+                          @click="openPanelLightbox(selectedItem.duplicidade_original_fotoUrl)"
+                        />
+                        <button
+                          type="button"
+                          class="btn-expand-photo"
+                          @click="openPanelLightbox(selectedItem.duplicidade_original_fotoUrl)"
+                        >
+                          🔍 Ampliar 1ª Foto
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="duplicity-photo-compare-col">
+                      <span class="duplicity-compare-label is-second-photo">
+                        2ª Denúncia (Possível Duplicidade • ID: {{ selectedItem.ocorrenciaId }})
+                      </span>
+                      <div v-if="selectedItem.fotoUrl" class="photo-wrapper">
+                        <img
+                          :src="selectedItem.fotoUrl"
+                          :alt="`Foto da 2ª ocorrência ${selectedItem.ocorrenciaId}`"
+                          class="detail-photo-img"
+                          @click="openPanelLightbox(selectedItem.fotoUrl)"
+                        />
+                        <button
+                          type="button"
+                          class="btn-expand-photo"
+                          @click="openPanelLightbox(selectedItem.fotoUrl)"
+                        >
+                          🔍 Ampliar 2ª Foto
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div v-else-if="selectedItem.fotoUrl" class="photo-wrapper">
                     <img
                       :src="selectedItem.fotoUrl"
                       :alt="`Foto da ocorrência ${selectedItem.ocorrenciaId}`"
@@ -451,7 +515,13 @@
                   <div class="reports-history-box">
                     <div class="history-box-header">
                       <h2 class="box-section-title">
-                        {{ selectedItem.total_reports > 1 ? `Solicitações de Revisão (${selectedItem.total_reports})` : 'Motivo do Reporte' }}
+                        {{
+                          isDuplicityReviewItem(selectedItem) && selectedItem.total_reports <= 1
+                            ? 'Análise Anti-Duplicidade (Gemini)'
+                            : selectedItem.total_reports > 1
+                              ? `Solicitações de Revisão (${selectedItem.total_reports})`
+                              : 'Motivo do Reporte'
+                        }}
                       </h2>
                       <span v-if="selectedItem.outras_revisoes_solicitadas" class="multi-review-tag">
                         Outras revisões solicitadas
@@ -465,7 +535,9 @@
                         class="history-entry"
                       >
                         <div class="history-entry-meta">
-                          <span class="history-step-num">{{ idx + 1 }}ª solicitação</span>
+                          <span class="history-step-num">
+                            {{ isDuplicityReviewItem(selectedItem) && idx === 0 ? 'Detecção automática' : `${idx + 1}ª solicitação` }}
+                          </span>
                           <span class="history-step-date">{{ formatDateTime(entry.data) }}</span>
                           <span v-if="entry.apos_revisao" class="history-after-review-tag">
                             Após validação anterior
@@ -480,14 +552,10 @@
                   <div
                     v-if="selectedItem.revisada"
                     class="reviewed-status-banner"
-                    :class="selectedItem.resultado_revisao === 'procedente' ? 'banner-procedente' : 'banner-improcedente'"
+                    :class="getReviewedBannerClass(selectedItem.resultado_revisao)"
                   >
                     <div class="banner-title">
-                      {{
-                        selectedItem.resultado_revisao === 'procedente'
-                          ? '🚫 Revisada: Denúncia Procedente (Ocorrência mantida inativa)'
-                          : '✅ Revisada: Denúncia Improcedente (Ocorrência ativa no mapa)'
-                      }}
+                      {{ getReviewedBannerTitle(selectedItem.resultado_revisao) }}
                     </div>
                     <div v-if="selectedItem.data_revisao" class="banner-meta">
                       Validada em {{ formatDateTime(selectedItem.data_revisao) }}
@@ -518,8 +586,44 @@
                     {{ decisionError }}
                   </p>
 
-                  <!-- Botões de Ação (Procedente vs Improcedente) -->
-                  <div class="decision-actions">
+                  <!-- Botões de Ação para POSSÍVEL DUPLICIDADE (Não é duplicidade | Indefinido | É duplicidade) -->
+                  <div
+                    v-if="isDuplicityReviewItem(selectedItem)"
+                    class="decision-actions is-duplicity-decision-grid"
+                  >
+                    <button
+                      type="button"
+                      class="btn-decision btn-improcedente"
+                      :disabled="isSubmittingDecision"
+                      @click="handleReviewDecision('nao_duplicidade')"
+                    >
+                      <span class="decision-btn-title">✅ Não é duplicidade</span>
+                      <span class="decision-btn-desc">Incrementa +1 na contagem de denúncias e mantém ativa</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      class="btn-decision btn-indefinido"
+                      :disabled="isSubmittingDecision"
+                      @click="handleReviewDecision('indefinido')"
+                    >
+                      <span class="decision-btn-title">⚖️ Indefinido</span>
+                      <span class="decision-btn-desc">Mantém agrupada sem incrementar na contagem</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      class="btn-decision btn-procedente"
+                      :disabled="isSubmittingDecision"
+                      @click="handleReviewDecision('duplicidade')"
+                    >
+                      <span class="decision-btn-title">🚫 É duplicidade</span>
+                      <span class="decision-btn-desc">Inativa a denúncia e remove do mapa</span>
+                    </button>
+                  </div>
+
+                  <!-- Botões de Ação Padrão (Procedente vs Improcedente) -->
+                  <div v-else class="decision-actions">
                     <button
                       type="button"
                       class="btn-decision btn-improcedente"
@@ -847,6 +951,14 @@
                     >
                       📍 {{ formatDistanceFromPartner(inc) }}
                     </span>
+
+                    <span
+                      v-if="inc.possivel_duplicidade"
+                      class="duplicity-panel-badge"
+                      title="O Gemini identificou que este veículo pode ser o mesmo de outra denúncia recente num raio de 10m"
+                    >
+                      ⚠️ {{ inc.rotulo_duplicidade || 'Possível duplicidade' }}
+                    </span>
                   </div>
 
                   <div class="report-item-location">
@@ -914,6 +1026,14 @@
 
                   <span v-if="partnerNearMeCenter" class="distance-badge">
                     📍 {{ formatDistanceFromPartner(selectedPartnerIncident) }} de você
+                  </span>
+
+                  <span
+                    v-if="selectedPartnerIncident.possivel_duplicidade"
+                    class="duplicity-panel-badge repeat-badge-lg"
+                    :title="selectedPartnerIncident.duplicidade_de_id ? `Duplicidade vinculada ao ID: ${selectedPartnerIncident.duplicidade_de_id}` : 'Possível duplicidade detectada pelo Gemini'"
+                  >
+                    ⚠️ {{ selectedPartnerIncident.rotulo_duplicidade || 'Possível duplicidade' }}
                   </span>
                 </div>
 
@@ -1678,7 +1798,8 @@ import {
   resolveUrbanIncidentByPartnerInFirebase,
   type MulteiPanelUserProfile,
   type MulteiPanelManagedUser,
-  type ReportedIncidentPanelItem
+  type ReportedIncidentPanelItem,
+  type ReportReviewDecision
 } from '~/services/firebaseService';
 
 const themeCookie = useCookie('theme', { default: () => 'light' });
@@ -2058,7 +2179,7 @@ const processPartnerResolutionPhoto = async (file: File) => {
   isProcessingPartnerPhoto.value = true;
   partnerResolveError.value = '';
   try {
-    const optimizedBase64 = await prepareImageForGemini(file, 1200);
+    const optimizedBase64 = await prepareImageForGemini(file);
     let plates: any[] = [];
     let faces: any[] = [];
 
@@ -2635,7 +2756,63 @@ const handleLogout = async () => {
   } catch {}
 };
 
-const handleReviewDecision = async (decision: 'procedente' | 'improcedente') => {
+const isDuplicityReviewItem = (item?: ReportedIncidentPanelItem | null): boolean => {
+  if (!item) return false;
+  return Boolean(
+    item.possivel_duplicidade ||
+      item.origem_duplicidade ||
+      item.duplicidade_de_id ||
+      item.resultado_revisao === 'nao_duplicidade' ||
+      item.resultado_revisao === 'indefinido' ||
+      item.resultado_revisao === 'duplicidade'
+  );
+};
+
+const getVerdictMiniBadgeClass = (decision?: ReportReviewDecision | ''): string => {
+  if (decision === 'procedente' || decision === 'duplicidade') {
+    return 'verdict-procedente';
+  }
+  if (decision === 'indefinido') {
+    return 'verdict-pendente';
+  }
+  return 'verdict-improcedente';
+};
+
+const getVerdictMiniBadgeLabel = (decision?: ReportReviewDecision | ''): string => {
+  if (decision === 'nao_duplicidade') return '✅ Não é duplicidade';
+  if (decision === 'indefinido') return '⚖️ Indefinido';
+  if (decision === 'duplicidade') return '🚫 É duplicidade';
+  if (decision === 'procedente') return '🚫 Procedente';
+  return '✅ Improcedente';
+};
+
+const getReviewedBannerClass = (decision?: ReportReviewDecision | ''): string => {
+  if (decision === 'procedente' || decision === 'duplicidade') {
+    return 'banner-procedente';
+  }
+  if (decision === 'indefinido') {
+    return 'banner-indefinido';
+  }
+  return 'banner-improcedente';
+};
+
+const getReviewedBannerTitle = (decision?: ReportReviewDecision | ''): string => {
+  if (decision === 'nao_duplicidade') {
+    return '✅ Revisada: Não é duplicidade (+1 na contagem de denúncias e ativa no mapa)';
+  }
+  if (decision === 'indefinido') {
+    return '⚖️ Revisada: Indefinido (Mantida sem incrementar na contagem)';
+  }
+  if (decision === 'duplicidade') {
+    return '🚫 Revisada: É duplicidade (Denúncia inativada no mapa)';
+  }
+  if (decision === 'procedente') {
+    return '🚫 Revisada: Denúncia Procedente (Ocorrência mantida inativa)';
+  }
+  return '✅ Revisada: Denúncia Improcedente (Ocorrência ativa no mapa)';
+};
+
+const handleReviewDecision = async (decision: ReportReviewDecision) => {
   if (!selectedItem.value || isSubmittingDecision.value) return;
   isSubmittingDecision.value = true;
   decisionError.value = '';
@@ -2653,21 +2830,29 @@ const handleReviewDecision = async (decision: 'procedente' | 'improcedente') => 
 
     const idx = allReports.value.findIndex((i) => i.ocorrenciaId === updated.ocorrenciaId);
     if (idx !== -1) {
-      allReports.value[idx] = updated;
+      allReports.value[idx] = {
+        ...allReports.value[idx],
+        ...updated,
+        duplicidade_original_fotoUrl:
+          updated.duplicidade_original_fotoUrl || allReports.value[idx].duplicidade_original_fotoUrl
+      };
     }
 
-    announceSr(
-      decision === 'improcedente'
-        ? 'Ocorrência marcada como improcedente e reativada no mapa.'
-        : 'Ocorrência marcada como procedente e mantida inativa.'
-    );
+    const srMessages: Record<ReportReviewDecision, string> = {
+      nao_duplicidade: 'Marcada como não é duplicidade e contabilizada nas estatísticas.',
+      indefinido: 'Marcada como indefinido, sem incrementar na contagem.',
+      duplicidade: 'Marcada como é duplicidade e inativada no mapa.',
+      improcedente: 'Ocorrência marcada como improcedente e reativada no mapa.',
+      procedente: 'Ocorrência marcada como procedente e mantida inativa.'
+    };
+    announceSr(srMessages[decision] || 'Revisão salva com sucesso.');
 
     if (activeTab.value === 'pendentes') {
       const nextPending = pendingItems.value[0] || null;
       selectedItem.value = nextPending;
       adminNote.value = nextPending?.observacao_admin || '';
     } else {
-      selectedItem.value = updated;
+      selectedItem.value = allReports.value[idx] || updated;
     }
   } catch {
     decisionError.value = 'Não foi possível salvar a revisão no Firebase. Verifique sua conexão ou permissões.';
@@ -2705,17 +2890,36 @@ const formatDateTime = (iso?: string) => {
 };
 
 onMounted(() => {
-  unsubscribeAuth = subscribeToMulteiPanelAuth(async (profile) => {
-    userProfile.value = profile;
-    isCheckingAuth.value = false;
-    if (profile?.role === 'admin') {
-      adminMainSection.value = 'ocorrencias';
-      await Promise.all([loadReports(), loadPanelUsers(), loadPartnerDenuncias()]);
-    } else if (profile) {
-      adminMainSection.value = 'denuncias';
-      await loadPartnerDenuncias();
+  unsubscribeAuth = subscribeToMulteiPanelAuth(
+    async (profile) => {
+      userProfile.value = profile;
+      isCheckingAuth.value = false;
+      if (profile?.role === 'admin') {
+        adminMainSection.value = 'ocorrencias';
+        await Promise.all([loadReports(), loadPanelUsers(), loadPartnerDenuncias()]);
+      } else if (profile) {
+        adminMainSection.value = 'denuncias';
+        await loadPartnerDenuncias();
+      } else {
+        allReports.value = [];
+        panelUsers.value = [];
+        partnerIncidents.value = [];
+        selectedItem.value = null;
+        selectedPartnerIncident.value = null;
+        partnerNearMeCenter.value = null;
+      }
+    },
+    () => {
+      allReports.value = [];
+      panelUsers.value = [];
+      partnerIncidents.value = [];
+      selectedItem.value = null;
+      selectedPartnerIncident.value = null;
+      partnerNearMeCenter.value = null;
+      loginError.value = 'Sua sessão de 24 horas expirou. Por favor, faça login novamente.';
+      announceSr(loginError.value);
     }
-  });
+  );
 });
 
 onBeforeUnmount(() => {
@@ -3240,6 +3444,19 @@ onBeforeUnmount(() => {
   border: 1.5px solid var(--pp-amber-border);
 }
 
+.duplicity-panel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.22rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 900;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1.5px solid #f59e0b;
+}
+
 .repeat-badge-lg {
   font-size: 0.84rem;
   padding: 0.3rem 0.85rem;
@@ -3532,6 +3749,12 @@ onBeforeUnmount(() => {
   color: var(--pp-green-text);
 }
 
+.banner-indefinido {
+  background: var(--pp-amber-bg);
+  border: 1.5px solid var(--pp-amber-border);
+  color: var(--pp-amber-text);
+}
+
 .banner-title {
   font-weight: 900;
   font-size: 0.95rem;
@@ -3560,6 +3783,11 @@ onBeforeUnmount(() => {
   gap: 0.85rem;
 }
 
+.decision-actions.is-duplicity-decision-grid {
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+}
+
 .btn-decision {
   padding: 1rem;
   border-radius: 16px;
@@ -3586,6 +3814,12 @@ onBeforeUnmount(() => {
   color: var(--pp-green-text);
 }
 
+.btn-indefinido {
+  background: var(--pp-amber-bg);
+  border: 2px solid var(--pp-amber-border);
+  color: var(--pp-amber-text);
+}
+
 .btn-procedente {
   background: var(--pp-red-bg);
   border: 2px solid var(--pp-red-border);
@@ -3601,6 +3835,35 @@ onBeforeUnmount(() => {
   font-size: 0.82rem;
   line-height: 1.4;
   font-weight: 600;
+}
+
+.duplicity-photo-compare-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.duplicity-photo-compare-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.duplicity-compare-label {
+  display: inline-block;
+  padding: 0.3rem 0.65rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  background: var(--pp-surface);
+  color: var(--pp-text-primary);
+  border: 1px solid var(--pp-border);
+}
+
+.duplicity-compare-label.is-second-photo {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #f59e0b;
 }
 
 /* Metadados */

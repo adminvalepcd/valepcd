@@ -1,5 +1,11 @@
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
-import type { BoundingBox, GeminiSensitiveContentResponse, IncidentAnalysisResult } from '../types';
+import type {
+  BoundingBox,
+  DuplicateComparisonResult,
+  GeminiSensitiveContentResponse,
+  IncidentAnalysisResult
+} from '../types';
+
 
 const CANDIDATE_MODELS = [
   'gemini-flash-lite-latest',
@@ -393,5 +399,131 @@ export async function getSensitiveContentBoundingBoxes(
   return {
     plates: result.plates,
     faces: result.faces
+  };
+}
+
+/**
+ * Compara duas fotos de infrações de trânsito registradas num intervalo de até 2 minutos
+ * e raio de até 10 metros, perguntando ao Gemini se o(s) veículo(s) podem ser o(s) mesmo(s),
+ * inclusive se fotografados de outro ângulo, distância ou perspectiva.
+ */
+export async function compareVehicleDuplicityWithGemini(
+  client: GoogleGenAI | null,
+  existingImageBase64: string,
+  newImageBase64: string
+): Promise<DuplicateComparisonResult> {
+  if (!client || !existingImageBase64 || !newImageBase64) {
+    return {
+      isPossibleDuplicate: false,
+      confidence: 'baixa',
+      reason: 'Dados insuficientes para comparação.',
+      apiError: true
+    };
+  }
+
+  const parsedExisting = parseBase64Image(existingImageBase64);
+  const parsedNew = parseBase64Image(newImageBase64);
+
+  const existingImagePart = {
+    inlineData: {
+      mimeType: parsedExisting.mimeType,
+      data: parsedExisting.data
+    }
+  };
+
+  const newImagePart = {
+    inlineData: {
+      mimeType: parsedNew.mimeType,
+      data: parsedNew.data
+    }
+  };
+
+  const prompt = `
+Compare estas duas fotos de denúncia de infração de trânsito registradas num raio de 10 metros nos últimos 2 minutos.
+A Imagem 1 é a primeira denúncia registrada e a Imagem 2 é a nova denúncia.
+
+Analise se os veículos em destaque nas duas imagens PODEM SER OS MESMOS veículos (mesmo carro/moto/caminhonete/utilitário estacionado no mesmo local), ainda que tenham sido fotografados de OUTRO ÂNGULO, outra distância ou outra perspectiva (por exemplo: frente vs traseira, lateral esquerda vs lateral direita, mais perto vs mais longe).
+
+Considere:
+- Tipo de carroceria (hatch, sedan, SUV, picape, moto, van, etc.), cor, formato dos faróis/lanternas, rodas, vidros, adesivos ou detalhes visuais.
+- O ambiente ao redor (mesma vaga, calçada, parede, pintura no solo, árvores ou fachada).
+- Ignore o desfoque de privacidade nas placas e rostos humanos.
+- Se houver possibilidade razoável de que seja o mesmo veículo visto de outro ângulo ou do mesmo ângulo no mesmo local, retorne "isPossibleDuplicate": true.
+- Somente retorne "isPossibleDuplicate": false se os veículos forem claramente diferentes (ex: cores incompatíveis, modelos/portes totalmente distintos).
+
+Retorne estritamente o JSON:
+{"isPossibleDuplicate": bool, "confidence": "alta" | "media" | "baixa", "reason": str}
+`;
+
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      isPossibleDuplicate: {
+        type: Type.BOOLEAN,
+        description: 'True se os veículos nas duas imagens puderem ser os mesmos, mesmo que de outro ângulo.'
+      },
+      confidence: {
+        type: Type.STRING,
+        description: 'Nível de confiança: "alta", "media" ou "baixa".'
+      },
+      reason: {
+        type: Type.STRING,
+        description: 'Breve justificativa em português explicando a comparação visual.'
+      }
+    },
+    propertyOrdering: ['isPossibleDuplicate', 'confidence', 'reason']
+  };
+
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const response: GenerateContentResponse = await client.models.generateContent({
+        model,
+        contents: {
+          parts: [
+            { text: 'Imagem 1 (Denúncia anterior):' },
+            existingImagePart,
+            { text: 'Imagem 2 (Nova denúncia):' },
+            newImagePart,
+            { text: prompt }
+          ]
+        },
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: schema
+        }
+      });
+
+      const rawText = response.text ? response.text.trim() : '';
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error(`Modelo ${model} retornou resposta vazia na comparação de duplicidade.`);
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      const isPossibleDuplicate = Boolean(parsed.isPossibleDuplicate);
+      const confidence = typeof parsed.confidence === 'string' ? parsed.confidence.trim() : 'media';
+      const reason = typeof parsed.reason === 'string' ? parsed.reason.trim() : '';
+
+      console.log(
+        `[geminiService] Comparação anti-duplicidade (${model}): isPossibleDuplicate=${isPossibleDuplicate}, confidence=${confidence}, reason="${reason}"`
+      );
+
+      return {
+        isPossibleDuplicate,
+        confidence,
+        reason,
+        apiError: false
+      };
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.warn(`[geminiService] Tentativa de comparação falhou no modelo ${model}: ${errMsg}`);
+    }
+  }
+
+  return {
+    isPossibleDuplicate: false,
+    confidence: 'baixa',
+    reason: 'Não foi possível concluir a comparação por IA no momento.',
+    apiError: true
   };
 }

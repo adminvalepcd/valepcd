@@ -14,10 +14,69 @@
     >
       <div class="modal-card-body">
         <div class="modal-header">
-          <h2 id="incident-modal-title" class="modal-title">
-            {{ isIncidentResolved ? '✅ Problema Urbano Corrigido' : 'Detalhes da Ocorrência' }}
-          </h2>
+          <div class="modal-header-title-group">
+            <h2 id="incident-modal-title" class="modal-title">
+              {{ isIncidentResolved ? '✅ Problema Urbano Corrigido' : 'Detalhes da Ocorrência' }}
+            </h2>
+          </div>
           <button class="btn-close" @click="emit('close')" aria-label="Fechar">✕</button>
+        </div>
+
+        <!-- Barra de Paginação quando houver denúncias agrupadas por possível duplicidade -->
+        <div
+          v-if="totalPages > 1"
+          class="incident-pagination-bar"
+          role="navigation"
+          aria-label="Paginação de denúncias agrupadas neste local"
+        >
+          <button
+            type="button"
+            class="btn-page-nav"
+            :disabled="currentPageIndex === 0"
+            aria-label="Denúncia anterior"
+            @click="prevPage"
+          >
+            ← Anterior
+          </button>
+
+          <div class="pagination-center-info">
+            <div class="pagination-pills" role="tablist" aria-label="Selecionar registro">
+              <button
+                v-for="(item, idx) in groupItems"
+                :key="item.id || idx"
+                type="button"
+                role="tab"
+                :aria-selected="currentPageIndex === idx"
+                class="pagination-pill-btn"
+                :class="{
+                  'is-active': currentPageIndex === idx,
+                  'is-duplicate-pill': Boolean(item.possivel_duplicidade || idx > 0)
+                }"
+                @click="goToPage(idx)"
+              >
+                <span>{{ idx + 1 }}</span>
+              </button>
+            </div>
+            <span class="pagination-status-text">
+              Registro {{ currentPageIndex + 1 }} de {{ totalPages }}
+              <strong v-if="currentPageIndex === 0 && !activeIncident.possivel_duplicidade" class="tag-primary-rec">
+                • Principal
+              </strong>
+              <strong v-else class="tag-duplicate-rec">
+                • Possível duplicidade
+              </strong>
+            </span>
+          </div>
+
+          <button
+            type="button"
+            class="btn-page-nav"
+            :disabled="currentPageIndex >= totalPages - 1"
+            aria-label="Próxima denúncia"
+            @click="nextPage"
+          >
+            Próxima →
+          </button>
         </div>
 
         <!-- MODO RESOLVIDO: Comparativo ANTES e DEPOIS com datas destacadas -->
@@ -48,8 +107,8 @@
                 <strong class="ba-date-value">{{ formattedDate || 'Não informada' }}</strong>
               </div>
 
-              <p v-if="incident.descricao" class="ba-desc-text">
-                <strong>Relato inicial:</strong> {{ incident.descricao }}
+              <p v-if="activeIncident.descricao" class="ba-desc-text">
+                <strong>Relato inicial:</strong> {{ activeIncident.descricao }}
               </p>
             </div>
 
@@ -78,8 +137,8 @@
                 <strong class="ba-date-value">{{ formattedResolutionDate || 'Confirmada' }}</strong>
               </div>
 
-              <p v-if="incident.descricao_resolucao" class="ba-desc-text">
-                <strong>Correção realizada:</strong> {{ incident.descricao_resolucao }}
+              <p v-if="activeIncident.descricao_resolucao" class="ba-desc-text">
+                <strong>Correção realizada:</strong> {{ activeIncident.descricao_resolucao }}
               </p>
             </div>
           </div>
@@ -92,7 +151,7 @@
               </svg>
               <div>
                 <p class="info-label">Localização:</p>
-                <p v-if="incident.cidade" class="info-city">📍 {{ incident.cidade }}{{ incident.estado ? ` - ${incident.estado}` : '' }}</p>
+                <p v-if="activeIncident.cidade" class="info-city">📍 {{ activeIncident.cidade }}{{ activeIncident.estado ? ` - ${activeIncident.estado}` : '' }}</p>
                 <p v-if="displayAddress" class="info-address">{{ displayAddress }}</p>
               </div>
             </div>
@@ -141,6 +200,14 @@
               </div>
 
               <div
+                v-if="isCurrentDuplicate"
+                class="photo-duplicity-badge"
+                title="Possível duplicidade detectada por IA (mesmo veículo sob outro ângulo)"
+              >
+                <span>⚠️ {{ activeIncident.rotulo_duplicidade || 'Possível duplicidade' }}</span>
+              </div>
+
+              <div
                 v-if="isResolutionPending"
                 class="photo-resolution-watermark"
                 aria-label="Em revisão de resolução"
@@ -154,13 +221,13 @@
           </div>
 
           <div class="modal-info-list">
-            <div v-if="incident.descricao" class="info-row">
+            <div v-if="activeIncident.descricao" class="info-row">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
               </svg>
               <div>
                 <p class="info-label">Breve descrição:</p>
-                <p class="info-val">{{ incident.descricao }}</p>
+                <p class="info-val">{{ activeIncident.descricao }}</p>
               </div>
             </div>
 
@@ -181,7 +248,7 @@
               </svg>
               <div>
                 <p class="info-label">Localização:</p>
-                <p v-if="incident.cidade" class="info-city">📍 {{ incident.cidade }}{{ incident.estado ? ` - ${incident.estado}` : '' }}</p>
+                <p v-if="activeIncident.cidade" class="info-city">📍 {{ activeIncident.cidade }}{{ activeIncident.estado ? ` - ${activeIncident.estado}` : '' }}</p>
                 <p v-if="displayAddress" class="info-address">{{ displayAddress }}</p>
               </div>
             </div>
@@ -221,7 +288,7 @@
               🚩 Reportar Ocorrência
             </button>
             <button
-              v-if="incident.natureza === 'urbana' && !isResolutionPending"
+              v-if="activeIncident.natureza === 'urbana' && !isResolutionPending"
               type="button"
               class="btn btn-primary btn-resolved"
               @click="handleOpenResolve"
@@ -458,8 +525,46 @@ const photoImgRef = ref(null);
 const config = useRuntimeConfig();
 const geminiClient = initializeGeminiClient(config.public?.geminiApiKey);
 
-const currentPhoto = ref(props.incident?.fotoUrl || props.incident?.maskedImageUrl || '');
-const resolvedAfterPhoto = ref(props.incident?.foto_resolucao || '');
+const currentPageIndex = ref(0);
+
+const groupItems = computed(() => {
+  if (Array.isArray(props.incident?.groupItems) && props.incident.groupItems.length > 0) {
+    return props.incident.groupItems;
+  }
+  return props.incident ? [props.incident] : [];
+});
+
+const totalPages = computed(() => groupItems.value.length);
+
+const activeIncident = computed(() => {
+  const list = groupItems.value;
+  const idx = Math.min(Math.max(0, currentPageIndex.value), Math.max(0, list.length - 1));
+  return list[idx] || props.incident;
+});
+
+const isCurrentDuplicate = computed(() => {
+  return Boolean(activeIncident.value?.possivel_duplicidade || currentPageIndex.value > 0);
+});
+
+const goToPage = (idx) => {
+  if (idx < 0 || idx >= totalPages.value || idx === currentPageIndex.value) return;
+  currentPageIndex.value = idx;
+};
+
+const prevPage = () => {
+  if (currentPageIndex.value > 0) {
+    currentPageIndex.value -= 1;
+  }
+};
+
+const nextPage = () => {
+  if (currentPageIndex.value < totalPages.value - 1) {
+    currentPageIndex.value += 1;
+  }
+};
+
+const currentPhoto = ref(activeIncident.value?.fotoUrl || activeIncident.value?.maskedImageUrl || '');
+const resolvedAfterPhoto = ref(activeIncident.value?.foto_resolucao || '');
 const isLoadingPhoto = ref(Boolean(currentPhoto.value));
 const hasPhotoLoadError = ref(false);
 const isPhotoExpanded = ref(false);
@@ -469,11 +574,11 @@ const isResolving = ref(false);
 
 const isIncidentResolved = computed(() =>
   Boolean(
-    props.incident?.resolvido === true ||
-      String(props.incident?.resolvido).toLowerCase() === 'true' ||
-      String(props.incident?.status_resolucao || '').toLowerCase() === 'resolvido' ||
-      (props.incident?.foto_resolucao &&
-        String(props.incident?.status_resolucao || '').toLowerCase() !== 'em_validacao')
+    activeIncident.value?.resolvido === true ||
+      String(activeIncident.value?.resolvido).toLowerCase() === 'true' ||
+      String(activeIncident.value?.status_resolucao || '').toLowerCase() === 'resolvido' ||
+      (activeIncident.value?.foto_resolucao &&
+        String(activeIncident.value?.status_resolucao || '').toLowerCase() !== 'em_validacao')
   )
 );
 
@@ -484,14 +589,14 @@ const openExpandedPhoto = (src) => {
 };
 
 const verificationBadge = computed(() => {
-  if (props.incident?.natureza === 'urbana') {
+  if (activeIncident.value?.natureza === 'urbana') {
     return {
       type: 'urbana',
       icon: '🚧',
       label: 'Mobilidade urbana'
     };
   }
-  const type = normalizeVerificacao(props.incident?.verificacao ?? props.incident?.verification);
+  const type = normalizeVerificacao(activeIncident.value?.verificacao ?? activeIncident.value?.verification);
   if (type === 'exclusiva') {
     return {
       type: 'exclusiva',
@@ -562,17 +667,17 @@ const formatDateTimeValue = (rawVal) => {
 };
 
 const formattedDate = computed(() => {
-  return formatDateTimeValue(props.incident?.timestamp || props.incident?.data);
+  return formatDateTimeValue(activeIncident.value?.timestamp || activeIncident.value?.data);
 });
 
 const formattedResolutionDate = computed(() => {
-  return formatDateTimeValue(props.incident?.data_resolucao);
+  return formatDateTimeValue(activeIncident.value?.data_resolucao);
 });
 
 const displayAddress = computed(() => {
   if (!addressText.value) return '';
-  const city = props.incident?.cidade || '';
-  const state = props.incident?.estado || '';
+  const city = activeIncident.value?.cidade || '';
+  const state = activeIncident.value?.estado || '';
   return cleanStreetAndNeighborhood(addressText.value, city, state);
 });
 
@@ -596,8 +701,8 @@ const isResolutionPending = computed(() => {
   if (isIncidentResolved.value) return false;
   return Boolean(
     localMarkedResolved.value ||
-    props.incident?.resolvido_em_validacao === true ||
-    props.incident?.status_resolucao === 'em_validacao'
+    activeIncident.value?.resolvido_em_validacao === true ||
+    activeIncident.value?.status_resolucao === 'em_validacao'
   );
 });
 
@@ -616,8 +721,8 @@ const handlePhotoError = () => {
 };
 
 const loadPhotoIfNeeded = async () => {
-  const nextPhoto = props.incident?.fotoUrl || props.incident?.maskedImageUrl || '';
-  const nextResolvedPhoto = props.incident?.foto_resolucao || '';
+  const nextPhoto = activeIncident.value?.fotoUrl || activeIncident.value?.maskedImageUrl || '';
+  const nextResolvedPhoto = activeIncident.value?.foto_resolucao || '';
   hasPhotoLoadError.value = false;
 
   if (nextResolvedPhoto) {
@@ -650,19 +755,22 @@ const loadPhotoIfNeeded = async () => {
 };
 
 const resolveAddress = async () => {
-  if (!props.incident) return;
-  if (props.incident.description && 
-      props.incident.description !== 'Infração registrada' && 
-      !props.incident.description.startsWith('Veículo') &&
-      !props.incident.description.startsWith('Infração')) {
-    addressText.value = props.incident.description;
+  const inc = activeIncident.value;
+  if (!inc) return;
+  if (inc.description && 
+      inc.description !== 'Infração registrada' && 
+      !inc.description.startsWith('Veículo') &&
+      !inc.description.startsWith('Infração')) {
+    addressText.value = inc.description;
+  } else {
+    addressText.value = '';
   }
   isResolving.value = true;
   try {
-    addressText.value = await getAddressFromCoords(props.incident.latitude, props.incident.longitude);
+    addressText.value = await getAddressFromCoords(inc.latitude, inc.longitude);
   } catch {
     if (!addressText.value) {
-      addressText.value = `Lat: ${Number(props.incident.latitude).toFixed(5)}, Lng: ${Number(props.incident.longitude).toFixed(5)}`;
+      addressText.value = `Lat: ${Number(inc.latitude).toFixed(5)}, Lng: ${Number(inc.longitude).toFixed(5)}`;
     }
   } finally {
     isResolving.value = false;
@@ -706,7 +814,7 @@ const processResolvePhoto = async (file) => {
   isProcessingResolvePhoto.value = true;
   resolveError.value = '';
   try {
-    const optimizedBase64 = await prepareImageForGemini(file, 1200);
+    const optimizedBase64 = await prepareImageForGemini(file);
     let plates = [];
     let faces = [];
 
@@ -753,9 +861,9 @@ const handleResolvePhotoTaken = async (file) => {
 
 const markIncidentAsPendingValidation = () => {
   localMarkedResolved.value = true;
-  if (props.incident && typeof props.incident === 'object') {
-    props.incident.resolvido_em_validacao = true;
-    props.incident.status_resolucao = 'em_validacao';
+  if (activeIncident.value && typeof activeIncident.value === 'object') {
+    activeIncident.value.resolvido_em_validacao = true;
+    activeIncident.value.status_resolucao = 'em_validacao';
   }
 };
 
@@ -774,11 +882,12 @@ const handleSubmitResolve = async () => {
   resolveError.value = '';
 
   try {
+    const targetIncident = activeIncident.value;
     await submitUrbanResolutionToFirebase({
-      ocorrenciaId: props.incident.id || '',
+      ocorrenciaId: targetIncident?.id || '',
       foto: resolvedPhotoWebp.value,
       descricao: resolveDescription.value.trim().slice(0, 300),
-      incident: props.incident
+      incident: targetIncident
     });
 
     markIncidentAsPendingValidation();
@@ -812,13 +921,14 @@ const handleSubmitReport = async () => {
   reportError.value = '';
 
   try {
-    const id = props.incident.id || '';
-    const res = await reportIncidentInFirebase(id, reportReason.value.trim(), props.incident);
+    const targetIncident = activeIncident.value;
+    const id = targetIncident?.id || '';
+    const res = await reportIncidentInFirebase(id, reportReason.value.trim(), targetIncident);
 
     reportSuccess.value = true;
     // Emite imediatamente para que o mapa reflita a remoção em tempo real (a menos que já tenha sido validada como improcedente antes)
     if (!res || res.deactivated !== false) {
-      emit('incidentReported', props.incident);
+      emit('incidentReported', targetIncident);
     }
     setTimeout(() => {
       emit('close');
@@ -868,6 +978,14 @@ onMounted(() => {
 });
 
 watch(() => props.incident, () => {
+  currentPageIndex.value = 0;
+  isPhotoExpanded.value = false;
+  localMarkedResolved.value = false;
+  resolveAddress();
+  loadPhotoIfNeeded();
+});
+
+watch(currentPageIndex, () => {
   isPhotoExpanded.value = false;
   localMarkedResolved.value = false;
   resolveAddress();
@@ -912,14 +1030,112 @@ watch(() => props.incident, () => {
 .modal-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.25rem;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.modal-header-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .modal-title {
   font-size: 1.35rem;
   font-weight: 700;
   color: var(--text, #0f172a);
+}
+
+.duplicity-alert-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  align-self: flex-start;
+  padding: 0.25rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+}
+
+.incident-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 1rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.btn-page-nav {
+  background-color: #ffffff;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-page-nav:hover:not(:disabled) {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.btn-page-nav:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pagination-center-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pagination-pills {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pagination-pill-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  border: 1px solid #cbd5e1;
+  background-color: #ffffff;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pagination-pill-btn.is-active {
+  background-color: var(--primary, #86007D);
+  border-color: var(--primary, #86007D);
+  color: #ffffff;
+}
+
+.pagination-status-text {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #475569;
+  text-align: center;
 }
 
 .btn-close {
@@ -974,6 +1190,25 @@ watch(() => props.incident, () => {
 
 .verification-photo-badge.is-urbana {
   background-color: #ca8a04;
+}
+
+.photo-duplicity-badge {
+  position: absolute;
+  bottom: 0.7rem;
+  right: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.32rem 0.7rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #78350f;
+  background-color: rgba(254, 243, 199, 0.95);
+  border: 1px solid #f59e0b;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  z-index: 5;
 }
 
 .verification-badge-icon {

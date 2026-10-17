@@ -511,11 +511,21 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import LoadingSpinner from './LoadingSpinner.vue';
-import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
+import {
+  initializeGeminiClient,
+  analyzeIncidentImage,
+  compareVehicleDuplicityWithGemini
+} from '../../services/geminiService';
 import { extractPhotoMetadata, blurSensitiveContentAndCompress, prepareImageForGemini } from '../../services/imageProcessor';
-import { saveIncidentToFirebase, normalizeVerificacao } from '../../services/firebaseService';
+import {
+  saveIncidentToFirebase,
+  normalizeVerificacao,
+  findRecentNearbyTrafficIncidents,
+  fetchIncidentImageAsBase64
+} from '../../services/firebaseService';
 import { getAddressDetailsFromCoords, requestUserLocation, geocodeAddressForValidation } from '../../services/geoService';
 import { useModalAccessibility } from '../../composables/useModalAccessibility';
+
 
 const props = defineProps({
   currentLocation: {
@@ -1605,7 +1615,7 @@ const processSelectedImage = async (file) => {
 
     // 2. Redimensionar previamente a imagem para envio rápido e leve à IA (~250KB)
     analyzingStatusText.value = 'Otimizando imagem...';
-    const optimizedBase64 = await prepareImageForGemini(file, 1200);
+    const optimizedBase64 = await prepareImageForGemini(file);
 
     // 3. Cache diário (1x por dia por foto + natureza) para poupar cotas do Gemini
     let cacheKey = null;
@@ -1937,6 +1947,45 @@ const handleSaveIncident = async () => {
   const timestampIso = new Date().toISOString();
 
   try {
+    let possivelDuplicidade = false;
+    let duplicidadeDeId = '';
+    let rotuloDuplicidade = '';
+    let motivoDuplicidade = '';
+
+    // Sistema Anti-Duplicidade (apenas para Infrações de Trânsito):
+    // Verifica se nos últimos 2 minutos num raio de 10m houve outro registro e pede ao Gemini para comparar os veículos
+    if (selectedNatureza.value !== 'urbana' && geminiClient && processedImageWebp.value) {
+      try {
+        const recentNearby = await findRecentNearbyTrafficIncidents(
+          selectedLocation.latitude,
+          selectedLocation.longitude,
+          2 * 60 * 1000, // 2 minutos
+          10 // 10 metros
+        );
+
+        for (const candidate of recentNearby) {
+          const existingImgBase64 = await fetchIncidentImageAsBase64(candidate);
+          if (!existingImgBase64) continue;
+
+          const comparison = await compareVehicleDuplicityWithGemini(
+            geminiClient,
+            existingImgBase64,
+            processedImageWebp.value
+          );
+
+          if (comparison.isPossibleDuplicate) {
+            possivelDuplicidade = true;
+            duplicidadeDeId = String(candidate.duplicidade_de_id || candidate.id || '').trim();
+            rotuloDuplicidade = 'Possível duplicidade';
+            motivoDuplicidade = String(comparison.reason || '').trim();
+            break;
+          }
+        }
+      } catch (dupErr) {
+        console.warn('[CreateIncidentModal] Aviso na verificação anti-duplicidade:', dupErr);
+      }
+    }
+
     const saveResult = await saveIncidentToFirebase({
       data: timestampIso,
       latitude: selectedLocation.latitude,
@@ -1951,7 +2000,11 @@ const handleSaveIncident = async () => {
       classificacao,
       verificacao,
       natureza: selectedNatureza.value,
-      descricao: finalDescricao
+      descricao: finalDescricao,
+      possivel_duplicidade: possivelDuplicidade,
+      duplicidade_de_id: duplicidadeDeId,
+      rotulo_duplicidade: rotuloDuplicidade,
+      motivo_duplicidade: motivoDuplicidade
     });
 
     const newIncident = {
@@ -1970,6 +2023,9 @@ const handleSaveIncident = async () => {
       verificacao: saveResult.verificacao || verificacao,
       fotoUrl: saveResult.fotoUrl,
       maskedImageUrl: saveResult.fotoUrl || processedImageWebp.value,
+      possivel_duplicidade: Boolean(saveResult.possivel_duplicidade ?? possivelDuplicidade),
+      duplicidade_de_id: saveResult.duplicidade_de_id || duplicidadeDeId,
+      rotulo_duplicidade: saveResult.rotulo_duplicidade || rotuloDuplicidade,
       description: [finalRua, finalBairro, [finalCidade, finalEstado].filter(Boolean).join(' - ')].filter(Boolean).join(' - ') || addressText.value || 'Infração registrada via colaboração cidadã'
     };
 

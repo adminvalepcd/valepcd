@@ -561,17 +561,117 @@ const handleBoundsChange = (bounds) => {
 
 const selectedIncidentType = ref('all'); // 'all' | 'urbana' | 'transito'
 
-const filteredIncidents = computed(() => {
-  if (selectedIncidentType.value === 'all') {
-    return incidents.value;
+const groupDuplicateIncidents = (rawList) => {
+  if (!Array.isArray(rawList) || rawList.length === 0) return [];
+
+  const byId = new Map();
+  for (const inc of rawList) {
+    if (inc?.id) {
+      byId.set(String(inc.id).trim(), inc);
+    }
   }
-  return incidents.value.filter((inc) => {
-    const isUrbana = String(inc?.natureza || '').trim().toLowerCase() === 'urbana';
-    if (selectedIncidentType.value === 'urbana') return isUrbana;
-    if (selectedIncidentType.value === 'transito') return !isUrbana;
-    return true;
-  });
+
+  const resolveRootKey = (inc) => {
+    const ownId = inc?.id ? String(inc.id).trim() : '';
+    if (!inc?.possivel_duplicidade) {
+      return ownId || `${inc.latitude}_${inc.longitude}_${inc.timestamp}`;
+    }
+
+    let parentId = inc?.duplicidade_de_id ? String(inc.duplicidade_de_id).trim() : '';
+
+    if (parentId) {
+      const visited = new Set([ownId]);
+      while (parentId && byId.has(parentId) && !visited.has(parentId)) {
+        visited.add(parentId);
+        const parentObj = byId.get(parentId);
+        const nextParent =
+          parentObj?.possivel_duplicidade && parentObj?.duplicidade_de_id
+            ? String(parentObj.duplicidade_de_id).trim()
+            : '';
+        if (nextParent) {
+          parentId = nextParent;
+        } else {
+          break;
+        }
+      }
+      return parentId;
+    }
+
+    // Fallback: se estiver marcado como possível duplicidade sem duplicidade_de_id explícito,
+    // procura a ocorrência de trânsito anterior dentro de 10m e 2 minutos
+    if (inc?.possivel_duplicidade && String(inc?.natureza || '').toLowerCase() !== 'urbana') {
+      const incTime = new Date(inc.timestamp).getTime() || 0;
+      for (const other of rawList) {
+        if (!other || other === inc || !other.id) continue;
+        if (other.possivel_duplicidade) continue;
+        if (String(other.natureza || '').toLowerCase() === 'urbana') continue;
+        const otherTime = new Date(other.timestamp).getTime() || 0;
+        const diffMs = Math.abs(incTime - otherTime);
+        if (diffMs <= 2 * 60 * 1000) {
+          const distMeters = getDistanceKm(inc.latitude, inc.longitude, other.latitude, other.longitude) * 1000;
+          if (distMeters <= 10) {
+            return String(other.id).trim();
+          }
+        }
+      }
+    }
+
+    return ownId || `${inc.latitude}_${inc.longitude}_${inc.timestamp}`;
+  };
+
+  const groupsMap = new Map();
+  for (const inc of rawList) {
+    if (!inc) continue;
+    const key = resolveRootKey(inc);
+    if (!groupsMap.has(key)) {
+      groupsMap.set(key, []);
+    }
+    groupsMap.get(key).push(inc);
+  }
+
+  const groupedResult = [];
+  for (const [, group] of groupsMap.entries()) {
+    if (group.length === 1) {
+      groupedResult.push({
+        ...group[0],
+        groupItems: [group[0]]
+      });
+    } else {
+      // Ordena para que a primeira denúncia (original) fique na página 1 e as duplicidades nas páginas seguintes
+      const sortedGroup = [...group].sort((a, b) => {
+        const aDup = Boolean(a.possivel_duplicidade);
+        const bDup = Boolean(b.possivel_duplicidade);
+        if (aDup !== bDup) return aDup ? 1 : -1;
+        const timeA = new Date(a.timestamp).getTime() || 0;
+        const timeB = new Date(b.timestamp).getTime() || 0;
+        return timeA - timeB;
+      });
+
+      const primary = sortedGroup[0];
+      groupedResult.push({
+        ...primary,
+        groupItems: sortedGroup
+      });
+    }
+  }
+
+  return groupedResult;
+};
+
+const filteredIncidents = computed(() => {
+  const baseList =
+    selectedIncidentType.value === 'all'
+      ? incidents.value
+      : incidents.value.filter((inc) => {
+          const isUrbana = String(inc?.natureza || '').trim().toLowerCase() === 'urbana';
+          if (selectedIncidentType.value === 'urbana') return isUrbana;
+          if (selectedIncidentType.value === 'transito') return !isUrbana;
+          return true;
+        });
+
+  return groupDuplicateIncidents(baseList);
 });
+
 
 const visibleIncidentsCount = computed(() => {
   const sourceList = filteredIncidents.value;

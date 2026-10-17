@@ -235,28 +235,46 @@ export async function extractGpsData(imageFile: File): Promise<Geolocation | nul
   return metadata.location;
 }
 
+const MAX_SHORT_EDGE = 1080;
+const MAX_LONG_EDGE = 1920;
+
 /**
- * Redimensiona a foto antes de enviar para o Gemini, reduzindo o tráfego de rede
- * de vários megabytes para ~250KB sem perder detalhes para a IA reconhecer placas e carros.
+ * Calcula as dimensões finais mantendo 100% da proporção original da foto,
+ * respeitando o limite máximo de 1080x1920 (retrato) ou 1920x1080 (paisagem).
  */
-export function prepareImageForGemini(file: File, maxDim = 1200): Promise<string> {
+function calculateFullHdDimensions(
+  naturalWidth: number,
+  naturalHeight: number
+): { width: number; height: number } {
+  if (!naturalWidth || !naturalHeight) {
+    return { width: naturalWidth || MAX_SHORT_EDGE, height: naturalHeight || MAX_LONG_EDGE };
+  }
+
+  const isPortrait = naturalHeight >= naturalWidth;
+  const maxW = isPortrait ? MAX_SHORT_EDGE : MAX_LONG_EDGE;
+  const maxH = isPortrait ? MAX_LONG_EDGE : MAX_SHORT_EDGE;
+
+  const scale = Math.min(1, maxW / naturalWidth, maxH / naturalHeight);
+  return {
+    width: Math.max(1, Math.round(naturalWidth * scale)),
+    height: Math.max(1, Math.round(naturalHeight * scale))
+  };
+}
+
+/**
+ * Redimensiona a foto para até 1080x1920 (preservando a proporção original)
+ * antes de enviar para análise da IA e geração do WebP final.
+ */
+export function prepareImageForGemini(file: File, _maxDim = 1920): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        let width = img.naturalWidth;
-        let height = img.naturalHeight;
-
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
+        const { width, height } = calculateFullHdDimensions(
+          img.naturalWidth,
+          img.naturalHeight
+        );
 
         const canvas = document.createElement('canvas');
         canvas.width = width;
@@ -266,9 +284,10 @@ export function prepareImageForGemini(file: File, maxDim = 1200): Promise<string
           return resolve(e.target?.result as string);
         }
 
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
-        // Gera JPEG otimizado para a IA (~200KB-300KB)
-        const optimized = canvas.toDataURL('image/jpeg', 0.85);
+        const optimized = canvas.toDataURL('image/webp', 1.0);
         resolve(optimized);
       };
       img.onerror = () => resolve(e.target?.result as string);
@@ -281,8 +300,8 @@ export function prepareImageForGemini(file: File, maxDim = 1200): Promise<string
 
 /**
  * Aplica desfoque pesado e irreversível (blur intenso + destruição de caracteres em múltiplos estágios)
- * nas caixas delimitadoras de placas e rostos e compacta a imagem em WebP com alta definição,
- * respeitando o limite de 50.000 caracteres de célula do Google Sheets.
+ * nas caixas delimitadoras de placas e rostos e exporta a imagem em WebP com qualidade 100% (1.0)
+ * e resolução máxima de 1080x1920 preservando a proporção original.
  */
 export function blurSensitiveContentAndCompress(
   imageUrl: string,
@@ -295,20 +314,11 @@ export function blurSensitiveContentAndCompress(
     image.src = imageUrl;
 
     image.onload = () => {
-      // 1. Redimensionar para até 640px (mais que o dobro de nitidez em relação aos 400px anteriores)
-      const MAX_DIM = 640;
-      let targetW = image.naturalWidth;
-      let targetH = image.naturalHeight;
-
-      if (targetW > MAX_DIM || targetH > MAX_DIM) {
-        if (targetW > targetH) {
-          targetH = Math.round((targetH * MAX_DIM) / targetW);
-          targetW = MAX_DIM;
-        } else {
-          targetW = Math.round((targetW * MAX_DIM) / targetH);
-          targetH = MAX_DIM;
-        }
-      }
+      // 1. Redimensionar respeitando o limite máximo de 1080x1920 (ou 1920x1080) mantendo a proporção
+      const { width: targetW, height: targetH } = calculateFullHdDimensions(
+        image.naturalWidth,
+        image.naturalHeight
+      );
 
       const canvas = document.createElement('canvas');
       canvas.width = targetW;
@@ -318,6 +328,8 @@ export function blurSensitiveContentAndCompress(
         return reject(new Error('Contexto 2D do Canvas indisponível'));
       }
 
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       // Desenhar a foto base redimensionada
       ctx.drawImage(image, 0, 0, targetW, targetH);
 
@@ -463,34 +475,8 @@ export function blurSensitiveContentAndCompress(
         }
       });
 
-      // 2. Exportar como WebP com qualidade aumentada em ~30% (iniciando em 0.80)
-      // garantindo que fique abaixo de 48.000 caracteres (limite estrito da célula do Google Sheets é 50k)
-      let quality = 0.80;
-      let webpBase64 = canvas.toDataURL('image/webp', quality);
-
-      while (webpBase64.length > 48000 && quality > 0.40) {
-        quality -= 0.05;
-        webpBase64 = canvas.toDataURL('image/webp', quality);
-      }
-
-      // Se ainda exceder 48.000 chars por excesso de detalhe na imagem, reduz dimensão gradualmente
-      let currentW = targetW;
-      let currentH = targetH;
-      while (webpBase64.length > 48000 && currentW > 350) {
-        currentW = Math.round(currentW * 0.9);
-        currentH = Math.round(currentH * 0.9);
-        const downCanvas = document.createElement('canvas');
-        downCanvas.width = currentW;
-        downCanvas.height = currentH;
-        const downCtx = downCanvas.getContext('2d');
-        if (downCtx) {
-          downCtx.drawImage(canvas, 0, 0, currentW, currentH);
-          webpBase64 = downCanvas.toDataURL('image/webp', Math.max(0.60, quality));
-        } else {
-          break;
-        }
-      }
-
+      // 2. Exportar em WebP com qualidade 100% (1.0)
+      const webpBase64 = canvas.toDataURL('image/webp', 1.0);
       resolve(webpBase64);
     };
 
