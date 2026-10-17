@@ -60,6 +60,9 @@
 
       <!-- Etapa 0: Escolha do Tipo de Ocorrência -->
       <div v-else-if="step === 'category'" class="step-category">
+        <div v-if="!isLocationInBrazil" class="alert alert-error mb-4" role="alert">
+          🚫 {{ OUTSIDE_BRAZIL_ERROR_MSG }}
+        </div>
         <p class="step-desc">
           Selecione o tipo de ocorrência que você deseja registrar:
         </p>
@@ -68,6 +71,7 @@
           <button
             type="button"
             class="btn-category is-traffic"
+            :disabled="!isLocationInBrazil"
             @click="handleSelectCategory('infracao_veicular')"
           >
             <span class="category-icon" aria-hidden="true">♿</span>
@@ -81,6 +85,7 @@
           <button
             type="button"
             class="btn-category is-urban"
+            :disabled="!isLocationInBrazil"
             @click="handleSelectCategory('urbana')"
           >
             <span class="category-icon" aria-hidden="true">🚧</span>
@@ -455,9 +460,9 @@
           </button>
           <button 
             class="btn btn-primary btn-save-incident" 
-            :class="{ 'is-disabled-lock': !!addressEditError }"
+            :class="{ 'is-disabled-lock': !!addressEditError || !isLocationInBrazil }"
             @click="handleSaveIncident" 
-            :disabled="isSaving || isResolvingAddress || isValidatingAddress || !!addressEditError"
+            :disabled="isSaving || isResolvingAddress || isValidatingAddress || !!addressEditError || !isLocationInBrazil"
           >
             <span v-if="isSaving">Processando...</span>
             <span v-else-if="isResolvingAddress">Obtendo endereço...</span>
@@ -523,7 +528,15 @@ import {
   findRecentNearbyTrafficIncidents,
   fetchIncidentImageAsBase64
 } from '../../services/firebaseService';
-import { getAddressDetailsFromCoords, requestUserLocation, geocodeAddressForValidation } from '../../services/geoService';
+import {
+  getAddressDetailsFromCoords,
+  requestUserLocation,
+  geocodeAddressForValidation,
+  isCoordinateInBrazilBounds,
+  isValidBrazilUF,
+  evaluateIsBrazil,
+  checkIfCoordsInBrazil
+} from '../../services/geoService';
 import { useModalAccessibility } from '../../composables/useModalAccessibility';
 
 
@@ -543,6 +556,11 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'incidentCreated', 'gpsEnabled']);
+
+const OUTSIDE_BRAZIL_ERROR_MSG = 'Ocorrências no Multei só podem ser incluídas no Brasil.';
+const isLocationInBrazil = ref(
+  isCoordinateInBrazilBounds(props.currentLocation.latitude, props.currentLocation.longitude)
+);
 
 const modalCardRef = ref(null);
 const galleryInputRef = ref(null);
@@ -581,6 +599,13 @@ const handleActivateGpsForReport = async () => {
     selectedLocation.longitude = coords.longitude;
     setGpsAnchorLocation(coords.latitude, coords.longitude);
     locationSource.value = 'device';
+    const inBr = await checkIfCoordsInBrazil(coords.latitude, coords.longitude);
+    isLocationInBrazil.value = inBr;
+    if (!inBr) {
+      gpsActivationError.value = OUTSIDE_BRAZIL_ERROR_MSG;
+      emit('gpsEnabled', coords);
+      return;
+    }
     updateAddress(coords.latitude, coords.longitude);
     emit('gpsEnabled', coords);
   } catch (err) {
@@ -593,6 +618,7 @@ const handleActivateGpsForReport = async () => {
 };
 
 const handleSelectCategory = (natureza) => {
+  if (!isLocationInBrazil.value) return;
   selectedNatureza.value = natureza;
   step.value = 'upload';
 };
@@ -1322,6 +1348,10 @@ const updateAddress = async (lat, lng) => {
   lastGeocodedCoords.latitude = lat;
   lastGeocodedCoords.longitude = lng;
   isResolvingAddress.value = true;
+  if (!isCoordinateInBrazilBounds(lat, lng)) {
+    isLocationInBrazil.value = false;
+    saveError.value = OUTSIDE_BRAZIL_ERROR_MSG;
+  }
   if (!addressText.value) {
     addressText.value = 'Buscando endereço...';
   }
@@ -1344,6 +1374,21 @@ const updateAddress = async (lat, lng) => {
     const resolvedBairro = (details.bairro || fromText.bairro || '').trim();
     const resolvedCidade = (details.cidade || fromText.cidade || '').trim();
     const resolvedEstado = (details.estado || fromText.estado || '').trim();
+
+    const inBrazilResolved = evaluateIsBrazil({
+      latitude: lat,
+      longitude: lng,
+      countryCode: details.countryCode,
+      pais: details.pais,
+      estado: resolvedEstado || details.estado,
+      isBrazil: details.isBrazil
+    });
+    isLocationInBrazil.value = inBrazilResolved;
+    if (!inBrazilResolved) {
+      saveError.value = OUTSIDE_BRAZIL_ERROR_MSG;
+    } else if (saveError.value === OUTSIDE_BRAZIL_ERROR_MSG) {
+      saveError.value = '';
+    }
 
     if (!hasManualAddressEdit.value) {
       syncFieldsFromRua(resolvedRua, true);
@@ -1636,6 +1681,19 @@ const processSelectedImage = async (file) => {
         const isDefaultSP = Math.abs(props.currentLocation.latitude - (-23.55052)) < 0.0001 &&
                             Math.abs(props.currentLocation.longitude - (-46.633308)) < 0.0001;
         locationSource.value = isDefaultSP ? 'fallback' : 'device';
+      }
+    }
+
+    // Trava geográfica: rejeita imediatamente se a foto ou o GPS estiverem fora do Brasil
+    if (locationSource.value !== 'fallback') {
+      const inBrazil = await checkIfCoordsInBrazil(selectedLocation.latitude, selectedLocation.longitude);
+      const anchorInBrazil = await checkIfCoordsInBrazil(gpsAnchorLocation.latitude, gpsAnchorLocation.longitude);
+      if (!inBrazil || !anchorInBrazil) {
+        isLocationInBrazil.value = false;
+        isApiError.value = false;
+        step.value = 'error';
+        errorMessage.value = OUTSIDE_BRAZIL_ERROR_MSG;
+        return;
       }
     }
 
@@ -1985,6 +2043,21 @@ const handleSaveIncident = async () => {
       saveError.value = 'Não foi possível identificar a Cidade e o Estado. Autorize o uso do GPS ou escolha o local no mapa para prosseguir.';
       return;
     }
+  }
+
+  // Trava geográfica final: não permite finalizar a inclusão se o país não for Brasil
+  const selectedInBrazil = await checkIfCoordsInBrazil(selectedLocation.latitude, selectedLocation.longitude);
+  const anchorInBrazil =
+    locationSource.value === 'fallback'
+      ? true
+      : await checkIfCoordsInBrazil(gpsAnchorLocation.latitude, gpsAnchorLocation.longitude);
+  const hasValidBrazilUf = isValidBrazilUF(finalEstado);
+
+  if (!isLocationInBrazil.value || !selectedInBrazil || !anchorInBrazil || !hasValidBrazilUf) {
+    isLocationInBrazil.value = false;
+    isSaving.value = false;
+    saveError.value = OUTSIDE_BRAZIL_ERROR_MSG;
+    return;
   }
 
   const classificacao = computeIncidentClassification();

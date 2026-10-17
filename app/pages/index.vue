@@ -63,6 +63,48 @@
             </NuxtLink>
           </div>
 
+          <!-- Project 4: Multei (Contador em Tempo Real) -->
+          <div
+            class="pillar-card multei-live-card glass pulse-hover"
+            :class="{ 'is-live-pulsing': isMulteiPulsing }"
+          >
+            <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">
+              {{ multeiLiveSrAnnouncement }}
+            </div>
+
+            <div class="pillar-img-container multei-counter-showcase">
+              <div class="multei-live-pill">
+                <span class="multei-live-dot" aria-hidden="true"></span>
+                <span>{{ $t('home.cardMulteiLiveLabel') }}</span>
+              </div>
+
+              <div class="multei-counter-value-row">
+                <span
+                  class="multei-counter-number"
+                  :class="{ 'is-loading': isLoadingMulteiStats }"
+                >
+                  {{ formatMulteiNumber(animatedTotalGeral) }}
+                </span>
+                <transition name="plus-one-pop">
+                  <span
+                    v-if="showPlusOneBadge"
+                    :key="plusOneRenderKey"
+                    class="multei-plus-one-badge"
+                    aria-hidden="true"
+                  >
+                    +1
+                  </span>
+                </transition>
+              </div>
+            </div>
+
+            <h3>{{ $t('home.cardMulteiTitle') }}</h3>
+            <p>{{ $t('home.cardMulteiDesc') }}</p>
+            <span class="link-more multei-coming-soon-label">
+              {{ $t('home.cardMulteiComingSoon') }}
+            </span>
+          </div>
+
         </div>
       </div>
     </section>
@@ -104,8 +146,161 @@
 </template>
 
 <script setup>
-const { t } = useI18n()
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import {
+  fetchMulteiStatsOnce,
+  subscribeToMulteiLiveEvents
+} from '~/services/firebaseService'
+
+const { t, locale } = useI18n()
 const localePath = useLocalePath()
+
+const isLoadingMulteiStats = ref(true)
+const multeiStats = ref({
+  totalGeral: 0,
+  infracoesTransito: 0,
+  mobilidadeUrbana: 0
+})
+const animatedTotalGeral = ref(0)
+const showPlusOneBadge = ref(false)
+const plusOneRenderKey = ref(0)
+const isMulteiPulsing = ref(false)
+const multeiLiveSrAnnouncement = ref('')
+
+let unsubscribeMulteiLive = null
+let animFrameId = null
+let badgeTimer = null
+let pulseTimer = null
+let srTimer = null
+
+const formatMulteiNumber = (val) => {
+  const num = Number(val) || 0
+  const localeMap = {
+    pt: 'pt-BR',
+    en: 'en-US',
+    es: 'es-ES'
+  }
+  return num.toLocaleString(localeMap[locale.value] || 'pt-BR')
+}
+
+const animateTotalValue = (targetValue) => {
+  if (typeof window === 'undefined') {
+    animatedTotalGeral.value = targetValue
+    return
+  }
+
+  if (animFrameId) {
+    cancelAnimationFrame(animFrameId)
+  }
+
+  const startValue = animatedTotalGeral.value || 0
+  const diff = targetValue - startValue
+  if (diff === 0) {
+    animatedTotalGeral.value = targetValue
+    return
+  }
+
+  const duration = 650
+  const startTime = performance.now()
+
+  const step = (now) => {
+    const elapsed = now - startTime
+    const progress = Math.min(elapsed / duration, 1)
+    const eased = 1 - Math.pow(1 - progress, 3)
+    animatedTotalGeral.value = Math.round(startValue + diff * eased)
+
+    if (progress < 1) {
+      animFrameId = requestAnimationFrame(step)
+    } else {
+      animatedTotalGeral.value = targetValue
+    }
+  }
+
+  animFrameId = requestAnimationFrame(step)
+}
+
+const triggerPlusOneEffect = () => {
+  plusOneRenderKey.value += 1
+  showPlusOneBadge.value = true
+  isMulteiPulsing.value = true
+
+  if (badgeTimer) clearTimeout(badgeTimer)
+  badgeTimer = setTimeout(() => {
+    showPlusOneBadge.value = false
+  }, 1800)
+
+  if (pulseTimer) clearTimeout(pulseTimer)
+  pulseTimer = setTimeout(() => {
+    isMulteiPulsing.value = false
+  }, 1400)
+
+  if (srTimer) clearTimeout(srTimer)
+  multeiLiveSrAnnouncement.value = ''
+  srTimer = setTimeout(() => {
+    multeiLiveSrAnnouncement.value = `+1 ocorrência registrada no Multei. Total: ${multeiStats.value.totalGeral}`
+  }, 50)
+}
+
+const applyMulteiSnapshot = (incoming) => {
+  if (!incoming) return
+  isLoadingMulteiStats.value = false
+  const infracoesTransito = Math.max(0, Number(incoming.infracoesTransito || 0))
+  const mobilidadeUrbana = Math.max(0, Number(incoming.mobilidadeUrbana || 0))
+  const totalGeral = Math.max(infracoesTransito + mobilidadeUrbana, Number(incoming.totalGeral || 0))
+
+  multeiStats.value = {
+    totalGeral,
+    infracoesTransito,
+    mobilidadeUrbana
+  }
+  animateTotalValue(totalGeral)
+}
+
+onMounted(() => {
+  fetchMulteiStatsOnce((cached) => {
+    applyMulteiSnapshot(cached)
+  })
+    .then((fresh) => {
+      applyMulteiSnapshot(fresh)
+    })
+    .catch(() => {
+      isLoadingMulteiStats.value = false
+    })
+
+  unsubscribeMulteiLive = subscribeToMulteiLiveEvents((evt) => {
+    const { category, delta } = evt
+    if (category !== 'infracoesTransito' && category !== 'mobilidadeUrbana') {
+      return
+    }
+    isLoadingMulteiStats.value = false
+    if (category === 'infracoesTransito') {
+      multeiStats.value.infracoesTransito = Math.max(0, multeiStats.value.infracoesTransito + delta)
+    } else {
+      multeiStats.value.mobilidadeUrbana = Math.max(0, multeiStats.value.mobilidadeUrbana + delta)
+    }
+    multeiStats.value.totalGeral = Math.max(
+      multeiStats.value.infracoesTransito + multeiStats.value.mobilidadeUrbana,
+      multeiStats.value.totalGeral + delta
+    )
+    animateTotalValue(multeiStats.value.totalGeral)
+
+    if (delta > 0) {
+      triggerPlusOneEffect()
+    }
+  })
+})
+
+onBeforeUnmount(() => {
+  if (typeof unsubscribeMulteiLive === 'function') {
+    unsubscribeMulteiLive()
+  }
+  if (animFrameId && typeof window !== 'undefined') {
+    cancelAnimationFrame(animFrameId)
+  }
+  if (badgeTimer) clearTimeout(badgeTimer)
+  if (pulseTimer) clearTimeout(pulseTimer)
+  if (srTimer) clearTimeout(srTimer)
+})
 
 function trackDownloadBandeira() {
   if (typeof window !== 'undefined') {
@@ -196,6 +391,13 @@ function trackDownloadBandeira() {
 
 .highlight-grid {
   margin-top: 2rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 768px) {
+  .highlight-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .pillar-card {
@@ -263,6 +465,128 @@ function trackDownloadBandeira() {
 }
 
 .link-more:hover {
+  color: var(--primary);
+}
+
+/* Card Multei com Contador em Tempo Real */
+.multei-live-card.is-live-pulsing {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-muted), var(--shadow-md);
+}
+
+.multei-counter-showcase {
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.multei-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.28rem 0.75rem;
+  border-radius: var(--radius-full);
+  background: var(--primary-muted);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.multei-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #16a34a;
+  box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.7);
+  animation: multei-live-pulse 2s infinite;
+}
+
+@keyframes multei-live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.65);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(22, 163, 74, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0);
+  }
+}
+
+.multei-counter-value-row {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.multei-counter-number {
+  font-size: clamp(3.9rem, 6.2vw, 5.2rem);
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 10px 24px rgba(109, 40, 217, 0.22);
+  transition: transform var(--transition-smooth), text-shadow var(--transition-smooth);
+}
+
+.pillar-card:hover .multei-counter-number {
+  transform: translateY(-6px) scale(1.12);
+  text-shadow: 0 16px 32px rgba(109, 40, 217, 0.32);
+}
+
+.multei-counter-number.is-loading {
+  opacity: 0.55;
+}
+
+.multei-plus-one-badge {
+  position: absolute;
+  left: calc(100% + 0.5rem);
+  top: 0.1rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-full);
+  background-color: #16a34a;
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 800;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}
+
+.plus-one-pop-enter-active {
+  animation: plus-one-float 1.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.plus-one-pop-leave-active {
+  opacity: 0;
+}
+
+@keyframes plus-one-float {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.75);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(0) scale(1.08);
+  }
+  80% {
+    opacity: 1;
+    transform: translateY(-8px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.95);
+  }
+}
+
+.multei-coming-soon-label {
+  cursor: default;
+  color: var(--primary);
+}
+.multei-coming-soon-label:hover {
   color: var(--primary);
 }
 

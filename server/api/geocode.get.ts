@@ -239,9 +239,15 @@ export default defineEventHandler(async (event) => {
       rua: '',
       bairro: '',
       cidade: '',
-      estado: ''
+      estado: '',
+      pais: '',
+      countryCode: '',
+      isBrazil: false
     };
   }
+
+  const inBrazilBounds = lat >= -33.76 && lat <= 5.28 && lng >= -74.00 && lng <= -28.80;
+  const validBrazilUFs = new Set(Object.values(UF_MAP));
 
   let formattedAddress = '';
   let streetNameOnly = '';
@@ -250,7 +256,15 @@ export default defineEventHandler(async (event) => {
   let suburb = '';
   let city = '';
   let state = '';
+  let countryCode = '';
+  let countryName = '';
   let nominatimRawDisplayName = '';
+
+  const normalizeCountryIso = (code: string) => {
+    const clean = String(code || '').trim().toUpperCase();
+    if (clean === 'BRA') return 'BR';
+    return clean;
+  };
 
   // 1. Consulta OpenStreetMap Nominatim (excelente para nome oficial da via, bairro, cidade e UF)
   try {
@@ -266,6 +280,15 @@ export default defineEventHandler(async (event) => {
       const data = await res.json();
       if (data && data.address) {
         const addr = data.address;
+        if (addr.country_code) {
+          countryCode = normalizeCountryIso(addr.country_code);
+        }
+        if (addr.country) {
+          countryName = String(addr.country).trim();
+        }
+
+        const isForeignCountry = Boolean(countryCode && countryCode !== 'BR');
+
         streetNameOnly = String(addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || '').trim();
         streetNumberOnly = extractCleanStreetNumber(addr.house_number || '');
         streetFull = streetNameOnly
@@ -274,15 +297,19 @@ export default defineEventHandler(async (event) => {
         suburb = String(addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || '').trim();
         city = String(addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || addr.hamlet || addr.state_district || '').trim();
 
-        if (addr['ISO3166-2-lvl4']) {
-          state = String(addr['ISO3166-2-lvl4']).replace(/^BR-/, '');
-        } else {
-          state = addr.state || '';
-        }
-        state = normalizeState(state);
+        if (!isForeignCountry) {
+          if (addr['ISO3166-2-lvl4']) {
+            state = String(addr['ISO3166-2-lvl4']).replace(/^BR-/, '');
+          } else {
+            state = addr.state || '';
+          }
+          state = normalizeState(state);
 
-        if (state === 'DF' && (!city || city.toLowerCase().includes('plano piloto') || city.toLowerCase().includes('distrito federal'))) {
-          city = 'Brasília';
+          if (state === 'DF' && (!city || city.toLowerCase().includes('plano piloto') || city.toLowerCase().includes('distrito federal'))) {
+            city = 'Brasília';
+          }
+        } else {
+          state = String(addr.state || '').trim();
         }
 
         nominatimRawDisplayName = String(data.display_name || '');
@@ -294,7 +321,7 @@ export default defineEventHandler(async (event) => {
 
   // 2. Se o Nominatim não retornou o número do imóvel (comum no Brasil quando o pino está sobre o leito da via),
   // consulta o ArcGIS Reverse Geocode para obter a numeração interpolada/aproximada da rua naquela coordenada
-  if (!streetNumberOnly || !streetNameOnly || !suburb || !city || !state) {
+  if (!streetNumberOnly || !streetNameOnly || !suburb || !city || !state || !countryCode) {
     try {
       const arcUrl = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?f=json&location=${encodeURIComponent(lng)},${encodeURIComponent(lat)}&langCode=pt&featureTypes=PointAddress,StreetAddress,StreetName`;
       const arcRes = await fetch(arcUrl);
@@ -302,6 +329,14 @@ export default defineEventHandler(async (event) => {
         const arcData = await arcRes.json();
         const arcAddr = arcData?.address;
         if (arcAddr) {
+          if (!countryCode && arcAddr.CountryCode) {
+            countryCode = normalizeCountryIso(arcAddr.CountryCode);
+          }
+          if (!countryName && arcAddr.CntryName) {
+            countryName = String(arcAddr.CntryName).trim();
+          }
+
+          const isForeignCountry = Boolean(countryCode && countryCode !== 'BR');
           const parsedArc = parseArcgisAddress(arcAddr);
           const arcLocLat = Number(arcData?.location?.y);
           const arcLocLng = Number(arcData?.location?.x);
@@ -328,7 +363,8 @@ export default defineEventHandler(async (event) => {
             city = String(arcAddr.City || arcAddr.Subregion).trim();
           }
           if (!state && (arcAddr.RegionAbbr || arcAddr.Region)) {
-            state = normalizeState(String(arcAddr.RegionAbbr || arcAddr.Region).trim());
+            const rawRegion = String(arcAddr.RegionAbbr || arcAddr.Region).trim();
+            state = isForeignCountry ? rawRegion : normalizeState(rawRegion);
           }
         }
       }
@@ -341,13 +377,21 @@ export default defineEventHandler(async (event) => {
     ? (streetNumberOnly ? `${streetNameOnly}, ${streetNumberOnly}` : streetNameOnly)
     : '';
 
-  // 3. Fallback BigDataCloud se ainda faltar cidade/estado/bairro
-  if (!city || !state || !suburb) {
+  // 3. Fallback BigDataCloud se ainda faltar cidade/estado/bairro ou país
+  if (!city || !state || !suburb || !countryCode) {
     try {
       const bdcUrl = `https://api-bdc.io/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}&localityLanguage=pt`;
       const bdcRes = await fetch(bdcUrl);
       if (bdcRes.ok) {
         const bdcData = await bdcRes.json();
+        if (!countryCode && bdcData?.countryCode) {
+          countryCode = normalizeCountryIso(bdcData.countryCode);
+        }
+        if (!countryName && bdcData?.countryName) {
+          countryName = String(bdcData.countryName).trim();
+        }
+
+        const isForeignCountry = Boolean(countryCode && countryCode !== 'BR');
         const adminList = Array.isArray(bdcData?.localityInfo?.administrative) ? bdcData.localityInfo.administrative : [];
         if (!city) {
           const munObj = adminList.find((a: any) => a.adminLevel === 8 && a.name);
@@ -367,7 +411,8 @@ export default defineEventHandler(async (event) => {
           const code = bdcData.principalSubdivisionCode ? String(bdcData.principalSubdivisionCode).replace(/^BR-/, '') : '';
           const stateObj = adminList.find((a: any) => a.adminLevel === 4 && (a.isoCode || a.name));
           const iso = stateObj?.isoCode ? String(stateObj.isoCode).replace(/^BR-/, '') : '';
-          state = normalizeState(code || iso || stateObj?.name || bdcData.principalSubdivision || '');
+          const rawSubdivision = code || iso || stateObj?.name || bdcData.principalSubdivision || '';
+          state = isForeignCountry ? String(rawSubdivision).trim() : normalizeState(rawSubdivision);
         }
       }
     } catch (bdcErr) {
@@ -375,7 +420,13 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (state === 'DF' && (!city || city.toLowerCase().includes('plano piloto') || city.toLowerCase().includes('distrito federal'))) {
+  const isConfirmedBrazil =
+    inBrazilBounds &&
+    (countryCode === 'BR' ||
+      (!countryCode && /^(brasil|brazil)$/i.test(countryName)) ||
+      (!countryCode && !countryName && Boolean(state && validBrazilUFs.has(state.toUpperCase()))));
+
+  if (isConfirmedBrazil && state === 'DF' && (!city || city.toLowerCase().includes('plano piloto') || city.toLowerCase().includes('distrito federal'))) {
     city = 'Brasília';
   }
 
@@ -387,6 +438,9 @@ export default defineEventHandler(async (event) => {
     rua: streetFull,
     bairro: suburb,
     cidade: city,
-    estado: state
+    estado: state,
+    pais: countryName || (isConfirmedBrazil ? 'Brasil' : ''),
+    countryCode: countryCode || (isConfirmedBrazil ? 'BR' : ''),
+    isBrazil: isConfirmedBrazil
   };
 });

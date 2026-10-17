@@ -133,7 +133,12 @@
       :inert="isAnyModalOpen || undefined"
       :aria-hidden="isAnyModalOpen ? 'true' : undefined"
     >
-      <button type="button" class="btn btn-primary btn-floating-report" @click="isCreateModalOpen = true">
+      <button
+        v-if="isCurrentLocationInBrazil"
+        type="button"
+        class="btn btn-primary btn-floating-report"
+        @click="handleOpenCreateModal"
+      >
         <span class="btn-report-icon" aria-hidden="true">+</span>
         <span>Incluir</span>
       </button>
@@ -321,7 +326,12 @@
 <script setup>
   import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { fetchIncidentsByVisibleArea } from '~/services/firebaseService';
-  import { requestUserLocation, searchAddresses } from '~/services/geoService';
+  import {
+    requestUserLocation,
+    searchAddresses,
+    isCoordinateInBrazilBounds,
+    checkIfCoordsInBrazil
+  } from '~/services/geoService';
   import { useModalAccessibility } from '~/composables/useModalAccessibility';
 
 definePageMeta({
@@ -352,6 +362,73 @@ const selectedIncident = ref(null);
 const isLoadingSheet = ref(false);
 const locationState = ref('idle');
 const filterScope = ref('nearby'); // 'nearby' ou 'all'
+
+// Trava geográfica: ocorrências só podem ser incluídas no Brasil
+const isUserGpsInBrazil = ref(true);
+const isMapCenterInBrazil = ref(true);
+let mapCenterCountryTimer = null;
+let latestCenterCheckId = 0;
+
+const isCurrentLocationInBrazil = computed(
+  () => isUserGpsInBrazil.value && isMapCenterInBrazil.value
+);
+
+const verifyMapCenterInBrazil = (coords, immediate = false) => {
+  if (!coords || !Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)) {
+    return;
+  }
+  if (!isCoordinateInBrazilBounds(coords.latitude, coords.longitude)) {
+    if (mapCenterCountryTimer) {
+      clearTimeout(mapCenterCountryTimer);
+      mapCenterCountryTimer = null;
+    }
+    isMapCenterInBrazil.value = false;
+    return;
+  }
+
+  const runCheck = async () => {
+    const checkId = ++latestCenterCheckId;
+    const inBr = await checkIfCoordsInBrazil(coords.latitude, coords.longitude);
+    if (checkId === latestCenterCheckId) {
+      isMapCenterInBrazil.value = inBr;
+    }
+  };
+
+  if (immediate) {
+    if (mapCenterCountryTimer) {
+      clearTimeout(mapCenterCountryTimer);
+      mapCenterCountryTimer = null;
+    }
+    runCheck();
+  } else {
+    if (mapCenterCountryTimer) clearTimeout(mapCenterCountryTimer);
+    mapCenterCountryTimer = setTimeout(runCheck, 350);
+  }
+};
+
+const verifyUserGpsInBrazil = async (coords) => {
+  if (!coords || !Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)) {
+    return false;
+  }
+  if (!isCoordinateInBrazilBounds(coords.latitude, coords.longitude)) {
+    isUserGpsInBrazil.value = false;
+    isMapCenterInBrazil.value = false;
+    return false;
+  }
+  const inBr = await checkIfCoordsInBrazil(coords.latitude, coords.longitude);
+  isUserGpsInBrazil.value = inBr;
+  return inBr;
+};
+
+const handleOpenCreateModal = async () => {
+  if (!isCurrentLocationInBrazil.value) return;
+  const center = currentMapCenter.value || initialCenter.value;
+  if (center && !isCoordinateInBrazilBounds(center.latitude, center.longitude)) {
+    isMapCenterInBrazil.value = false;
+    return;
+  }
+  isCreateModalOpen.value = true;
+};
 
   // Menu flutuante "Dúvidas?" e modal "O que denunciar?"
   const helpMenuRef = ref(null);
@@ -497,6 +574,13 @@ const lastQueriedBounds = ref(null);
       latitude: item.latitude,
       longitude: item.longitude
     };
+    verifyMapCenterInBrazil(
+      {
+        latitude: item.latitude,
+        longitude: item.longitude
+      },
+      true
+    );
     loadIncidents('nearby', {
       latitude: item.latitude,
       longitude: item.longitude
@@ -553,6 +637,7 @@ const handleBoundsChange = (bounds) => {
   mapBounds.value = bounds;
   if (bounds?.center) {
     currentMapCenter.value = bounds.center;
+    verifyMapCenterInBrazil(bounds.center, false);
   }
   // A consulta ao Firebase carrega um raio de 5 km ao redor do loadedCenter.
   // Movimentações dentro desse raio usam os pinos já em memória; ao passar de 5 km,
@@ -916,6 +1001,8 @@ const handleUserLocationFound = (coords) => {
   initialCenter.value = coords;
   currentMapCenter.value = coords;
   locationState.value = 'granted';
+  verifyUserGpsInBrazil(coords);
+  verifyMapCenterInBrazil(coords, true);
   const distFromLoaded = loadedCenter.value
     ? getDistanceKm(
         coords.latitude,
@@ -936,10 +1023,13 @@ const requestLocation = async () => {
     initialCenter.value = coords;
     currentMapCenter.value = coords;
     locationState.value = 'granted';
+    verifyUserGpsInBrazil(coords);
+    verifyMapCenterInBrazil(coords, true);
     await loadIncidents('nearby', coords);
   } catch (err) {
     console.warn('[multei] Permissão de geolocalização recusada ou indisponível:', err);
     locationState.value = 'denied';
+    verifyMapCenterInBrazil(currentMapCenter.value || initialCenter.value, true);
     await loadIncidents('nearby', currentMapCenter.value || initialCenter.value, mapBounds.value);
   }
 };
@@ -995,6 +1085,13 @@ onMounted(async () => {
       latitude: qLat,
       longitude: qLng
     };
+    verifyMapCenterInBrazil(
+      {
+        latitude: qLat,
+        longitude: qLng
+      },
+      true
+    );
     await loadIncidents('nearby', {
       latitude: qLat,
       longitude: qLng
@@ -1008,6 +1105,7 @@ onMounted(async () => {
   onBeforeUnmount(() => {
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
     if (boundsFetchDebounceTimer) clearTimeout(boundsFetchDebounceTimer);
+    if (mapCenterCountryTimer) clearTimeout(mapCenterCountryTimer);
     if (typeof document !== 'undefined') {
       document.removeEventListener('mousedown', handleDocumentClick);
     }

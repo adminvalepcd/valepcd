@@ -46,7 +46,14 @@ import {
   distanceBetween
 } from 'geofire-common';
 import type { ReportedIncident } from '../types';
-import { getAddressDetailsFromCoords, extractCityAndStateFromText, normalizeState } from './geoService';
+import {
+  getAddressDetailsFromCoords,
+  extractCityAndStateFromText,
+  normalizeState,
+  isCoordinateInBrazilBounds,
+  isValidBrazilUF,
+  checkIfCoordsInBrazil
+} from './geoService';
 
 export const OCORRENCIAS_COLLECTION = 'ocorrencias';
 export const RESOLVIDOS_COLLECTION = 'resolvidos';
@@ -804,6 +811,12 @@ export async function saveIncidentToFirebase(
   duplicidade_de_id?: string;
   rotulo_duplicidade?: string;
 }> {
+  const latNum = Number(incident.latitude);
+  const lngNum = Number(incident.longitude);
+  if (!isCoordinateInBrazilBounds(latNum, lngNum)) {
+    throw new Error('Ocorrências no Multei só podem ser incluídas no Brasil.');
+  }
+
   let resolvedRua = (incident.rua || '').trim();
   let resolvedBairro = (incident.bairro || '').trim();
   let resolvedCidade = (incident.cidade || '').trim();
@@ -820,6 +833,9 @@ export async function saveIncidentToFirebase(
   ) {
     try {
       const geoDetails = await getAddressDetailsFromCoords(incident.latitude, incident.longitude);
+      if (geoDetails.isBrazil === false) {
+        throw new Error('Ocorrências no Multei só podem ser incluídas no Brasil.');
+      }
       if ((!resolvedRua || (!hasStreetNum(resolvedRua) && hasStreetNum(geoDetails.rua || ''))) && geoDetails.rua) {
         resolvedRua = geoDetails.rua.trim();
       }
@@ -838,7 +854,16 @@ export async function saveIncidentToFirebase(
         if (!resolvedCidade && parsed.cidade) resolvedCidade = parsed.cidade.trim();
         if (!resolvedEstado && parsed.estado) resolvedEstado = normalizeState(parsed.estado);
       }
-    } catch {}
+    } catch (geoErr: any) {
+      if (geoErr?.message?.includes('só podem ser incluídas no Brasil')) {
+        throw geoErr;
+      }
+    }
+  }
+
+  const confirmedBrazil = await checkIfCoordsInBrazil(latNum, lngNum);
+  if (!confirmedBrazil || !isValidBrazilUF(resolvedEstado)) {
+    throw new Error('Ocorrências no Multei só podem ser incluídas no Brasil.');
   }
 
   const { db, storage } = getFirebaseServices();

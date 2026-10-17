@@ -59,6 +59,9 @@ export interface GeoAddressDetails {
   bairro: string;
   cidade: string;
   estado: string;
+  pais?: string;
+  countryCode?: string;
+  isBrazil?: boolean;
 }
 
 const UF_MAP: Record<string, string> = {
@@ -74,6 +77,8 @@ const UF_MAP: Record<string, string> = {
   'roraima': 'RR', 'santa catarina': 'SC', 'são paulo': 'SP',
   'sao paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO'
 };
+
+export const VALID_BRAZIL_UFS = new Set(Object.values(UF_MAP));
 
 const CITY_TO_UF: Record<string, string> = {
   'belo horizonte': 'MG', 'contagem': 'MG', 'betim': 'MG', 'uberlândia': 'MG', 'juiz de fora': 'MG',
@@ -94,6 +99,71 @@ export function normalizeState(stateStr: string): string {
   if (s.length === 2) return s.toUpperCase();
   const lower = s.toLowerCase();
   return UF_MAP[lower] || s;
+}
+
+/**
+ * Verifica rapidamente se as coordenadas estão dentro do bounding box geográfico do Brasil
+ * (do Chuí-RS ao Monte Caburaí-RR e da Serra do Divisor-AC a Fernando de Noronha/Arquipélagos).
+ */
+export function isCoordinateInBrazilBounds(latitude: number, longitude: number): boolean {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return lat >= -33.76 && lat <= 5.28 && lng >= -74.00 && lng <= -28.80;
+}
+
+/**
+ * Verifica se a sigla ou nome de estado corresponde a uma das 27 UFs brasileiras válidas.
+ */
+export function isValidBrazilUF(estado?: string | null): boolean {
+  if (!estado) return false;
+  const normalized = normalizeState(estado).trim().toUpperCase();
+  return VALID_BRAZIL_UFS.has(normalized);
+}
+
+/**
+ * Avalia de forma determinística se os dados de localização correspondem ao Brasil.
+ */
+export function evaluateIsBrazil(params: {
+  latitude?: number;
+  longitude?: number;
+  countryCode?: string | null;
+  pais?: string | null;
+  estado?: string | null;
+  isBrazil?: boolean;
+}): boolean {
+  const { latitude, longitude, countryCode, pais, estado, isBrazil } = params;
+  if (
+    typeof latitude === 'number' &&
+    typeof longitude === 'number' &&
+    !isCoordinateInBrazilBounds(latitude, longitude)
+  ) {
+    return false;
+  }
+
+  if (typeof isBrazil === 'boolean') {
+    return isBrazil;
+  }
+
+  const cleanCode = String(countryCode || '').trim().toUpperCase();
+  if (cleanCode) {
+    return cleanCode === 'BR' || cleanCode === 'BRA';
+  }
+
+  const cleanPais = String(pais || '').trim().toLowerCase();
+  if (cleanPais) {
+    return (
+      cleanPais === 'brasil' ||
+      cleanPais === 'brazil' ||
+      cleanPais === 'república federativa do brasil'
+    );
+  }
+
+  if (estado) {
+    return isValidBrazilUF(estado);
+  }
+
+  return false;
 }
 
 export function extractCityAndStateFromText(text?: string | null): { rua: string; bairro: string; cidade: string; estado: string } {
@@ -233,14 +303,21 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
       rua: '',
       bairro: '',
       cidade: '',
-      estado: ''
+      estado: '',
+      pais: '',
+      countryCode: '',
+      isBrazil: false
     };
   }
 
+  const inBrazilBounds = isCoordinateInBrazilBounds(latitude, longitude);
   const hasStreetNumber = (s: string) => /,\s*\d+/.test(s);
   const cacheKey = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
   if (detailsCache.has(cacheKey)) {
     const cached = detailsCache.get(cacheKey)!;
+    if (cached.isBrazil === false) {
+      return cached;
+    }
     // Só retorna do cache imediatamente se já possuir número na rua
     if (cached.cidade && cached.estado && hasStreetNumber(cached.rua)) {
       return cached;
@@ -252,6 +329,13 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
   let accBairro = '';
   let accCidade = '';
   let accEstado = '';
+  let accPais = '';
+  let accCountryCode = '';
+
+  const normalizeIsoCountry = (c?: string | null) => {
+    const clean = String(c || '').trim().toUpperCase();
+    return clean === 'BRA' ? 'BR' : clean;
+  };
 
   // 1. Tentar endpoint interno do servidor Nuxt /api/geocode (Nominatim + ArcGIS Reverse Geocode)
   try {
@@ -262,19 +346,53 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         if (data.formattedAddress && !data.formattedAddress.startsWith('Lat:')) {
           accFormattedAddress = data.formattedAddress;
         }
+        if (data.pais) accPais = String(data.pais).trim();
+        if (data.countryCode) accCountryCode = normalizeIsoCountry(data.countryCode);
+        const isForeignFromApi = data.isBrazil === false || Boolean(accCountryCode && accCountryCode !== 'BR') || !inBrazilBounds;
+
         if (data.rua) accRua = String(data.rua).trim();
         if (data.bairro) accBairro = String(data.bairro).trim();
         if (data.cidade) accCidade = String(data.cidade).trim();
-        if (data.estado) accEstado = normalizeState(data.estado);
+        if (data.estado) {
+          accEstado = isForeignFromApi ? String(data.estado).trim() : normalizeState(data.estado);
+        }
+
+        if (isForeignFromApi && (accCountryCode || !inBrazilBounds)) {
+          const composedForeign = [accRua, accBairro, accCidade, accEstado, accPais].filter(Boolean).join(' - ');
+          const foreignDetails: GeoAddressDetails = {
+            formattedAddress: composedForeign || accFormattedAddress || `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
+            rua: accRua,
+            bairro: accBairro,
+            cidade: accCidade,
+            estado: accEstado,
+            pais: accPais,
+            countryCode: accCountryCode,
+            isBrazil: false
+          };
+          detailsCache.set(cacheKey, foreignDetails);
+          addressCache.set(cacheKey, foreignDetails.formattedAddress);
+          return foreignDetails;
+        }
 
         if (accCidade && accEstado && accBairro && hasStreetNumber(accRua)) {
           const composed = [accRua, accBairro, accCidade, accEstado].filter(Boolean).join(' - ');
+          const isBrazilVal = evaluateIsBrazil({
+            latitude,
+            longitude,
+            countryCode: accCountryCode,
+            pais: accPais,
+            estado: accEstado,
+            isBrazil: typeof data.isBrazil === 'boolean' ? data.isBrazil : undefined
+          });
           const details: GeoAddressDetails = {
             formattedAddress: composed || accFormattedAddress,
             rua: accRua,
             bairro: accBairro,
             cidade: accCidade,
-            estado: accEstado
+            estado: accEstado,
+            pais: accPais || (isBrazilVal ? 'Brasil' : ''),
+            countryCode: accCountryCode || (isBrazilVal ? 'BR' : ''),
+            isBrazil: isBrazilVal
           };
           detailsCache.set(cacheKey, details);
           addressCache.set(cacheKey, details.formattedAddress);
@@ -307,13 +425,21 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         let foundStreetName = '';
         let foundStreetNum = '';
 
-        // Varre TODOS os resultados para encontrar rua, número aproximado, bairro, cidade e estado
+        // Varre TODOS os resultados para encontrar rua, número aproximado, bairro, cidade, estado e país
         for (const res of results) {
           if (Array.isArray(res.address_components)) {
             let resRoute = '';
             let resNum = '';
             for (const comp of res.address_components) {
               const types: string[] = comp.types || [];
+              if (types.includes('country')) {
+                if (!accCountryCode && comp.short_name) {
+                  accCountryCode = normalizeIsoCountry(comp.short_name);
+                }
+                if (!accPais && comp.long_name) {
+                  accPais = String(comp.long_name).trim();
+                }
+              }
               if (!resRoute && types.includes('route')) {
                 resRoute = comp.long_name || comp.short_name || '';
               }
@@ -324,7 +450,8 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
                 accBairro = comp.long_name || comp.short_name || '';
               }
               if (!accEstado && types.includes('administrative_area_level_1')) {
-                accEstado = normalizeState(comp.short_name || comp.long_name || '');
+                const rawState = comp.short_name || comp.long_name || '';
+                accEstado = accCountryCode && accCountryCode !== 'BR' ? String(rawState).trim() : normalizeState(rawState);
               }
               if (!accCidade && types.includes('administrative_area_level_2')) {
                 accCidade = comp.long_name || comp.short_name || '';
@@ -362,7 +489,15 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
           accRua = foundStreetName;
         }
 
-        if (accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
+        const isBrazilGoogle = evaluateIsBrazil({
+          latitude,
+          longitude,
+          countryCode: accCountryCode,
+          pais: accPais,
+          estado: accEstado
+        });
+
+        if (isBrazilGoogle && accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
           accCidade = 'Brasília';
         }
 
@@ -373,13 +508,32 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
           accFormattedAddress = results[0].formatted_address;
         }
 
+        if (!isBrazilGoogle && accCountryCode && accCountryCode !== 'BR') {
+          const foreignDetails: GeoAddressDetails = {
+            formattedAddress: accFormattedAddress || `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
+            rua: accRua,
+            bairro: accBairro,
+            cidade: accCidade,
+            estado: accEstado,
+            pais: accPais,
+            countryCode: accCountryCode,
+            isBrazil: false
+          };
+          detailsCache.set(cacheKey, foreignDetails);
+          addressCache.set(cacheKey, foreignDetails.formattedAddress);
+          return foreignDetails;
+        }
+
         if (accCidade && accEstado && hasStreetNumber(accRua)) {
           const details: GeoAddressDetails = {
             formattedAddress: accFormattedAddress,
             rua: accRua,
             bairro: accBairro,
             cidade: accCidade,
-            estado: accEstado
+            estado: accEstado,
+            pais: accPais || (isBrazilGoogle ? 'Brasil' : ''),
+            countryCode: accCountryCode || (isBrazilGoogle ? 'BR' : ''),
+            isBrazil: isBrazilGoogle
           };
           detailsCache.set(cacheKey, details);
           addressCache.set(cacheKey, details.formattedAddress);
@@ -391,8 +545,8 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     }
   }
 
-  // 3. Fallback: OpenStreetMap Nominatim se ainda faltar rua, bairro, cidade ou estado
-  if (!accCidade || !accEstado || !accRua || !accBairro) {
+  // 3. Fallback: OpenStreetMap Nominatim se ainda faltar rua, bairro, cidade, estado ou país
+  if (!accCidade || !accEstado || !accRua || !accBairro || !accCountryCode) {
     try {
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&zoom=18&addressdetails=1&email=contato@valepcd.com.br`;
       const res = await fetch(url, {
@@ -405,6 +559,14 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         const data = await res.json();
         if (data && data.address) {
           const addr = data.address;
+          if (!accCountryCode && addr.country_code) {
+            accCountryCode = normalizeIsoCountry(addr.country_code);
+          }
+          if (!accPais && addr.country) {
+            accPais = String(addr.country).trim();
+          }
+          const isForeignCountry = Boolean(accCountryCode && accCountryCode !== 'BR') || !inBrazilBounds;
+
           const street = addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || '';
           const cleanHouseNum = extractCleanStreetNum(addr.house_number || '');
           const number = cleanHouseNum ? `, ${cleanHouseNum}` : '';
@@ -421,16 +583,20 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
             accCidade = addr.city || addr.town || addr.municipality || addr.village || addr.city_district || addr.county || addr.hamlet || addr.state_district || '';
           }
           if (!accEstado) {
-            let state = '';
-            if (addr['ISO3166-2-lvl4']) {
-              state = String(addr['ISO3166-2-lvl4']).replace(/^BR-/, '');
+            if (!isForeignCountry) {
+              let state = '';
+              if (addr['ISO3166-2-lvl4']) {
+                state = String(addr['ISO3166-2-lvl4']).replace(/^BR-/, '');
+              } else {
+                state = addr.state || '';
+              }
+              accEstado = normalizeState(state);
             } else {
-              state = addr.state || '';
+              accEstado = String(addr.state || '').trim();
             }
-            accEstado = normalizeState(state);
           }
 
-          if (accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
+          if (!isForeignCountry && accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
             accCidade = 'Brasília';
           }
         }
@@ -440,8 +606,8 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     }
   }
 
-  // 3.5. Fallback direto ArcGIS Reverse Geocode no cliente caso a rua ainda esteja sem número
-  if (!hasStreetNumber(accRua)) {
+  // 3.5. Fallback direto ArcGIS Reverse Geocode no cliente caso a rua ainda esteja sem número (apenas se não for país estrangeiro)
+  if (!hasStreetNumber(accRua) && inBrazilBounds && (!accCountryCode || accCountryCode === 'BR')) {
     try {
       const arcUrl = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?f=json&location=${encodeURIComponent(longitude)},${encodeURIComponent(latitude)}&langCode=pt&featureTypes=PointAddress,StreetAddress,StreetName`;
       const arcRes = await fetch(arcUrl);
@@ -449,6 +615,14 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         const arcData = await arcRes.json();
         const arcAddr = arcData?.address;
         if (arcAddr) {
+          if (!accCountryCode && arcAddr.CountryCode) {
+            accCountryCode = normalizeIsoCountry(arcAddr.CountryCode);
+          }
+          if (!accPais && arcAddr.CntryName) {
+            accPais = String(arcAddr.CntryName).trim();
+          }
+          const isForeignCountry = Boolean(accCountryCode && accCountryCode !== 'BR');
+
           const arcNum = extractCleanStreetNum(arcAddr.AddNum || '');
           const rawAddress = String(arcAddr.Address || arcAddr.ShortLabel || '').trim();
           let arcStreet = '';
@@ -477,7 +651,8 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
             accCidade = String(arcAddr.City || arcAddr.Subregion).trim();
           }
           if (!accEstado && (arcAddr.RegionAbbr || arcAddr.Region)) {
-            accEstado = normalizeState(String(arcAddr.RegionAbbr || arcAddr.Region).trim());
+            const rawRegion = String(arcAddr.RegionAbbr || arcAddr.Region).trim();
+            accEstado = isForeignCountry ? rawRegion : normalizeState(rawRegion);
           }
         }
       }
@@ -487,12 +662,20 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
   }
 
   // 4. Fallback final garantido: BigDataCloud Client Reverse Geocoding (sem rate-limit para cliente)
-  if (!accCidade || !accEstado || !accBairro) {
+  if (!accCidade || !accEstado || !accBairro || !accCountryCode) {
     try {
       const bdcUrl = `https://api-bdc.io/data/reverse-geocode-client?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&localityLanguage=pt`;
       const bdcRes = await fetch(bdcUrl);
       if (bdcRes.ok) {
         const bdcData = await bdcRes.json();
+        if (!accCountryCode && bdcData?.countryCode) {
+          accCountryCode = normalizeIsoCountry(bdcData.countryCode);
+        }
+        if (!accPais && bdcData?.countryName) {
+          accPais = String(bdcData.countryName).trim();
+        }
+        const isForeignCountry = Boolean(accCountryCode && accCountryCode !== 'BR') || !inBrazilBounds;
+
         const adminList = Array.isArray(bdcData?.localityInfo?.administrative) ? bdcData.localityInfo.administrative : [];
         if (!accCidade) {
           const munObj = adminList.find((a: any) => a.adminLevel === 8 && a.name);
@@ -512,9 +695,10 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
           const code = bdcData.principalSubdivisionCode ? String(bdcData.principalSubdivisionCode).replace(/^BR-/, '') : '';
           const stateObj = adminList.find((a: any) => a.adminLevel === 4 && (a.isoCode || a.name));
           const iso = stateObj?.isoCode ? String(stateObj.isoCode).replace(/^BR-/, '') : '';
-          accEstado = normalizeState(code || iso || stateObj?.name || bdcData.principalSubdivision || '');
+          const rawSubdivision = code || iso || stateObj?.name || bdcData.principalSubdivision || '';
+          accEstado = isForeignCountry ? String(rawSubdivision).trim() : normalizeState(rawSubdivision);
         }
-        if (accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
+        if (!isForeignCountry && accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
           accCidade = 'Brasília';
         }
       }
@@ -523,7 +707,15 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     }
   }
 
-  if ((!accCidade || !accEstado || !accRua || !accBairro) && accFormattedAddress) {
+  const finalIsBrazil = evaluateIsBrazil({
+    latitude,
+    longitude,
+    countryCode: accCountryCode,
+    pais: accPais,
+    estado: accEstado
+  });
+
+  if (finalIsBrazil && (!accCidade || !accEstado || !accRua || !accBairro) && accFormattedAddress) {
     const parsed = extractCityAndStateFromText(accFormattedAddress);
     if (!accRua && parsed.rua) accRua = parsed.rua;
     if (!accBairro && parsed.bairro) accBairro = parsed.bairro;
@@ -541,15 +733,44 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     rua: accRua,
     bairro: accBairro,
     cidade: accCidade,
-    estado: accEstado
+    estado: accEstado,
+    pais: accPais || (finalIsBrazil ? 'Brasil' : ''),
+    countryCode: accCountryCode || (finalIsBrazil ? 'BR' : ''),
+    isBrazil: finalIsBrazil
   };
 
-  if (finalDetails.cidade && finalDetails.estado) {
+  if (!finalIsBrazil || (finalDetails.cidade && finalDetails.estado)) {
     detailsCache.set(cacheKey, finalDetails);
     addressCache.set(cacheKey, finalDetails.formattedAddress);
   }
 
   return finalDetails;
+}
+
+/**
+ * Verifica se determinadas coordenadas pertencem ao Brasil.
+ * 1. Se estiver fora do bounding box do Brasil, retorna `false` imediatamente (0ms).
+ * 2. Se estiver dentro do bounding box, consulta a geocodificação reversa (com cache) para confirmar o país (`BR`).
+ */
+export async function checkIfCoordsInBrazil(latitude: number, longitude: number): Promise<boolean> {
+  if (!isCoordinateInBrazilBounds(latitude, longitude)) {
+    return false;
+  }
+  try {
+    const details = await getAddressDetailsFromCoords(latitude, longitude);
+    if (typeof details.isBrazil === 'boolean') {
+      return details.isBrazil;
+    }
+    return evaluateIsBrazil({
+      latitude,
+      longitude,
+      countryCode: details.countryCode,
+      pais: details.pais,
+      estado: details.estado
+    });
+  } catch {
+    return isCoordinateInBrazilBounds(latitude, longitude);
+  }
 }
 
 /**
