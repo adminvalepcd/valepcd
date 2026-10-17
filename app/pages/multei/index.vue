@@ -561,11 +561,34 @@ const handleBoundsChange = (bounds) => {
 
 const selectedIncidentType = ref('all'); // 'all' | 'urbana' | 'transito'
 
+const normalizeAddressToken = (val) =>
+  String(val || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+
+const getIncidentNaturezaBucket = (inc) =>
+  String(inc?.natureza || '').trim().toLowerCase() === 'urbana' ? 'urbana' : 'transito';
+
+const getNormalizedIncidentAddressKey = (inc) => {
+  const rua = normalizeAddressToken(inc?.rua);
+  if (!rua) return '';
+  const bairro = normalizeAddressToken(inc?.bairro);
+  const cidade = normalizeAddressToken(inc?.cidade);
+  const estado = normalizeAddressToken(inc?.estado);
+  return `${getIncidentNaturezaBucket(inc)}__${rua}|${bairro}|${cidade}|${estado}`;
+};
+
 const groupDuplicateIncidents = (rawList) => {
   if (!Array.isArray(rawList) || rawList.length === 0) return [];
 
+  const validList = rawList.filter(Boolean);
+  if (validList.length === 0) return [];
+
   const byId = new Map();
-  for (const inc of rawList) {
+  for (const inc of validList) {
     if (inc?.id) {
       byId.set(String(inc.id).trim(), inc);
     }
@@ -601,7 +624,7 @@ const groupDuplicateIncidents = (rawList) => {
     // procura a ocorrência de trânsito anterior dentro de 10m e 2 minutos
     if (inc?.possivel_duplicidade && String(inc?.natureza || '').toLowerCase() !== 'urbana') {
       const incTime = new Date(inc.timestamp).getTime() || 0;
-      for (const other of rawList) {
+      for (const other of validList) {
         if (!other || other === inc || !other.id) continue;
         if (other.possivel_duplicidade) continue;
         if (String(other.natureza || '').toLowerCase() === 'urbana') continue;
@@ -619,27 +642,98 @@ const groupDuplicateIncidents = (rawList) => {
     return ownId || `${inc.latitude}_${inc.longitude}_${inc.timestamp}`;
   };
 
-  const groupsMap = new Map();
-  for (const inc of rawList) {
-    if (!inc) continue;
-    const key = resolveRootKey(inc);
-    if (!groupsMap.has(key)) {
-      groupsMap.set(key, []);
+  // Agrupa ocorrências da mesma natureza por endereço normalizado igual (Rua + Número + Bairro + Cidade)
+  // ou coordenadas no mesmo ponto (< 15m) ou vínculo direto de duplicidade
+  const n = validList.length;
+  const parentIdx = Array.from({ length: n }, (_, i) => i);
+  const findRoot = (i) => {
+    let curr = i;
+    while (parentIdx[curr] !== curr) {
+      parentIdx[curr] = parentIdx[parentIdx[curr]];
+      curr = parentIdx[curr];
     }
-    groupsMap.get(key).push(inc);
+    return curr;
+  };
+  const union = (a, b) => {
+    const rootA = findRoot(a);
+    const rootB = findRoot(b);
+    if (rootA !== rootB) {
+      parentIdx[rootB] = rootA;
+    }
+  };
+
+  const rootKeys = validList.map((inc) => resolveRootKey(inc));
+  const addrKeys = validList.map((inc) => getNormalizedIncidentAddressKey(inc));
+  const natBuckets = validList.map((inc) => getIncidentNaturezaBucket(inc));
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (rootKeys[i] && rootKeys[i] === rootKeys[j]) {
+        union(i, j);
+        continue;
+      }
+      if (natBuckets[i] !== natBuckets[j]) continue;
+
+      if (addrKeys[i] && addrKeys[i] === addrKeys[j]) {
+        union(i, j);
+        continue;
+      }
+
+      const distMeters =
+        getDistanceKm(
+          Number(validList[i].latitude),
+          Number(validList[i].longitude),
+          Number(validList[j].latitude),
+          Number(validList[j].longitude)
+        ) * 1000;
+      if (Number.isFinite(distMeters) && distMeters < 15) {
+        union(i, j);
+      }
+    }
+  }
+
+  const addressBucketsMap = new Map();
+  for (let i = 0; i < n; i++) {
+    const r = findRoot(i);
+    if (!addressBucketsMap.has(r)) {
+      addressBucketsMap.set(r, []);
+    }
+    addressBucketsMap.get(r).push(validList[i]);
+  }
+
+  const finalGroups = [];
+
+  for (const [, bucket] of addressBucketsMap.entries()) {
+    if (bucket.length > 3) {
+      // Mais de 3 denúncias (4+) no mesmo endereço/ponto e mesma natureza: agrupa em 1 pin único
+      finalGroups.push(bucket);
+    } else {
+      // Até 3 denúncias no mesmo endereço: mantém separadas, exceto possíveis duplicidades (que já agrupam com 2+)
+      const dupMap = new Map();
+      for (const inc of bucket) {
+        const k = resolveRootKey(inc);
+        if (!dupMap.has(k)) {
+          dupMap.set(k, []);
+        }
+        dupMap.get(k).push(inc);
+      }
+      for (const [, dupGroup] of dupMap.entries()) {
+        finalGroups.push(dupGroup);
+      }
+    }
   }
 
   const groupedResult = [];
   const occupiedCoordsCount = new Map();
 
-  for (const [, group] of groupsMap.entries()) {
+  for (const group of finalGroups) {
     if (group.length === 1) {
       const item = group[0];
       const coordKey = `${Number(item.latitude).toFixed(5)}_${Number(item.longitude).toFixed(5)}`;
       const seenCount = occupiedCoordsCount.get(coordKey) || 0;
       occupiedCoordsCount.set(coordKey, seenCount + 1);
 
-      // Se dois pins desagrupados tiverem exatamente a mesma coordenada, aplica um leve deslocamento visual (~3.5m) para exibir os 2 pins lado a lado
+      // Se dois pins desagrupados tiverem exatamente a mesma coordenada, aplica um leve deslocamento visual (~3.5m) para exibir os pins lado a lado
       const angle = (seenCount * Math.PI) / 3;
       const offsetLat = seenCount > 0 ? Math.sin(angle) * 0.000032 : 0;
       const offsetLng = seenCount > 0 ? Math.cos(angle) * 0.000032 : 0;
@@ -648,10 +742,11 @@ const groupDuplicateIncidents = (rawList) => {
         ...item,
         latitude: Number(item.latitude) + offsetLat,
         longitude: Number(item.longitude) + offsetLng,
-        groupItems: [item]
+        groupItems: [item],
+        groupCount: 1
       });
     } else {
-      // Ordena para que a primeira denúncia (original) fique na página 1 e as duplicidades nas páginas seguintes
+      // Ordena para que as denúncias principais fiquem antes das possíveis duplicidades e em ordem cronológica
       const sortedGroup = [...group].sort((a, b) => {
         const aDup = Boolean(a.possivel_duplicidade);
         const bDup = Boolean(b.possivel_duplicidade);
@@ -663,11 +758,19 @@ const groupDuplicateIncidents = (rawList) => {
 
       const primary = sortedGroup[0];
       const coordKey = `${Number(primary.latitude).toFixed(5)}_${Number(primary.longitude).toFixed(5)}`;
-      occupiedCoordsCount.set(coordKey, (occupiedCoordsCount.get(coordKey) || 0) + 1);
+      const seenCount = occupiedCoordsCount.get(coordKey) || 0;
+      occupiedCoordsCount.set(coordKey, seenCount + 1);
+
+      const angle = (seenCount * Math.PI) / 3;
+      const offsetLat = seenCount > 0 ? Math.sin(angle) * 0.000032 : 0;
+      const offsetLng = seenCount > 0 ? Math.cos(angle) * 0.000032 : 0;
 
       groupedResult.push({
         ...primary,
-        groupItems: sortedGroup
+        latitude: Number(primary.latitude) + offsetLat,
+        longitude: Number(primary.longitude) + offsetLng,
+        groupItems: sortedGroup,
+        groupCount: sortedGroup.length
       });
     }
   }
@@ -690,22 +793,27 @@ const filteredIncidents = computed(() => {
 });
 
 
+const countPinValidIncidents = (inc) => {
+  const items = Array.isArray(inc?.groupItems) && inc.groupItems.length > 0 ? inc.groupItems : [inc];
+  const nonDupCount = items.filter((item) => !item?.possivel_duplicidade).length;
+  return Math.max(1, nonDupCount);
+};
+
 const visibleIncidentsCount = computed(() => {
   const sourceList = filteredIncidents.value;
-  if (!mapBounds.value) {
-    return sourceList.length;
-  }
-  const { north, south, east, west } = mapBounds.value;
-  return sourceList.filter((inc) => {
-    const lat = Number(inc.latitude);
-    const lng = Number(inc.longitude);
-    if (isNaN(lat) || isNaN(lng)) return false;
-    const inLat = lat >= south && lat <= north;
-    const inLng = west <= east
-      ? (lng >= west && lng <= east)
-      : (lng >= west || lng <= east);
-    return inLat && inLng;
-  }).length;
+  const visiblePins = !mapBounds.value
+    ? sourceList
+    : sourceList.filter((inc) => {
+        const { north, south, east, west } = mapBounds.value;
+        const lat = Number(inc.latitude);
+        const lng = Number(inc.longitude);
+        if (isNaN(lat) || isNaN(lng)) return false;
+        const inLat = lat >= south && lat <= north;
+        const inLng = west <= east ? lng >= west && lng <= east : lng >= west || lng <= east;
+        return inLat && inLng;
+      });
+
+  return visiblePins.reduce((acc, inc) => acc + countPinValidIncidents(inc), 0);
 });
 
 const handleMarkerClick = (incident) => {

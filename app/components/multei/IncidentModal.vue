@@ -22,7 +22,7 @@
           <button class="btn-close" @click="emit('close')" aria-label="Fechar">✕</button>
         </div>
 
-        <!-- Barra de Paginação quando houver denúncias agrupadas por possível duplicidade -->
+        <!-- Barra de Paginação quando houver denúncias agrupadas neste endereço ou por possível duplicidade -->
         <div
           v-if="totalPages > 1"
           class="incident-pagination-bar"
@@ -41,29 +41,31 @@
 
           <div class="pagination-center-info">
             <div class="pagination-pills" role="tablist" aria-label="Selecionar registro">
-              <button
-                v-for="(item, idx) in groupItems"
-                :key="item.id || idx"
-                type="button"
-                role="tab"
-                :aria-selected="currentPageIndex === idx"
-                class="pagination-pill-btn"
-                :class="{
-                  'is-active': currentPageIndex === idx,
-                  'is-duplicate-pill': Boolean(item.possivel_duplicidade || idx > 0)
-                }"
-                @click="goToPage(idx)"
-              >
-                <span>{{ idx + 1 }}</span>
-              </button>
+              <template v-for="entry in visiblePaginationEntries" :key="entry.key">
+                <span v-if="entry.type === 'ellipsis'" class="pagination-ellipsis" aria-hidden="true">…</span>
+                <button
+                  v-else
+                  type="button"
+                  role="tab"
+                  :aria-selected="currentPageIndex === entry.index"
+                  class="pagination-pill-btn"
+                  :class="{
+                    'is-active': currentPageIndex === entry.index,
+                    'is-duplicate-pill': Boolean(entry.item?.possivel_duplicidade)
+                  }"
+                  @click="goToPage(entry.index)"
+                >
+                  <span>{{ entry.index + 1 }}</span>
+                </button>
+              </template>
             </div>
             <span class="pagination-status-text">
-              Registro {{ currentPageIndex + 1 }} de {{ totalPages }}
-              <strong v-if="currentPageIndex === 0 && !activeIncident.possivel_duplicidade" class="tag-primary-rec">
-                • Principal
-              </strong>
-              <strong v-else class="tag-duplicate-rec">
+              Denúncia {{ currentPageIndex + 1 }} de {{ totalPages }}
+              <strong v-if="isCurrentDuplicate" class="tag-duplicate-rec">
                 • Possível duplicidade
+              </strong>
+              <strong v-else-if="hasAnyDuplicateInGroup && currentPageIndex === 0" class="tag-primary-rec">
+                • Principal
               </strong>
             </span>
           </div>
@@ -543,7 +545,57 @@ const activeIncident = computed(() => {
 });
 
 const isCurrentDuplicate = computed(() => {
-  return Boolean(activeIncident.value?.possivel_duplicidade || currentPageIndex.value > 0);
+  return Boolean(activeIncident.value?.possivel_duplicidade);
+});
+
+const hasAnyDuplicateInGroup = computed(() => {
+  return groupItems.value.some((item) => Boolean(item?.possivel_duplicidade));
+});
+
+const visiblePaginationEntries = computed(() => {
+  const list = groupItems.value;
+  const total = list.length;
+  const current = currentPageIndex.value;
+
+  if (total <= 4) {
+    return list.map((item, index) => ({
+      type: 'page',
+      key: `page-${item?.id || index}`,
+      index,
+      item
+    }));
+  }
+
+  const indices = new Set([0, total - 1, current]);
+  if (current <= 1) {
+    indices.add(1);
+    indices.add(2);
+  } else if (current >= total - 2) {
+    indices.add(total - 2);
+    indices.add(total - 3);
+  }
+
+  const sortedIndices = Array.from(indices)
+    .filter((i) => i >= 0 && i < total)
+    .sort((a, b) => a - b);
+
+  const entries = [];
+  for (let k = 0; k < sortedIndices.length; k++) {
+    const idx = sortedIndices[k];
+    if (k > 0 && idx - sortedIndices[k - 1] > 1) {
+      entries.push({
+        type: 'ellipsis',
+        key: `ellipsis-${sortedIndices[k - 1]}-${idx}`
+      });
+    }
+    entries.push({
+      type: 'page',
+      key: `page-${list[idx]?.id || idx}`,
+      index: idx,
+      item: list[idx]
+    });
+  }
+  return entries;
 });
 
 const goToPage = (idx) => {
@@ -1065,8 +1117,9 @@ watch(currentPageIndex, () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.6rem 0.75rem;
+  flex-wrap: nowrap;
+  gap: 0.45rem;
+  padding: 0.6rem 0.7rem;
   margin-bottom: 1rem;
   background-color: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -1084,6 +1137,7 @@ watch(currentPageIndex, () => {
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-page-nav:hover:not(:disabled) {
@@ -1101,17 +1155,23 @@ watch(currentPageIndex, () => {
   flex-direction: column;
   align-items: center;
   gap: 0.25rem;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .pagination-pills {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 0.3rem;
+  white-space: nowrap;
 }
 
 .pagination-pill-btn {
-  width: 26px;
+  min-width: 26px;
   height: 26px;
+  padding: 0 0.38rem;
   border-radius: 9999px;
   border: 1px solid #cbd5e1;
   background-color: #ffffff;
@@ -1123,6 +1183,15 @@ watch(currentPageIndex, () => {
   justify-content: center;
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.pagination-ellipsis {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #64748b;
+  padding: 0 0.1rem;
+  flex-shrink: 0;
 }
 
 .pagination-pill-btn.is-active {
@@ -1136,6 +1205,34 @@ watch(currentPageIndex, () => {
   font-weight: 600;
   color: #475569;
   text-align: center;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .incident-pagination-bar {
+    gap: 0.3rem;
+    padding: 0.5rem 0.45rem;
+  }
+
+  .btn-page-nav {
+    padding: 0.32rem 0.48rem;
+    font-size: 0.74rem;
+  }
+
+  .pagination-pills {
+    gap: 0.2rem;
+  }
+
+  .pagination-pill-btn {
+    min-width: 24px;
+    height: 24px;
+    padding: 0 0.3rem;
+    font-size: 0.73rem;
+  }
+
+  .pagination-status-text {
+    font-size: 0.69rem;
+  }
 }
 
 .btn-close {

@@ -726,79 +726,6 @@ const updateMarkers = () => {
   const currentZoom = map.value?.getZoom() || 15;
   const showSpider = currentZoom >= 15;
 
-  // Pino personalizado para "infracao_veicular" (Púrpura Vale PCD + Símbolo Internacional de Acessibilidade PcD)
-  const pcdPinIcon = {
-    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="32" height="42">
-        <defs>
-          <filter id="pcd-pin-shadow" x="-20%" y="-10%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.35"/>
-          </filter>
-        </defs>
-        <!-- Sombra no solo -->
-        <ellipse cx="16" cy="40" rx="4.5" ry="1.5" fill="#000000" opacity="0.25"/>
-        <!-- Corpo do pino no Púrpura Vale PCD -->
-        <path d="M16 1C8.82 1 3 6.82 3 14c0 9.5 11.8 23 12.3 23.6.4.4 1 .4 1.4 0C17.2 37 29 23.5 29 14 29 6.82 23.18 1 16 1z" fill="#86007D" stroke="#ffffff" stroke-width="1.8" filter="url(#pcd-pin-shadow)"/>
-        <!-- Círculo branco de alto contraste -->
-        <circle cx="16" cy="14" r="7.5" fill="#ffffff"/>
-        <!-- Símbolo Internacional de Acessibilidade (PcD) -->
-        <g transform="translate(10.5, 8.5) scale(0.46)" fill="#86007D">
-          <circle cx="12" cy="4" r="2.2"/>
-          <path d="M19 13v-2c-1.54.02-3.09-.75-4.07-1.83l-1.29-1.43c-.38-.42-.93-.68-1.53-.74H12c-.35-.04-.71.04-1.04.22-.64.35-1.06 1.01-1.06 1.78V15c0 .55.45 1 1 1s1-.45 1-1v-4.1l1.6 1.6c.33.33.75.52 1.2.55v4.95c0 1.1.9 2 2 2h3c.55 0 1-.45 1-1s-.45-1-1-1h-3v-4.9z"/>
-          <path d="M10.8 11.2c-.5.7-.8 1.5-.8 2.4 0 2.2 1.8 4 4 4 .9 0 1.7-.3 2.4-.8l1.5 1.5c-1.1.8-2.4 1.3-3.9 1.3-3.3 0-6-2.7-6-6 0-1.5.5-2.8 1.3-3.9l1.5 1.5z"/>
-        </g>
-      </svg>
-    `),
-    scaledSize: new googleMaps.Size(32, 42),
-    anchor: new googleMaps.Point(16, 40)
-  };
-
-  // Pino personalizado para natureza "urbana" (Amarelo escuro + ícone 🚧)
-  const urbanaPinIcon = {
-    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="32" height="42">
-        <defs>
-          <filter id="urbana-pin-shadow" x="-20%" y="-10%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.35"/>
-          </filter>
-        </defs>
-        <!-- Sombra no solo -->
-        <ellipse cx="16" cy="40" rx="4.5" ry="1.5" fill="#000000" opacity="0.25"/>
-        <!-- Corpo do pino em Amarelo Escuro -->
-        <path d="M16 1C8.82 1 3 6.82 3 14c0 9.5 11.8 23 12.3 23.6.4.4 1 .4 1.4 0C17.2 37 29 23.5 29 14 29 6.82 23.18 1 16 1z" fill="#ca8a04" stroke="#ffffff" stroke-width="1.8" filter="url(#urbana-pin-shadow)"/>
-        <!-- Círculo branco de alto contraste -->
-        <circle cx="16" cy="14" r="7.8" fill="#ffffff"/>
-        <!-- Ícone de barreira urbana 🚧 -->
-        <text x="16.4" y="14.5" text-anchor="middle" dominant-baseline="central" font-size="9.5">🚧</text>
-      </svg>
-    `),
-    scaledSize: new googleMaps.Size(32, 42),
-    anchor: new googleMaps.Point(16, 40)
-  };
-
-  // Pino personalizado para ocorrência de acesso urbano RESOLVIDA (Verde + ícone de Check ✓)
-  const resolvidoPinIcon = {
-    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="32" height="42">
-        <defs>
-          <filter id="resolvido-pin-shadow" x="-20%" y="-10%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.35"/>
-          </filter>
-        </defs>
-        <!-- Sombra no solo -->
-        <ellipse cx="16" cy="40" rx="4.5" ry="1.5" fill="#000000" opacity="0.25"/>
-        <!-- Corpo do pino em Verde -->
-        <path d="M16 1C8.82 1 3 6.82 3 14c0 9.5 11.8 23 12.3 23.6.4.4 1 .4 1.4 0C17.2 37 29 23.5 29 14 29 6.82 23.18 1 16 1z" fill="#16a34a" stroke="#ffffff" stroke-width="1.8" filter="url(#resolvido-pin-shadow)"/>
-        <!-- Círculo branco de alto contraste -->
-        <circle cx="16" cy="14" r="7.8" fill="#ffffff"/>
-        <!-- Ícone de Check Verde -->
-        <path d="M12.2 14.3l2.5 2.5 5.3-5.4" fill="none" stroke="#15803d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    `),
-    scaledSize: new googleMaps.Size(32, 42),
-    anchor: new googleMaps.Point(16, 40)
-  };
-
   const isIncidentResolved = (inc) =>
     Boolean(
       inc?.resolvido === true ||
@@ -806,6 +733,131 @@ const updateMarkers = () => {
         String(inc?.status_resolucao || '').toLowerCase() === 'resolvido' ||
         (inc?.foto_resolucao && String(inc?.status_resolucao || '').toLowerCase() !== 'em_validacao')
     );
+
+  const pinIconCache = new Map();
+
+  const buildPinIcon = (variant, rawCount) => {
+    const count = Math.max(1, Number(rawCount) || 1);
+    const sizeTier = count === 1 ? 'single' : count >= 100 ? 'plus99' : 'twoDigit';
+    const labelText = count >= 100 ? '+99' : String(count);
+    const cacheKey = `${variant}_${sizeTier}_${labelText}`;
+
+    if (pinIconCache.has(cacheKey)) {
+      return pinIconCache.get(cacheKey);
+    }
+
+    const fillColor =
+      variant === 'resolvido' ? '#16a34a' : variant === 'urbana' ? '#ca8a04' : '#86007D';
+    const textColor =
+      variant === 'resolvido' ? '#15803d' : variant === 'urbana' ? '#92400e' : '#86007D';
+
+    let iconObj;
+
+    if (sizeTier === 'single') {
+      // Tamanho 1: 1 denúncia (32x42, apenas o ícone centralizado)
+      const innerGraphic =
+        variant === 'resolvido'
+          ? `<path d="M12.2 14.3l2.5 2.5 5.3-5.4" fill="none" stroke="#15803d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`
+          : variant === 'urbana'
+            ? `<text x="16.4" y="14.5" text-anchor="middle" dominant-baseline="central" font-size="9.5">🚧</text>`
+            : `<g transform="translate(10.5, 8.5) scale(0.46)" fill="#86007D">
+                <circle cx="12" cy="4" r="2.2"/>
+                <path d="M19 13v-2c-1.54.02-3.09-.75-4.07-1.83l-1.29-1.43c-.38-.42-.93-.68-1.53-.74H12c-.35-.04-.71.04-1.04.22-.64.35-1.06 1.01-1.06 1.78V15c0 .55.45 1 1 1s1-.45 1-1v-4.1l1.6 1.6c.33.33.75.52 1.2.55v4.95c0 1.1.9 2 2 2h3c.55 0 1-.45 1-1s-.45-1-1-1h-3v-4.9z"/>
+                <path d="M10.8 11.2c-.5.7-.8 1.5-.8 2.4 0 2.2 1.8 4 4 4 .9 0 1.7-.3 2.4-.8l1.5 1.5c-1.1.8-2.4 1.3-3.9 1.3-3.3 0-6-2.7-6-6 0-1.5.5-2.8 1.3-3.9l1.5 1.5z"/>
+              </g>`;
+
+      iconObj = {
+        url:
+          'data:image/svg+xml;charset=UTF-8,' +
+          encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="32" height="42">
+              <defs>
+                <filter id="pin-shadow-s1" x="-20%" y="-10%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.35"/>
+                </filter>
+              </defs>
+              <ellipse cx="16" cy="40" rx="4.5" ry="1.5" fill="#000000" opacity="0.25"/>
+              <path d="M16 1C8.82 1 3 6.82 3 14c0 9.5 11.8 23 12.3 23.6.4.4 1 .4 1.4 0C17.2 37 29 23.5 29 14 29 6.82 23.18 1 16 1z" fill="${fillColor}" stroke="#ffffff" stroke-width="1.8" filter="url(#pin-shadow-s1)"/>
+              <circle cx="16" cy="14" r="7.8" fill="#ffffff"/>
+              ${innerGraphic}
+            </svg>
+          `),
+        scaledSize: new googleMaps.Size(32, 42),
+        anchor: new googleMaps.Point(16, 40)
+      };
+    } else if (sizeTier === 'twoDigit') {
+      // Tamanho 2: 2 a 99 denúncias (52x50, número de denúncias antes do ícone)
+      const innerGraphic =
+        variant === 'resolvido'
+          ? `<path d="M32.2 18.3l2.6 2.6 5.5-5.6" fill="none" stroke="#15803d" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>`
+          : variant === 'urbana'
+            ? `<text x="36.5" y="18.5" text-anchor="middle" dominant-baseline="central" font-size="10.5">🚧</text>`
+            : `<g transform="translate(30.8, 12.2) scale(0.47)" fill="#86007D">
+                <circle cx="12" cy="4" r="2.2"/>
+                <path d="M19 13v-2c-1.54.02-3.09-.75-4.07-1.83l-1.29-1.43c-.38-.42-.93-.68-1.53-.74H12c-.35-.04-.71.04-1.04.22-.64.35-1.06 1.01-1.06 1.78V15c0 .55.45 1 1 1s1-.45 1-1v-4.1l1.6 1.6c.33.33.75.52 1.2.55v4.95c0 1.1.9 2 2 2h3c.55 0 1-.45 1-1s-.45-1-1-1h-3v-4.9z"/>
+                <path d="M10.8 11.2c-.5.7-.8 1.5-.8 2.4 0 2.2 1.8 4 4 4 .9 0 1.7-.3 2.4-.8l1.5 1.5c-1.1.8-2.4 1.3-3.9 1.3-3.3 0-6-2.7-6-6 0-1.5.5-2.8 1.3-3.9l1.5 1.5z"/>
+              </g>`;
+
+      iconObj = {
+        url:
+          'data:image/svg+xml;charset=UTF-8,' +
+          encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 50" width="52" height="50">
+              <defs>
+                <filter id="pin-shadow-s2" x="-20%" y="-10%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="2.5" stdDeviation="2.2" flood-color="#000000" flood-opacity="0.38"/>
+                </filter>
+              </defs>
+              <ellipse cx="26" cy="47.5" rx="7" ry="2" fill="#000000" opacity="0.28"/>
+              <path d="M19 2 H33 A16 16 0 0 1 49 18 C49 26.5 43.2 33.2 33.5 34.8 L27.3 45.2 C26.7 46.2 25.3 46.2 24.7 45.2 L18.5 34.8 C8.8 33.2 3 26.5 3 18 A16 16 0 0 1 19 2 Z" fill="${fillColor}" stroke="#ffffff" stroke-width="2" filter="url(#pin-shadow-s2)"/>
+              <rect x="7" y="6.5" width="38" height="23" rx="11.5" fill="#ffffff"/>
+              <text x="18.2" y="18.4" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="12.5" fill="${textColor}">${labelText}</text>
+              <line x1="28.5" y1="10.5" x2="28.5" y2="25.5" stroke="${fillColor}" stroke-opacity="0.22" stroke-width="1.2" stroke-linecap="round"/>
+              ${innerGraphic}
+            </svg>
+          `),
+        scaledSize: new googleMaps.Size(52, 50),
+        anchor: new googleMaps.Point(26, 47)
+      };
+    } else {
+      // Tamanho 3: 100+ denúncias (66x58, exibe "+99" antes do ícone)
+      const innerGraphic =
+        variant === 'resolvido'
+          ? `<path d="M43 20.5l3.2 3.2 6.5-6.6" fill="none" stroke="#15803d" stroke-width="3.1" stroke-linecap="round" stroke-linejoin="round"/>`
+          : variant === 'urbana'
+            ? `<text x="48" y="20.5" text-anchor="middle" dominant-baseline="central" font-size="12.5">🚧</text>`
+            : `<g transform="translate(41.2, 13.2) scale(0.55)" fill="#86007D">
+                <circle cx="12" cy="4" r="2.2"/>
+                <path d="M19 13v-2c-1.54.02-3.09-.75-4.07-1.83l-1.29-1.43c-.38-.42-.93-.68-1.53-.74H12c-.35-.04-.71.04-1.04.22-.64.35-1.06 1.01-1.06 1.78V15c0 .55.45 1 1 1s1-.45 1-1v-4.1l1.6 1.6c.33.33.75.52 1.2.55v4.95c0 1.1.9 2 2 2h3c.55 0 1-.45 1-1s-.45-1-1-1h-3v-4.9z"/>
+                <path d="M10.8 11.2c-.5.7-.8 1.5-.8 2.4 0 2.2 1.8 4 4 4 .9 0 1.7-.3 2.4-.8l1.5 1.5c-1.1.8-2.4 1.3-3.9 1.3-3.3 0-6-2.7-6-6 0-1.5.5-2.8 1.3-3.9l1.5 1.5z"/>
+              </g>`;
+
+      iconObj = {
+        url:
+          'data:image/svg+xml;charset=UTF-8,' +
+          encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 66 58" width="66" height="58">
+              <defs>
+                <filter id="pin-shadow-s3" x="-20%" y="-10%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="3" stdDeviation="2.5" flood-color="#000000" flood-opacity="0.42"/>
+                </filter>
+              </defs>
+              <ellipse cx="33" cy="55" rx="9" ry="2.4" fill="#000000" opacity="0.3"/>
+              <path d="M22 2 H44 A19 19 0 0 1 63 21 C63 30.8 56.2 38.5 42 40.2 L34.6 52.6 C33.9 53.8 32.1 53.8 31.4 52.6 L24 40.2 C9.8 38.5 3 30.8 3 21 A19 19 0 0 1 22 2 Z" fill="${fillColor}" stroke="#ffffff" stroke-width="2.2" filter="url(#pin-shadow-s3)"/>
+              <rect x="7.5" y="6.5" width="51" height="27" rx="13.5" fill="#ffffff"/>
+              <text x="23" y="20.4" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="13.2" fill="${textColor}">+99</text>
+              <line x1="38" y1="11" x2="38" y2="29" stroke="${fillColor}" stroke-opacity="0.22" stroke-width="1.4" stroke-linecap="round"/>
+              ${innerGraphic}
+            </svg>
+          `),
+        scaledSize: new googleMaps.Size(66, 58),
+        anchor: new googleMaps.Point(33, 55)
+      };
+    }
+
+    pinIconCache.set(cacheKey, iconObj);
+    return iconObj;
+  };
 
   // Desenha os pontos de ancoragem e linhas conectoras de desdobramento (spiderfy)
   multiGroups.forEach(group => {
@@ -851,20 +903,32 @@ const updateMarkers = () => {
 
   const newMarkers = incidents.map((incident, index) => {
     const pos = positions[index] || { lat: incident.latitude, lng: incident.longitude };
-    const isResolved = isIncidentResolved(incident);
+    const groupList = Array.isArray(incident?.groupItems) && incident.groupItems.length > 0
+      ? incident.groupItems
+      : [incident];
+    const groupCount = Math.max(1, Number(incident?.groupCount || groupList.length || 1));
+    const isResolved = groupList.every((item) => isIncidentResolved(item));
     const natureza = String(incident?.natureza || 'infracao_veicular').trim().toLowerCase();
-    const pinIcon = isResolved
-      ? resolvidoPinIcon
-      : natureza === 'urbana'
-        ? urbanaPinIcon
-        : pcdPinIcon;
+    const variant = isResolved ? 'resolvido' : natureza === 'urbana' ? 'urbana' : 'pcd';
+    const pinIcon = buildPinIcon(variant, groupCount);
+
+    const baseLocationTitle =
+      incident.description ||
+      (incident.cidade
+        ? `${incident.cidade} - ${incident.estado}`
+        : `Ocorrência registrada em ${new Date(incident.timestamp).toLocaleTimeString()}`);
+    const markerTitle =
+      groupCount > 1
+        ? `${groupCount > 99 ? '+99' : groupCount} denúncias agrupadas neste endereço • ${baseLocationTitle}`
+        : isResolved
+          ? `Problema de acesso urbano resolvido • ${incident.cidade || ''}`
+          : baseLocationTitle;
 
     const marker = markRaw(new googleMaps.Marker({
       position: { lat: pos.lat, lng: pos.lng },
-      title: isResolved
-        ? `Problema de acesso urbano resolvido • ${incident.cidade || ''}`
-        : incident.description || (incident.cidade ? `${incident.cidade} - ${incident.estado}` : `Ocorrência registrada em ${new Date(incident.timestamp).toLocaleTimeString()}`),
+      title: markerTitle,
       icon: pinIcon,
+      zIndex: groupCount >= 100 ? 300 : groupCount > 1 ? 200 + Math.min(groupCount, 99) : 100,
       map: clusterer.value ? null : map.value
     }));
 

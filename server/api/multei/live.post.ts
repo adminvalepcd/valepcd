@@ -2,7 +2,8 @@ import {
   checkMulteiLiveRateLimit,
   isValidMulteiLiveCategory,
   isValidMulteiLiveDelta,
-  publishMulteiLiveEvent
+  publishMulteiLiveEvent,
+  sanitizeMulteiLiveMeta
 } from '../../utils/multeiLiveBus';
 
 export default defineEventHandler(async (event) => {
@@ -40,7 +41,8 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const published = publishMulteiLiveEvent(category, rawDelta);
+  const meta = sanitizeMulteiLiveMeta(body);
+  const published = publishMulteiLiveEvent(category, rawDelta, meta);
 
   return {
     ok: true,

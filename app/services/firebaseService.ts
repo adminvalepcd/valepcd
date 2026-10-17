@@ -134,9 +134,24 @@ export interface ReportedIncidentPanelItem {
   duplicidade_original_fotoUrl?: string;
 }
 
-export type MulteiLiveCategory = 'infracoesTransito' | 'mobilidadeUrbana' | 'resolvidos';
+export type MulteiLiveCategory =
+  | 'infracoesTransito'
+  | 'mobilidadeUrbana'
+  | 'resolvidos'
+  | 'reportadas'
+  | 'denunciasPainel';
 
-export interface MulteiLiveDeltaEvent {
+export interface MulteiLiveEventMeta {
+  cidade?: string;
+  estado?: string;
+  bairro?: string;
+  rua?: string;
+  natureza?: string;
+  ocorrenciaId?: string;
+  action?: 'nova_ocorrencia' | 'novo_report' | 'nova_resolucao' | 'revisao';
+}
+
+export interface MulteiLiveDeltaEvent extends MulteiLiveEventMeta {
   id: number;
   category: MulteiLiveCategory;
   delta: 1 | -1;
@@ -934,6 +949,24 @@ export async function saveIncidentToFirebase(
         },
         { merge: true }
       );
+      void notifyMulteiLiveDelta('reportadas', 1, {
+        cidade: resolvedCidade,
+        estado: resolvedEstado,
+        bairro: resolvedBairro,
+        rua: resolvedRua,
+        natureza: docData.natureza,
+        ocorrenciaId: id,
+        action: 'novo_report'
+      });
+      void notifyMulteiLiveDelta('denunciasPainel', 1, {
+        cidade: resolvedCidade,
+        estado: resolvedEstado,
+        bairro: resolvedBairro,
+        rua: resolvedRua,
+        natureza: docData.natureza,
+        ocorrenciaId: id,
+        action: 'nova_ocorrencia'
+      });
     } catch (repErr) {
       console.warn('[firebaseService] Aviso ao registrar possível duplicidade em reportadas:', repErr);
     }
@@ -942,7 +975,15 @@ export async function saveIncidentToFirebase(
   // 5. Atualiza contadores em `estatisticas/resumo` (apenas se ativa e NÃO for possível duplicidade)
   if (docData.ativo && !isPossivelDuplicidade) {
     const isUrbana = docData.natureza === 'urbana';
-    void notifyMulteiLiveDelta(isUrbana ? 'mobilidadeUrbana' : 'infracoesTransito', 1);
+    void notifyMulteiLiveDelta(isUrbana ? 'mobilidadeUrbana' : 'infracoesTransito', 1, {
+      cidade: resolvedCidade,
+      estado: resolvedEstado,
+      bairro: resolvedBairro,
+      rua: resolvedRua,
+      natureza: docData.natureza,
+      ocorrenciaId: id,
+      action: 'nova_ocorrencia'
+    });
     try {
       const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
       await setDoc(
@@ -1132,11 +1173,13 @@ export async function reportIncidentInFirebase(
     classificacao: existingData.classificacao ?? existingReportData.classificacao ?? incidentData?.classificacao ?? '',
     verificacao: existingData.verificacao ?? existingReportData.verificacao ?? incidentData?.verificacao ?? '',
     possivel_duplicidade: wasPossibleDuplicate,
-    duplicidade_de_id:
-      existingData.duplicidade_de_id ??
-      existingReportData.duplicidade_de_id ??
-      incidentData?.duplicidade_de_id ??
-      '',
+    origem_duplicidade: wasPossibleDuplicate,
+    duplicidade_de_id: wasPossibleDuplicate
+      ? (existingData.duplicidade_de_id ??
+          existingReportData.duplicidade_de_id ??
+          incidentData?.duplicidade_de_id ??
+          '')
+      : '',
     rotulo_duplicidade: wasPossibleDuplicate
       ? String(
           existingData.rotulo_duplicidade ||
@@ -1153,8 +1196,9 @@ export async function reportIncidentInFirebase(
     total_reports: totalReports,
     outras_revisoes_solicitadas: outrasRevisoesSolicitadas,
     historico_reports: previousHistory,
-    revisada: existingReportData.revisada === true ? true : false,
-    resultado_revisao: existingReportData.resultado_revisao || ''
+    revisada: alreadyApprovedImprocedente ? true : false,
+    status_revisao: alreadyApprovedImprocedente ? 'revisada' : 'pendente',
+    resultado_revisao: alreadyApprovedImprocedente ? 'improcedente' : ''
   };
 
   await setDoc(targetReportDocRef, reportDocData, { merge: true });
@@ -1174,7 +1218,15 @@ export async function reportIncidentInFirebase(
         mobilidadeUrbanaDelta: wasUrbana ? -1 : 0,
         resolvidosDelta: 0
       });
-      void notifyMulteiLiveDelta(wasUrbana ? 'mobilidadeUrbana' : 'infracoesTransito', -1);
+      void notifyMulteiLiveDelta(wasUrbana ? 'mobilidadeUrbana' : 'infracoesTransito', -1, {
+        cidade: String(reportDocData.cidade || ''),
+        estado: String(reportDocData.estado || ''),
+        bairro: String(reportDocData.bairro || ''),
+        rua: String(reportDocData.rua || ''),
+        natureza: String(reportDocData.natureza || ''),
+        ocorrenciaId: cleanId,
+        action: 'novo_report'
+      });
       try {
         const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
         await setDoc(
@@ -1191,6 +1243,16 @@ export async function reportIncidentInFirebase(
       }
     }
   }
+
+  void notifyMulteiLiveDelta('reportadas', 1, {
+    cidade: String(reportDocData.cidade || ''),
+    estado: String(reportDocData.estado || ''),
+    bairro: String(reportDocData.bairro || ''),
+    rua: String(reportDocData.rua || ''),
+    natureza: String(reportDocData.natureza || ''),
+    ocorrenciaId: cleanId,
+    action: 'novo_report'
+  });
 
   return {
     success: true,
@@ -1308,7 +1370,15 @@ export async function submitUrbanResolutionToFirebase(
     mobilidadeUrbanaDelta: 0,
     resolvidosDelta: 1
   });
-  void notifyMulteiLiveDelta('resolvidos', 1);
+  void notifyMulteiLiveDelta('resolvidos', 1, {
+    cidade: String(docData.cidade || ''),
+    estado: String(docData.estado || ''),
+    bairro: String(docData.bairro || ''),
+    rua: String(docData.rua || ''),
+    natureza: 'urbana',
+    ocorrenciaId,
+    action: 'nova_resolucao'
+  });
   try {
     const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
     await setDoc(
@@ -1341,7 +1411,8 @@ const LIVE_BROADCAST_CHANNEL_NAME = 'multei_live_stats_channel_v1';
  */
 export async function notifyMulteiLiveDelta(
   category: MulteiLiveCategory,
-  delta: 1 | -1 = 1
+  delta: 1 | -1 = 1,
+  meta?: MulteiLiveEventMeta
 ): Promise<void> {
   if (typeof window === 'undefined') return;
 
@@ -1353,7 +1424,11 @@ export async function notifyMulteiLiveDelta(
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ category, delta })
+      body: JSON.stringify({
+        category,
+        delta,
+        ...(meta || {})
+      })
     });
     if (res.ok) {
       const data = await res.json();
@@ -1370,7 +1445,8 @@ export async function notifyMulteiLiveDelta(
       id: Date.now(),
       category,
       delta,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      ...(meta || {})
     };
   }
 
@@ -1573,7 +1649,9 @@ export function subscribeToMulteiLiveEvents(
       !delta ||
       (category !== 'infracoesTransito' &&
         category !== 'mobilidadeUrbana' &&
-        category !== 'resolvidos')
+        category !== 'resolvidos' &&
+        category !== 'reportadas' &&
+        category !== 'denunciasPainel')
     ) {
       return;
     }
@@ -1584,18 +1662,31 @@ export function subscribeToMulteiLiveEvents(
       lastSeenId = id;
     }
 
-    adjustCachedStats({
-      totalGeralDelta: category === 'resolvidos' ? 0 : delta,
-      infracoesTransitoDelta: category === 'infracoesTransito' ? delta : 0,
-      mobilidadeUrbanaDelta: category === 'mobilidadeUrbana' ? delta : 0,
-      resolvidosDelta: category === 'resolvidos' ? delta : 0
-    });
+    if (
+      category === 'infracoesTransito' ||
+      category === 'mobilidadeUrbana' ||
+      category === 'resolvidos'
+    ) {
+      adjustCachedStats({
+        totalGeralDelta: category === 'resolvidos' ? 0 : delta,
+        infracoesTransitoDelta: category === 'infracoesTransito' ? delta : 0,
+        mobilidadeUrbanaDelta: category === 'mobilidadeUrbana' ? delta : 0,
+        resolvidosDelta: category === 'resolvidos' ? delta : 0
+      });
+    }
 
     onDelta({
       id,
       category,
       delta,
-      timestamp: Number(evt.timestamp) || Date.now()
+      timestamp: Number(evt.timestamp) || Date.now(),
+      ...(evt.cidade ? { cidade: String(evt.cidade) } : {}),
+      ...(evt.estado ? { estado: String(evt.estado) } : {}),
+      ...(evt.bairro ? { bairro: String(evt.bairro) } : {}),
+      ...(evt.rua ? { rua: String(evt.rua) } : {}),
+      ...(evt.natureza ? { natureza: String(evt.natureza) } : {}),
+      ...(evt.ocorrenciaId ? { ocorrenciaId: String(evt.ocorrenciaId) } : {}),
+      ...(evt.action ? { action: evt.action } : {})
     });
   };
 
@@ -2534,11 +2625,16 @@ export async function sendPanelUserPasswordReset(email: string): Promise<void> {
  */
 export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncidentPanelItem[]> {
   const { db } = getFirebaseServices();
+  const reportadasCol = collection(db, REPORTADAS_COLLECTION);
+  const dupQuery = query(
+    collection(db, OCORRENCIAS_COLLECTION),
+    where('possivel_duplicidade', '==', true)
+  );
   const [snap, dupOcorrenciasSnap] = await Promise.all([
-    getDocs(collection(db, REPORTADAS_COLLECTION)),
-    getDocs(
-      query(collection(db, OCORRENCIAS_COLLECTION), where('possivel_duplicidade', '==', true))
-    ).catch(() => null)
+    getDocsFromServer(reportadasCol).catch(() => getDocs(reportadasCol)),
+    getDocsFromServer(dupQuery)
+      .catch(() => getDocs(dupQuery))
+      .catch(() => null)
   ]);
 
   const groupedByOcorrencia = new Map<string, ReportedIncidentPanelItem>();
@@ -2576,27 +2672,45 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
 
     const dataReport = String(d.data_report || d.data || new Date().toISOString());
     const ultimaDataReport = String(d.ultima_data_report || dataReport);
-    const isRevisada =
+    let isRevisada =
       d.revisada === true ||
       String(d.revisada).toLowerCase() === 'true' ||
       d.status_revisao === 'revisada';
 
-    const resultadoRevisao = parseResultadoRevisao(d.resultado_revisao);
+    let resultadoRevisao = parseResultadoRevisao(d.resultado_revisao);
+
+    // Se a ocorrência teve a triagem automática marcada como "nao_duplicidade" e depois recebeu
+    // uma nova solicitação de revisão da comunidade (2ª solicitação), limpa a pill de "nao_duplicidade"
+    // e coloca a nova solicitação como pendente no fluxo principal.
+    const dataRevisaoMs = d.data_revisao ? new Date(String(d.data_revisao)).getTime() : 0;
+    const ultimaDataReportMs = new Date(ultimaDataReport).getTime() || 0;
+    if (
+      isRevisada &&
+      resultadoRevisao === 'nao_duplicidade' &&
+      rawHistory.length > 1 &&
+      (!dataRevisaoMs || ultimaDataReportMs > dataRevisaoMs + 500)
+    ) {
+      isRevisada = false;
+      resultadoRevisao = '';
+    }
 
     const isPossivelDuplicidade = Boolean(
-      d.possivel_duplicidade === true ||
-        String(d.possivel_duplicidade).toLowerCase() === 'true' ||
-        String(d.rotulo_duplicidade || '').toLowerCase().includes('duplicidade')
+      resultadoRevisao !== 'nao_duplicidade' &&
+        resultadoRevisao !== 'duplicidade' &&
+        resultadoRevisao !== 'procedente' &&
+        resultadoRevisao !== 'improcedente' &&
+        (d.possivel_duplicidade === true ||
+          String(d.possivel_duplicidade).toLowerCase() === 'true' ||
+          String(d.rotulo_duplicidade || '').toLowerCase().includes('duplicidade'))
     );
-    const duplicidadeDeId = d.duplicidade_de_id ? String(d.duplicidade_de_id).trim() : '';
+    const duplicidadeDeId =
+      resultadoRevisao === 'nao_duplicidade' || resultadoRevisao === 'improcedente'
+        ? ''
+        : d.duplicidade_de_id
+          ? String(d.duplicidade_de_id).trim()
+          : '';
     const isOrigemDuplicidade = Boolean(
-      d.origem_duplicidade === true ||
-        String(d.origem_duplicidade).toLowerCase() === 'true' ||
-        isPossivelDuplicidade ||
-        Boolean(duplicidadeDeId) ||
-        resultadoRevisao === 'nao_duplicidade' ||
-        resultadoRevisao === 'indefinido' ||
-        resultadoRevisao === 'duplicidade'
+      isPossivelDuplicidade || resultadoRevisao === 'indefinido'
     );
     const rotuloDuplicidade = isPossivelDuplicidade
       ? String(d.rotulo_duplicidade || 'Possível duplicidade').trim()
@@ -2797,11 +2911,12 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
 
 /**
  * Aplica a validação do administrador sobre uma ocorrência reportada ou com possível duplicidade:
- * - Para reports tradicionais:
- *   - `decision === 'procedente'`: A denúncia procede (inativa a ocorrência).
+ * - Para reports tradicionais (fluxo principal):
  *   - `decision === 'improcedente'`: A denúncia não procede (mantém/ativa a ocorrência no mapa).
- * - Para averiguação de Possível Duplicidade:
- *   - `decision === 'nao_duplicidade'`: Marca que NÃO é duplicidade (`possivel_duplicidade: false`, `ativo: true`) e INCREMENTA (+1) a contagem de denúncias.
+ *   - `decision === 'procedente'`: A denúncia procede (inativa a ocorrência).
+ *   - `decision === 'duplicidade'`: Marca a ocorrência como duplicada no report comum (inativa a ocorrência).
+ * - Para averiguação de Possível Duplicidade (detectada automaticamente pelo sistema):
+ *   - `decision === 'nao_duplicidade'`: Marca que NÃO é duplicidade (`possivel_duplicidade: false`, `ativo: true`), desagrupa os pins, passa ao fluxo principal e INCREMENTA (+1) a contagem de denúncias.
  *   - `decision === 'indefinido'`: Mantém ativa como possível duplicidade (`possivel_duplicidade: true`, `ativo: true`), SEM incrementar na contagem.
  *   - `decision === 'duplicidade'`: Confirma que É duplicidade e INATIVA a denúncia (`ativo: false`), sem incrementar na contagem.
  */
@@ -2843,12 +2958,9 @@ export async function reviewReportedIncidentInFirebase(params: {
   // Uma ocorrência só estava contabilizada nas estatísticas se estava ativa E não estava marcada como possível duplicidade
   const wasCountedInStats = wasActiveInOcorrencias && !wasPossivelDuplicidadeInOcorrencias;
 
-  const isDuplicityDecision =
-    decision === 'nao_duplicidade' || decision === 'indefinido' || decision === 'duplicidade';
-
   let targetAtivo = true;
-  let targetPossivelDuplicidade = wasPossivelDuplicidadeInOcorrencias;
-  let targetRotuloDuplicidade = wasPossivelDuplicidadeInOcorrencias ? 'Possível duplicidade' : '';
+  let targetPossivelDuplicidade = false;
+  let targetRotuloDuplicidade = '';
 
   if (decision === 'nao_duplicidade') {
     targetAtivo = true;
@@ -2860,14 +2972,20 @@ export async function reviewReportedIncidentInFirebase(params: {
     targetRotuloDuplicidade = 'Possível duplicidade';
   } else if (decision === 'duplicidade') {
     targetAtivo = false;
-    targetPossivelDuplicidade = true;
-    targetRotuloDuplicidade = 'Possível duplicidade';
+    targetPossivelDuplicidade = false;
+    targetRotuloDuplicidade = '';
   } else if (decision === 'improcedente') {
     targetAtivo = true;
+    targetPossivelDuplicidade = false;
+    targetRotuloDuplicidade = '';
   } else if (decision === 'procedente') {
     targetAtivo = false;
+    targetPossivelDuplicidade = false;
+    targetRotuloDuplicidade = '';
   }
 
+  const clearDuplicityLink = decision === 'nao_duplicidade' || decision === 'improcedente';
+  const targetOrigemDuplicidade = decision === 'indefinido';
   const shouldBeCountedInStats = targetAtivo && !targetPossivelDuplicidade;
   const nowIso = new Date().toISOString();
 
@@ -2878,8 +2996,8 @@ export async function reviewReportedIncidentInFirebase(params: {
       ativo: targetAtivo,
       possivel_duplicidade: targetPossivelDuplicidade,
       rotulo_duplicidade: targetRotuloDuplicidade,
-      ...(decision === 'nao_duplicidade' ? { duplicidade_de_id: '' } : {}),
-      ...(isDuplicityDecision ? { origem_duplicidade: true } : {}),
+      origem_duplicidade: targetOrigemDuplicidade,
+      ...(clearDuplicityLink ? { duplicidade_de_id: '' } : {}),
       revisada_admin: true,
       resultado_revisao: decision,
       data_revisao: nowIso,
@@ -2895,8 +3013,8 @@ export async function reviewReportedIncidentInFirebase(params: {
     ativo: targetAtivo,
     possivel_duplicidade: targetPossivelDuplicidade,
     rotulo_duplicidade: targetRotuloDuplicidade,
-    ...(decision === 'nao_duplicidade' ? { duplicidade_de_id: '' } : {}),
-    ...(isDuplicityDecision || item.origem_duplicidade ? { origem_duplicidade: true } : {}),
+    origem_duplicidade: targetOrigemDuplicidade,
+    ...(clearDuplicityLink ? { duplicidade_de_id: '' } : {}),
     revisada: true,
     status_revisao: 'revisada',
     resultado_revisao: decision,
@@ -2935,7 +3053,7 @@ export async function reviewReportedIncidentInFirebase(params: {
             ativo: true,
             possivel_duplicidade: targetPossivelDuplicidade,
             rotulo_duplicidade: targetRotuloDuplicidade,
-            ...(decision === 'nao_duplicidade' ? { duplicidade_de_id: '' } : {})
+            ...(clearDuplicityLink ? { duplicidade_de_id: '' } : {})
           }
         : inc;
 
@@ -2955,6 +3073,15 @@ export async function reviewReportedIncidentInFirebase(params: {
 
   // 4. Ajusta as estatísticas e emite o evento ao vivo conforme a transição de contabilização
   const category: MulteiLiveCategory = isUrbana ? 'mobilidadeUrbana' : 'infracoesTransito';
+  const reviewMeta: MulteiLiveEventMeta = {
+    cidade: String(item.cidade || ''),
+    estado: String(item.estado || ''),
+    bairro: String(item.bairro || ''),
+    rua: String(item.rua || ''),
+    natureza: String(item.natureza || ''),
+    ocorrenciaId,
+    action: 'revisao'
+  };
 
   if (!wasCountedInStats && shouldBeCountedInStats) {
     // Ex: marcada como "Não é duplicidade" (ou improcedente em ocorrência comum que estava inativa) -> incrementa +1 na contagem
@@ -2964,7 +3091,7 @@ export async function reviewReportedIncidentInFirebase(params: {
       mobilidadeUrbanaDelta: isUrbana ? 1 : 0,
       resolvidosDelta: 0
     });
-    void notifyMulteiLiveDelta(category, 1);
+    void notifyMulteiLiveDelta(category, 1, reviewMeta);
     try {
       const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
       await setDoc(
@@ -2987,7 +3114,7 @@ export async function reviewReportedIncidentInFirebase(params: {
       mobilidadeUrbanaDelta: isUrbana ? -1 : 0,
       resolvidosDelta: 0
     });
-    void notifyMulteiLiveDelta(category, -1);
+    void notifyMulteiLiveDelta(category, -1, reviewMeta);
     try {
       const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
       await setDoc(
@@ -3004,12 +3131,19 @@ export async function reviewReportedIncidentInFirebase(params: {
     }
   }
 
+  void notifyMulteiLiveDelta('reportadas', 1, reviewMeta);
+  void notifyMulteiLiveDelta('denunciasPainel', 1, reviewMeta);
+
   return {
     ...item,
     ativo: targetAtivo,
     possivel_duplicidade: targetPossivelDuplicidade,
     rotulo_duplicidade: targetRotuloDuplicidade,
-    origem_duplicidade: Boolean(isDuplicityDecision || item.origem_duplicidade),
+    origem_duplicidade: targetOrigemDuplicidade,
+    duplicidade_de_id: clearDuplicityLink ? '' : item.duplicidade_de_id,
+    duplicidade_original_fotoUrl: clearDuplicityLink
+      ? undefined
+      : item.duplicidade_original_fotoUrl,
     revisada: true,
     resultado_revisao: decision,
     data_revisao: nowIso,
@@ -3270,6 +3404,17 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
   } catch {}
 
   // 3. Caso ainda não tivesse incrementado o contador de `resolvidos`, incrementa +1
+  const incMeta = payload.incident || {};
+  const resolutionMeta: MulteiLiveEventMeta = {
+    cidade: String(existingData.cidade || incMeta.cidade || ''),
+    estado: String(existingData.estado || incMeta.estado || ''),
+    bairro: String(existingData.bairro || incMeta.bairro || ''),
+    rua: String(existingData.rua || incMeta.rua || ''),
+    natureza: 'urbana',
+    ocorrenciaId,
+    action: 'nova_resolucao'
+  };
+
   if (!alreadyCountedInStats) {
     adjustCachedStats({
       totalGeralDelta: 0,
@@ -3277,7 +3422,7 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
       mobilidadeUrbanaDelta: 0,
       resolvidosDelta: 1
     });
-    void notifyMulteiLiveDelta('resolvidos', 1);
+    void notifyMulteiLiveDelta('resolvidos', 1, resolutionMeta);
     try {
       const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
       await setDoc(
@@ -3289,6 +3434,8 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
         { merge: true }
       );
     } catch {}
+  } else {
+    void notifyMulteiLiveDelta('denunciasPainel', 1, resolutionMeta);
   }
 
   // 4. Atualiza os caches locais e regionais para que o mapa exiba imediatamente o pino verde com check e Antes/Depois

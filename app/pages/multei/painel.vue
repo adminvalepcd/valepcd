@@ -23,8 +23,19 @@
       </div>
 
       <div v-if="userProfile" class="user-session-bar">
+        <span
+          class="live-monitor-badge"
+          :title="
+            userProfile.role === 'admin'
+              ? 'Monitoramento em tempo real ativo para novas ocorrências, reports e resoluções'
+              : `Monitoramento em tempo real ativo para novas ocorrências em ${userProfile.cidade || 'sua cidade'}`
+          "
+        >
+          <span class="live-monitor-dot" aria-hidden="true"></span>
+          <span>Ao vivo</span>
+        </span>
         <span class="role-badge" :class="userProfile.role === 'admin' ? 'role-admin' : 'role-parceiro'">
-          {{ userProfile.role === 'admin' ? '🛡️ Administrador' : `🤝 Parceiro${userProfile.cidade ? ` • ${userProfile.cidade}` : ''}` }}
+          {{ userProfile.role === 'admin' ? '🛡️ Gestão' : `🤝 Parceria${userProfile.cidade ? ` • ${userProfile.cidade}` : ''}` }}
         </span>
         <span class="user-name-text">
           {{ userProfile.nomeCompleto || [userProfile.nome, userProfile.sobrenome].filter(Boolean).join(' ') || userProfile.email }}
@@ -108,6 +119,43 @@
 
     <!-- PAINEL AUTENTICADO (Parceria tem acesso SOMENTE à aba Denúncias; Admin tem acesso a todas) -->
     <section v-else class="admin-panel-section" aria-labelledby="admin-heading">
+      <!-- Banner / Toast de Notificação em Tempo Real (Nova ocorrência na cidade do parceiro ou novo report) -->
+      <transition name="live-toast-fade">
+        <div
+          v-if="livePanelNotification"
+          class="live-panel-toast"
+          role="status"
+          aria-live="polite"
+        >
+          <div class="live-panel-toast-body">
+            <span class="live-panel-toast-icon" aria-hidden="true">🔔</span>
+            <div class="live-panel-toast-texts">
+              <strong class="live-panel-toast-title">{{ livePanelNotification.title }}</strong>
+              <span v-if="livePanelNotification.subtitle" class="live-panel-toast-subtitle">
+                {{ livePanelNotification.subtitle }}
+              </span>
+            </div>
+          </div>
+          <div class="live-panel-toast-actions">
+            <button
+              type="button"
+              class="btn-live-toast-view"
+              @click="focusLiveNotificationIncident"
+            >
+              Visualizar agora
+            </button>
+            <button
+              type="button"
+              class="btn-live-toast-dismiss"
+              aria-label="Fechar notificação de nova ocorrência"
+              @click="dismissLivePanelNotification"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      </transition>
+
       <!-- Navegação de Abas -->
       <div class="admin-module-tabs" role="tablist" aria-label="Módulos do painel">
         <button
@@ -443,7 +491,10 @@
                 <!-- Bloco da Foto (com comparativo da 1ª denúncia caso seja possível duplicidade) -->
                 <div class="detail-photo-box">
                   <div
-                    v-if="isDuplicityReviewItem(selectedItem) && selectedItem.duplicidade_original_fotoUrl"
+                    v-if="
+                      selectedItem.duplicidade_original_fotoUrl &&
+                      (isDuplicityReviewItem(selectedItem) || selectedItem.resultado_revisao === 'duplicidade')
+                    "
                     class="duplicity-photo-compare-grid"
                   >
                     <div class="duplicity-photo-compare-col">
@@ -536,7 +587,11 @@
                       >
                         <div class="history-entry-meta">
                           <span class="history-step-num">
-                            {{ isDuplicityReviewItem(selectedItem) && idx === 0 ? 'Detecção automática' : `${idx + 1}ª solicitação` }}
+                            {{
+                            idx === 0 && entry.motivo?.startsWith('Possível duplicidade detectada pelo sistema')
+                            ? 'Detecção automática'
+                            : `${idx + 1}ª solicitação`
+                            }}
                           </span>
                           <span class="history-step-date">{{ formatDateTime(entry.data) }}</span>
                           <span v-if="entry.apos_revisao" class="history-after-review-tag">
@@ -622,7 +677,7 @@
                     </button>
                   </div>
 
-                  <!-- Botões de Ação Padrão (Procedente vs Improcedente) -->
+                  <!-- Botões de Ação do Report Comum / Fluxo Principal (Improcedente | Procedente | É duplicidade) -->
                   <div v-else class="decision-actions">
                     <button
                       type="button"
@@ -641,6 +696,12 @@
                     >
                       <span class="decision-btn-title">🚫 Procedente (Manter Inativa)</span>
                     </button>
+<button type="button" class="btn-decision btn-procedente btn-duplicidade-common" :disabled="isSubmittingDecision"
+  @click="handleReviewDecision('duplicidade')">
+  <span class="decision-btn-title">🚫 É duplicidade (Manter Inativa)</span>
+  <span class="decision-btn-desc">Marca como ocorrência duplicada quando não detectada pelo sistema e mantém
+    inativa</span>
+</button>
                   </div>
                 </div>
               </div>
@@ -1447,8 +1508,8 @@
                       class="field-input"
                       :disabled="isSavingUser"
                     >
-                      <option value="parceria">parceria (Parceiro Municipal)</option>
-                      <option value="admin">admin (Administrador)</option>
+                      <option value="parceria">parceria (Parceria Municipal)</option>
+                      <option value="admin">admin (Gestão)</option>
                     </select>
                   </div>
 
@@ -1796,6 +1857,8 @@ import {
   sendPanelUserPasswordReset,
   fetchPartnerIncidentsFromFirebase,
   resolveUrbanIncidentByPartnerInFirebase,
+  subscribeToMulteiLiveEvents,
+  type MulteiLiveDeltaEvent,
   type MulteiPanelUserProfile,
   type MulteiPanelManagedUser,
   type ReportedIncidentPanelItem,
@@ -2015,6 +2078,9 @@ const selectedManagedUser = computed(() =>
 );
 
 let unsubscribeAuth: (() => void) | null = null;
+let unsubscribeLiveEvents: (() => void) | null = null;
+let liveReportsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let livePartnerDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 const openPanelLightbox = (url?: string) => {
   if (!url) return;
@@ -2100,10 +2166,15 @@ watch(filteredPartnerIncidents, (list) => {
   }
 });
 
-const loadPartnerDenuncias = async () => {
+const loadPartnerDenuncias = async (options?: { silent?: boolean } | Event) => {
   if (!userProfile.value) return;
-  isLoadingPartnerIncidents.value = true;
-  partnerGpsError.value = '';
+  const isSilent = Boolean(
+    options && typeof options === 'object' && 'silent' in options && options.silent && partnerIncidents.value.length > 0
+  );
+  if (!isSilent) {
+    isLoadingPartnerIncidents.value = true;
+    partnerGpsError.value = '';
+  }
   try {
     const items = await fetchPartnerIncidentsFromFirebase({
       cidade: isAdminRole.value ? undefined : userProfile.value.cidade,
@@ -2129,7 +2200,9 @@ const loadPartnerDenuncias = async () => {
   } catch (err) {
     console.warn('[painel] Erro ao carregar denúncias da cidade:', err);
   } finally {
-    isLoadingPartnerIncidents.value = false;
+    if (!isSilent) {
+      isLoadingPartnerIncidents.value = false;
+    }
   }
 };
 
@@ -2617,9 +2690,14 @@ const handleSendPasswordReset = async () => {
   }
 };
 
-const loadReports = async () => {
+const loadReports = async (options?: { silent?: boolean } | Event) => {
   if (!userProfile.value || userProfile.value.role !== 'admin') return;
-  isLoadingReports.value = true;
+  const isSilent = Boolean(
+    options && typeof options === 'object' && 'silent' in options && options.silent && allReports.value.length > 0
+  );
+  if (!isSilent) {
+    isLoadingReports.value = true;
+  }
   try {
     if (!userProfile.value.nomeCompleto) {
       const refreshedProfile = await refreshCurrentMulteiPanelProfile();
@@ -2635,7 +2713,9 @@ const loadReports = async () => {
       const updatedSelected = items.find((i) => i.ocorrenciaId === selectedItem.value?.ocorrenciaId);
       if (updatedSelected && Boolean(updatedSelected.revisada) === (activeTab.value === 'revisadas')) {
         selectedItem.value = updatedSelected;
-        adminNote.value = updatedSelected.observacao_admin || '';
+        if (!isSilent) {
+          adminNote.value = updatedSelected.observacao_admin || '';
+        }
         return;
       }
     }
@@ -2644,7 +2724,9 @@ const loadReports = async () => {
   } catch (err) {
     console.warn('[painel] Erro ao carregar reportadas:', err);
   } finally {
-    isLoadingReports.value = false;
+    if (!isSilent) {
+      isLoadingReports.value = false;
+    }
   }
 };
 
@@ -2758,14 +2840,7 @@ const handleLogout = async () => {
 
 const isDuplicityReviewItem = (item?: ReportedIncidentPanelItem | null): boolean => {
   if (!item) return false;
-  return Boolean(
-    item.possivel_duplicidade ||
-      item.origem_duplicidade ||
-      item.duplicidade_de_id ||
-      item.resultado_revisao === 'nao_duplicidade' ||
-      item.resultado_revisao === 'indefinido' ||
-      item.resultado_revisao === 'duplicidade'
-  );
+  return Boolean(item.possivel_duplicidade || item.resultado_revisao === 'indefinido');
 };
 
 const getVerdictMiniBadgeClass = (decision?: ReportReviewDecision | ''): string => {
@@ -2830,11 +2905,13 @@ const handleReviewDecision = async (decision: ReportReviewDecision) => {
 
     const idx = allReports.value.findIndex((i) => i.ocorrenciaId === updated.ocorrenciaId);
     if (idx !== -1) {
+      const clearOrigPhoto = decision === 'nao_duplicidade' || decision === 'improcedente';
       allReports.value[idx] = {
         ...allReports.value[idx],
         ...updated,
-        duplicidade_original_fotoUrl:
-          updated.duplicidade_original_fotoUrl || allReports.value[idx].duplicidade_original_fotoUrl
+        duplicidade_original_fotoUrl: clearOrigPhoto
+          ? undefined
+          : updated.duplicidade_original_fotoUrl || allReports.value[idx].duplicidade_original_fotoUrl
       };
     }
 
@@ -2889,6 +2966,121 @@ const formatDateTime = (iso?: string) => {
   });
 };
 
+interface LivePanelNotificationItem {
+  id: number;
+  title: string;
+  subtitle: string;
+  ocorrenciaId?: string;
+  targetSection: 'ocorrencias' | 'denuncias';
+}
+
+const livePanelNotification = ref<LivePanelNotificationItem | null>(null);
+let liveToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+const dismissLivePanelNotification = () => {
+  livePanelNotification.value = null;
+  if (liveToastTimer) {
+    clearTimeout(liveToastTimer);
+    liveToastTimer = null;
+  }
+};
+
+const showLivePanelToast = (notification: LivePanelNotificationItem) => {
+  livePanelNotification.value = notification;
+  announceSr(`${notification.title} ${notification.subtitle}`.trim());
+  if (liveToastTimer) {
+    clearTimeout(liveToastTimer);
+  }
+  liveToastTimer = setTimeout(() => {
+    livePanelNotification.value = null;
+    liveToastTimer = null;
+  }, 15000);
+};
+
+const focusLiveNotificationIncident = async () => {
+  const notif = livePanelNotification.value;
+  dismissLivePanelNotification();
+  if (!notif) return;
+
+  if (notif.targetSection === 'ocorrencias' && isAdminRole.value) {
+    adminMainSection.value = 'ocorrencias';
+    activeTab.value = 'pendentes';
+    await loadReports({ silent: true });
+    if (notif.ocorrenciaId) {
+      const match = pendingItems.value.find((i) => i.ocorrenciaId === notif.ocorrenciaId || i.id === notif.ocorrenciaId);
+      if (match) {
+        selectedItem.value = match;
+        adminNote.value = match.observacao_admin || '';
+        return;
+      }
+    }
+    if (pendingItems.value[0]) {
+      selectedItem.value = pendingItems.value[0];
+      adminNote.value = pendingItems.value[0].observacao_admin || '';
+    }
+    return;
+  }
+
+  adminMainSection.value = 'denuncias';
+  partnerFilterTab.value = 'pendentes';
+  await loadPartnerDenuncias({ silent: true });
+  if (notif.ocorrenciaId) {
+    const match = pendingPartnerIncidents.value.find((i) => i.id === notif.ocorrenciaId);
+    if (match) {
+      selectPartnerIncident(match);
+      return;
+    }
+  }
+  if (pendingPartnerIncidents.value[0]) {
+    selectPartnerIncident(pendingPartnerIncidents.value[0]);
+  }
+};
+
+const doesLiveEventMatchPartnerCity = (evt: MulteiLiveDeltaEvent): boolean => {
+  if (!userProfile.value) return false;
+  if (userProfile.value.role === 'admin') return true;
+
+  const partnerCity = normalizeSearchText(userProfile.value.cidade || '');
+  const partnerUf = (normalizeState(userProfile.value.estado || '') || userProfile.value.estado || '')
+    .trim()
+    .toUpperCase();
+
+  const eventCity = normalizeSearchText(evt.cidade || '');
+  const eventUf = (normalizeState(evt.estado || '') || evt.estado || '')
+    .trim()
+    .toUpperCase();
+
+  if (partnerCity && eventCity && partnerCity !== eventCity) {
+    return false;
+  }
+  if (partnerUf && eventUf && partnerUf !== eventUf) {
+    return false;
+  }
+  return true;
+};
+
+const scheduleSilentReportsRefresh = () => {
+  if (!userProfile.value || userProfile.value.role !== 'admin') return;
+  if (liveReportsDebounceTimer) {
+    clearTimeout(liveReportsDebounceTimer);
+  }
+  liveReportsDebounceTimer = setTimeout(() => {
+    liveReportsDebounceTimer = null;
+    void loadReports({ silent: true });
+  }, 350);
+};
+
+const scheduleSilentPartnerRefresh = () => {
+  if (!userProfile.value) return;
+  if (livePartnerDebounceTimer) {
+    clearTimeout(livePartnerDebounceTimer);
+  }
+  livePartnerDebounceTimer = setTimeout(() => {
+    livePartnerDebounceTimer = null;
+    void loadPartnerDenuncias({ silent: true });
+  }, 350);
+};
+
 onMounted(() => {
   unsubscribeAuth = subscribeToMulteiPanelAuth(
     async (profile) => {
@@ -2901,6 +3093,7 @@ onMounted(() => {
         adminMainSection.value = 'denuncias';
         await loadPartnerDenuncias();
       } else {
+        dismissLivePanelNotification();
         allReports.value = [];
         panelUsers.value = [];
         partnerIncidents.value = [];
@@ -2910,6 +3103,7 @@ onMounted(() => {
       }
     },
     () => {
+      dismissLivePanelNotification();
       allReports.value = [];
       panelUsers.value = [];
       partnerIncidents.value = [];
@@ -2920,11 +3114,94 @@ onMounted(() => {
       announceSr(loginError.value);
     }
   );
+
+  // Listener em tempo real (SSE + Poll + BroadcastChannel, igual ao contador ao vivo de /multei/sobre)
+  // para atualizar automaticamente novos reports, denúncias e resoluções sem precisar clicar em "Atualizar",
+  // e notificar o parceiro quando uma nova ocorrência acontece na sua cidade cadastrada.
+  unsubscribeLiveEvents = subscribeToMulteiLiveEvents((evt) => {
+    if (!userProfile.value) return;
+
+    const isAdmin = userProfile.value.role === 'admin';
+    const matchesCity = doesLiveEventMatchPartnerCity(evt);
+
+    if (isAdmin && (evt.category === 'reportadas' || evt.delta === -1)) {
+      scheduleSilentReportsRefresh();
+    }
+
+    if (!matchesCity) {
+      return;
+    }
+
+    if (
+      evt.category === 'infracoesTransito' ||
+      evt.category === 'mobilidadeUrbana' ||
+      evt.category === 'resolvidos' ||
+      evt.category === 'denunciasPainel' ||
+      evt.category === 'reportadas'
+    ) {
+      scheduleSilentPartnerRefresh();
+    }
+
+    // Notificação visual no painel para novas ocorrências na cidade do parceiro (ou para o Admin)
+    if (
+      evt.delta === 1 &&
+      (evt.category === 'infracoesTransito' || evt.category === 'mobilidadeUrbana')
+    ) {
+      const cityLabel = [
+        evt.cidade || (!isAdmin ? userProfile.value.cidade : ''),
+        evt.estado || (!isAdmin ? userProfile.value.estado : '')
+      ]
+        .filter(Boolean)
+        .join('/');
+      const naturezaLabel =
+        evt.natureza === 'urbana' || evt.category === 'mobilidadeUrbana'
+          ? '🚧 Problema de Acesso Urbano'
+          : '🚗 Infração de Trânsito';
+      const addressPart = [evt.rua, evt.bairro].filter(Boolean).join(' - ');
+
+      showLivePanelToast({
+        id: evt.id,
+        title: cityLabel
+          ? `Nova ocorrência reportada em ${cityLabel}!`
+          : 'Nova ocorrência reportada!',
+        subtitle: [naturezaLabel, addressPart].filter(Boolean).join(' • '),
+        ocorrenciaId: evt.ocorrenciaId,
+        targetSection: 'denuncias'
+      });
+    } else if (isAdmin && evt.delta === 1 && evt.category === 'reportadas' && evt.action === 'novo_report') {
+      const cityLabel = [evt.cidade, evt.estado].filter(Boolean).join('/');
+      const addressPart = [evt.rua, evt.bairro].filter(Boolean).join(' - ');
+      showLivePanelToast({
+        id: evt.id,
+        title: cityLabel
+          ? `Nova ocorrência sinalizada para revisão em ${cityLabel}!`
+          : 'Nova ocorrência sinalizada para revisão!',
+        subtitle: addressPart || 'Aba Ocorrências Reportadas atualizada automaticamente.',
+        ocorrenciaId: evt.ocorrenciaId,
+        targetSection: 'ocorrencias'
+      });
+    }
+  });
 });
 
 onBeforeUnmount(() => {
   if (typeof unsubscribeAuth === 'function') {
     unsubscribeAuth();
+  }
+  if (typeof unsubscribeLiveEvents === 'function') {
+    unsubscribeLiveEvents();
+  }
+  if (liveReportsDebounceTimer) {
+    clearTimeout(liveReportsDebounceTimer);
+    liveReportsDebounceTimer = null;
+  }
+  if (livePartnerDebounceTimer) {
+    clearTimeout(livePartnerDebounceTimer);
+    livePartnerDebounceTimer = null;
+  }
+  if (liveToastTimer) {
+    clearTimeout(liveToastTimer);
+    liveToastTimer = null;
   }
 });
 </script>
@@ -3055,12 +3332,140 @@ onBeforeUnmount(() => {
   border-radius: 9999px;
 }
 
+.live-monitor-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 0.22rem 0.65rem;
+  border-radius: 9999px;
+  background: var(--pp-green-bg);
+  color: var(--pp-green-text);
+  border: 1.5px solid var(--pp-green-border);
+}
+
+.live-monitor-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+  animation: liveDotPulse 2s ease-in-out infinite;
+}
+
+@keyframes liveDotPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.88);
+  }
+}
+
+.live-panel-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: var(--pp-selected-bg);
+  border: 2px solid var(--pp-selected-border);
+  border-radius: 16px;
+  padding: 0.9rem 1.15rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 10px 26px rgba(112, 26, 117, 0.14);
+}
+
+.live-panel-toast-body {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.live-panel-toast-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.live-panel-toast-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.live-panel-toast-title {
+  font-size: 0.96rem;
+  font-weight: 900;
+  color: var(--pp-text-primary);
+}
+
+.live-panel-toast-subtitle {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--pp-text-secondary);
+}
+
+.live-panel-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+
+.btn-live-toast-view {
+  background: var(--pp-accent);
+  color: var(--pp-accent-text);
+  border: 2px solid var(--pp-accent);
+  font-weight: 800;
+  font-size: 0.84rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-live-toast-view:hover {
+  background: var(--pp-accent-hover);
+  border-color: var(--pp-accent-hover);
+}
+
+.btn-live-toast-dismiss {
+  background: var(--pp-surface);
+  color: var(--pp-text-primary);
+  border: 1.5px solid var(--pp-border-strong);
+  font-weight: 800;
+  font-size: 0.84rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.live-toast-fade-enter-active,
+.live-toast-fade-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.live-toast-fade-enter-from,
+.live-toast-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
 .role-badge {
   font-size: 0.78rem;
   font-weight: 800;
   padding: 0.25rem 0.7rem;
   border-radius: 9999px;
-  text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
@@ -3786,6 +4191,10 @@ onBeforeUnmount(() => {
 .decision-actions.is-duplicity-decision-grid {
   grid-template-columns: 1fr;
   gap: 0.65rem;
+}
+
+.btn-duplicidade-common {
+  grid-column: 1 / -1;
 }
 
 .btn-decision {

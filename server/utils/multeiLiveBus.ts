@@ -1,6 +1,21 @@
-export type MulteiLiveCategory = 'infracoesTransito' | 'mobilidadeUrbana' | 'resolvidos';
+export type MulteiLiveCategory =
+  | 'infracoesTransito'
+  | 'mobilidadeUrbana'
+  | 'resolvidos'
+  | 'reportadas'
+  | 'denunciasPainel';
 
-export interface MulteiLiveEvent {
+export interface MulteiLiveEventMeta {
+  cidade?: string;
+  estado?: string;
+  bairro?: string;
+  rua?: string;
+  natureza?: string;
+  ocorrenciaId?: string;
+  action?: 'nova_ocorrencia' | 'novo_report' | 'nova_resolucao' | 'revisao';
+}
+
+export interface MulteiLiveEvent extends MulteiLiveEventMeta {
   id: number;
   category: MulteiLiveCategory;
   delta: 1 | -1;
@@ -12,7 +27,9 @@ type MulteiLiveListener = (evt: MulteiLiveEvent) => void;
 const ALLOWED_CATEGORIES: ReadonlySet<string> = new Set<MulteiLiveCategory>([
   'infracoesTransito',
   'mobilidadeUrbana',
-  'resolvidos'
+  'resolvidos',
+  'reportadas',
+  'denunciasPainel'
 ]);
 
 const MAX_RECENT_EVENTS = 100;
@@ -79,9 +96,38 @@ export function checkMulteiLiveRateLimit(ip: string): boolean {
   return true;
 }
 
+function cleanText(val: unknown, maxLen = 100): string | undefined {
+  if (typeof val !== 'string') return undefined;
+  const trimmed = val.trim().slice(0, maxLen);
+  return trimmed || undefined;
+}
+
+export function sanitizeMulteiLiveMeta(raw: Record<string, unknown> | null | undefined): MulteiLiveEventMeta {
+  if (!raw || typeof raw !== 'object') return {};
+  const rawAction = cleanText(raw.action, 30);
+  const action: MulteiLiveEventMeta['action'] =
+    rawAction === 'nova_ocorrencia' ||
+    rawAction === 'novo_report' ||
+    rawAction === 'nova_resolucao' ||
+    rawAction === 'revisao'
+      ? rawAction
+      : undefined;
+
+  return {
+    cidade: cleanText(raw.cidade, 80),
+    estado: cleanText(raw.estado, 10),
+    bairro: cleanText(raw.bairro, 80),
+    rua: cleanText(raw.rua, 120),
+    natureza: cleanText(raw.natureza, 30),
+    ocorrenciaId: cleanText(raw.ocorrenciaId, 60),
+    action
+  };
+}
+
 export function publishMulteiLiveEvent(
   category: MulteiLiveCategory,
-  delta: 1 | -1 = 1
+  delta: 1 | -1 = 1,
+  meta?: MulteiLiveEventMeta
 ): MulteiLiveEvent {
   const state = getBusState();
   state.seq += 1;
@@ -90,7 +136,8 @@ export function publishMulteiLiveEvent(
     id: state.seq,
     category,
     delta,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    ...(meta || {})
   };
 
   state.events.push(evt);
