@@ -2878,6 +2878,7 @@ export async function reviewReportedIncidentInFirebase(params: {
       ativo: targetAtivo,
       possivel_duplicidade: targetPossivelDuplicidade,
       rotulo_duplicidade: targetRotuloDuplicidade,
+      ...(decision === 'nao_duplicidade' ? { duplicidade_de_id: '' } : {}),
       ...(isDuplicityDecision ? { origem_duplicidade: true } : {}),
       revisada_admin: true,
       resultado_revisao: decision,
@@ -2894,6 +2895,7 @@ export async function reviewReportedIncidentInFirebase(params: {
     ativo: targetAtivo,
     possivel_duplicidade: targetPossivelDuplicidade,
     rotulo_duplicidade: targetRotuloDuplicidade,
+    ...(decision === 'nao_duplicidade' ? { duplicidade_de_id: '' } : {}),
     ...(isDuplicityDecision || item.origem_duplicidade ? { origem_duplicidade: true } : {}),
     revisada: true,
     status_revisao: 'revisada',
@@ -2922,7 +2924,7 @@ export async function reviewReportedIncidentInFirebase(params: {
     );
   }
 
-  // 3. Atualiza cache local de ocorrências do mapa
+  // 3. Atualiza cache local de ocorrências do mapa (desagrupando os pins se nao_duplicidade)
   if (!targetAtivo) {
     removeIncidentFromLocalCache(ocorrenciaId);
   } else if (typeof window !== 'undefined') {
@@ -2932,7 +2934,8 @@ export async function reviewReportedIncidentInFirebase(params: {
             ...inc,
             ativo: true,
             possivel_duplicidade: targetPossivelDuplicidade,
-            rotulo_duplicidade: targetRotuloDuplicidade
+            rotulo_duplicidade: targetRotuloDuplicidade,
+            ...(decision === 'nao_duplicidade' ? { duplicidade_de_id: '' } : {})
           }
         : inc;
 

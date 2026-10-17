@@ -648,6 +648,7 @@ const isAdjustingLocation = ref(false);
 const isEditingAddress = ref(false);
 const hasManualAddressEdit = ref(false);
 const isValidatingAddress = ref(false);
+const usedUnverifiedStreetNumberAdjustment = ref(false);
 const addressEditError = ref('');
 const addressText = ref('');
 const streetName = ref('');
@@ -740,6 +741,8 @@ const normalizeComparison = (val) =>
     .trim();
 
 const validateTypedAddressRadius = async () => {
+  usedUnverifiedStreetNumberAdjustment.value = false;
+
   if (!hasManualAddressEdit.value) {
     addressEditError.value = '';
     return { valid: true };
@@ -778,8 +781,8 @@ const validateTypedAddressRadius = async () => {
     ? parseInt(gpsResolvedStreetNumber.value.replace(/\D/g, ''), 10)
     : NaN;
 
-  // 1. Se permaneceu na mesma rua do GPS e o GPS identificou o número aproximado,
-  // qualquer número com diferença > 200 já excede o raio de 200m (ou a faixa real do quarteirão)
+  // 1. Se o sistema identificou o número da rua via GPS, mantém a trava estrita de diferença máxima (200)
+  // para impedir brecha de informar numeração fora do raio
   if (sameStreetAsGps && Number.isFinite(typedDigits) && Number.isFinite(gpsDigits)) {
     if (Math.abs(typedDigits - gpsDigits) > MAX_ADJUST_RADIUS_METERS) {
       addressEditError.value = outOfRadiusMessage;
@@ -801,20 +804,36 @@ const validateTypedAddressRadius = async () => {
       }
     });
 
+    const withNumberPool =
+      candidates && sNum && !isSemNumero ? candidates.filter((c) => c.hasStreetNumber) : [];
+
+    // Caso o sistema NÃO tenha conseguido identificar a numeração da rua (nem no GPS inicial nem nas bases de geocodificação)
+    // e o usuário manteve a mesma rua e bairro do GPS: permite informar o número manualmente e classifica a denúncia como B
+    const systemCouldNotIdentifyStreetNumbers =
+      !Number.isFinite(gpsDigits) && withNumberPool.length === 0;
+
+    if (systemCouldNotIdentifyStreetNumbers && sameStreetAsGps && sameBairroAsGps) {
+      if (sNum && !isSemNumero) {
+        usedUnverifiedStreetNumberAdjustment.value = true;
+      }
+      addressEditError.value = '';
+      saveError.value = '';
+      return { valid: true };
+    }
+
     if (!candidates || candidates.length === 0) {
       addressEditError.value = outOfRadiusMessage;
       return { valid: false, message: outOfRadiusMessage };
     }
 
-    const withNumberPool = sNum && !isSemNumero ? candidates.filter(c => c.hasStreetNumber) : [];
-
-    // 2. Se o usuário digitou um número mas nenhuma fonte geográfica encontrou esse número na via
-    // (ex: número superior ao que existe na rua), só permite se for um ajuste fino próximo ao número do GPS
+    // 2. Se o sistema identificou números na rua via GPS mas o número digitado não existe na base geográfica,
+    // só permite se for um ajuste fino próximo ao número do GPS (<= 200)
     if (sNum && !isSemNumero && withNumberPool.length === 0) {
       const isCloseToGpsNumber =
         sameStreetAsGps &&
-        ((Number.isFinite(typedDigits) && Number.isFinite(gpsDigits) && Math.abs(typedDigits - gpsDigits) <= MAX_ADJUST_RADIUS_METERS) ||
-          (!Number.isFinite(gpsDigits) && Number.isFinite(typedDigits) && typedDigits <= MAX_ADJUST_RADIUS_METERS));
+        Number.isFinite(typedDigits) &&
+        Number.isFinite(gpsDigits) &&
+        Math.abs(typedDigits - gpsDigits) <= MAX_ADJUST_RADIUS_METERS;
 
       if (!isCloseToGpsNumber) {
         addressEditError.value = outOfRadiusMessage;
@@ -933,6 +952,12 @@ const getDistanceMeters = (lat1, lon1, lat2, lon2) => {
 };
 
 const computeIncidentClassification = () => {
+  // Se houve ajuste manual de número em uma rua onde o sistema não conseguiu identificar a numeração,
+  // classifica a denúncia como "B" por conta desse ajuste
+  if (usedUnverifiedStreetNumberAdjustment.value) {
+    return 'B';
+  }
+
   // 1. Fotos tiradas diretamente pela câmera integrada do App ("Tirar Foto Agora") são classificadas como "A"
   if (photoOrigin.value === 'camera') {
     return 'A';
@@ -1386,6 +1411,7 @@ const handleRefreshGps = async () => {
     setGpsAnchorLocation(coords.latitude, coords.longitude);
     locationSource.value = 'device';
     hasManualAddressEdit.value = false;
+    usedUnverifiedStreetNumberAdjustment.value = false;
     gpsStatusMessage.value = 'Localização atualizada com sucesso!';
     await updateAddress(coords.latitude, coords.longitude);
   } catch (err) {
@@ -1490,6 +1516,7 @@ const resetToUpload = () => {
   isAdjustingLocation.value = false;
   isEditingAddress.value = false;
   hasManualAddressEdit.value = false;
+  usedUnverifiedStreetNumberAdjustment.value = false;
   isValidatingAddress.value = false;
   processedImageWebp.value = '';
   detectedVerificacao.value = '';

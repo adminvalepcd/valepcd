@@ -354,7 +354,7 @@
 
                     <!-- Selo de Possível Duplicidade -->
                     <span
-                      v-if="isDuplicityReviewItem(item)"
+                      v-if="item.possivel_duplicidade"
                       class="duplicity-panel-badge"
                       title="O Gemini identificou que este veículo pode ser o mesmo de outra denúncia recente num raio de 10m"
                     >
@@ -420,7 +420,7 @@
                   </span>
 
                   <span
-                    v-if="isDuplicityReviewItem(selectedItem)"
+                    v-if="selectedItem.possivel_duplicidade"
                     class="duplicity-panel-badge repeat-badge-lg"
                     :title="selectedItem.duplicidade_de_id ? `Duplicidade vinculada ao ID: ${selectedItem.duplicidade_de_id}` : 'Possível duplicidade detectada pelo Gemini'"
                   >

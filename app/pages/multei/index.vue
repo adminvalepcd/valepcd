@@ -630,11 +630,25 @@ const groupDuplicateIncidents = (rawList) => {
   }
 
   const groupedResult = [];
+  const occupiedCoordsCount = new Map();
+
   for (const [, group] of groupsMap.entries()) {
     if (group.length === 1) {
+      const item = group[0];
+      const coordKey = `${Number(item.latitude).toFixed(5)}_${Number(item.longitude).toFixed(5)}`;
+      const seenCount = occupiedCoordsCount.get(coordKey) || 0;
+      occupiedCoordsCount.set(coordKey, seenCount + 1);
+
+      // Se dois pins desagrupados tiverem exatamente a mesma coordenada, aplica um leve deslocamento visual (~3.5m) para exibir os 2 pins lado a lado
+      const angle = (seenCount * Math.PI) / 3;
+      const offsetLat = seenCount > 0 ? Math.sin(angle) * 0.000032 : 0;
+      const offsetLng = seenCount > 0 ? Math.cos(angle) * 0.000032 : 0;
+
       groupedResult.push({
-        ...group[0],
-        groupItems: [group[0]]
+        ...item,
+        latitude: Number(item.latitude) + offsetLat,
+        longitude: Number(item.longitude) + offsetLng,
+        groupItems: [item]
       });
     } else {
       // Ordena para que a primeira denúncia (original) fique na página 1 e as duplicidades nas páginas seguintes
@@ -648,6 +662,9 @@ const groupDuplicateIncidents = (rawList) => {
       });
 
       const primary = sortedGroup[0];
+      const coordKey = `${Number(primary.latitude).toFixed(5)}_${Number(primary.longitude).toFixed(5)}`;
+      occupiedCoordsCount.set(coordKey, (occupiedCoordsCount.get(coordKey) || 0) + 1);
+
       groupedResult.push({
         ...primary,
         groupItems: sortedGroup
