@@ -1322,6 +1322,9 @@ const updateAddress = async (lat, lng) => {
   lastGeocodedCoords.latitude = lat;
   lastGeocodedCoords.longitude = lng;
   isResolvingAddress.value = true;
+  if (!addressText.value) {
+    addressText.value = 'Buscando endereço...';
+  }
   try {
     const details = await getAddressDetailsFromCoords(lat, lng);
     if (requestId !== latestAddressRequestId) {
@@ -1332,7 +1335,12 @@ const updateAddress = async (lat, lng) => {
       ? extractCityAndStateFromText(details.formattedAddress)
       : { rua: '', bairro: '', cidade: '', estado: '' };
 
-    const resolvedRua = (details.rua || fromText.rua || '').trim();
+    const parsedDetailsRua = splitStreetAndNumber(details.rua || '');
+    const parsedTextRua = splitStreetAndNumber(fromText.rua || '');
+    const bestStreetName = parsedDetailsRua.streetName || parsedTextRua.streetName;
+    const bestStreetNumber = parsedDetailsRua.streetNumber || parsedTextRua.streetNumber;
+    const resolvedRua = composeRuaWithNumber(bestStreetName, bestStreetNumber);
+
     const resolvedBairro = (details.bairro || fromText.bairro || '').trim();
     const resolvedCidade = (details.cidade || fromText.cidade || '').trim();
     const resolvedEstado = (details.estado || fromText.estado || '').trim();
@@ -1344,6 +1352,9 @@ const updateAddress = async (lat, lng) => {
     } else {
       if (resolvedRua && !currentRua.value) {
         syncFieldsFromRua(resolvedRua, false);
+      } else if (bestStreetNumber && !streetNumber.value) {
+        streetNumber.value = bestStreetNumber;
+        currentRua.value = composeRuaWithNumber(streetName.value, streetNumber.value);
       }
       if (resolvedBairro && !currentBairro.value) {
         currentBairro.value = resolvedBairro;
@@ -1359,7 +1370,9 @@ const updateAddress = async (lat, lng) => {
       [currentCidade.value, currentEstado.value].filter(Boolean).join(' - ')
     ].filter(Boolean).join(' - ');
 
-    if (details.formattedAddress && !details.formattedAddress.startsWith('Lat:')) {
+    if (composedDisplay && currentRua.value) {
+      addressText.value = composedDisplay;
+    } else if (details.formattedAddress && !details.formattedAddress.startsWith('Lat:')) {
       addressText.value = details.formattedAddress;
     } else if (composedDisplay) {
       addressText.value = composedDisplay;
@@ -1369,7 +1382,7 @@ const updateAddress = async (lat, lng) => {
 
     return details;
   } catch {
-    if (requestId === latestAddressRequestId && !addressText.value) {
+    if (requestId === latestAddressRequestId && (!addressText.value || addressText.value.startsWith('Buscando'))) {
       addressText.value = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
     }
     return null;
@@ -1721,6 +1734,16 @@ const processSelectedImage = async (file) => {
       analysis.faces
     );
 
+    if (currentAddressPromise) {
+      analyzingStatusText.value = 'Obtendo endereço e numeração...';
+      try {
+        await Promise.race([
+          currentAddressPromise,
+          new Promise((resolve) => setTimeout(resolve, 3500))
+        ]);
+      } catch {}
+    }
+
     processedImageWebp.value = finalWebp;
     step.value = 'preview';
   } catch (err) {
@@ -1747,7 +1770,7 @@ const toggleAdjustLocation = () => {
   if (locationSource.value === 'fallback') {
     locationSource.value = 'manual';
   }
-  if (!currentCidade.value || !currentEstado.value) {
+  if (!currentCidade.value || !currentEstado.value || !currentRua.value || !streetNumber.value) {
     if (geocodeDebounceTimer) {
       clearTimeout(geocodeDebounceTimer);
       geocodeDebounceTimer = null;
@@ -1797,20 +1820,19 @@ const handlePinChange = (newLoc) => {
   selectedLocation.longitude = checked.longitude;
 
   // Atualiza e busca o endereço imediatamente após qualquer movimento do pino no mapa (mesmo sem clicar em "Concluir Ajuste")
-  if (hasMoved || !currentCidade.value || !currentEstado.value) {
-    locationSource.value = 'manual';
-    hasManualAddressEdit.value = false;
-    addressEditError.value = '';
-    saveError.value = '';
-    isResolvingAddress.value = true;
-
+  if (hasMoved || !currentCidade.value || !currentEstado.value || !currentRua.value || !streetNumber.value) {
     if (hasMoved) {
+      locationSource.value = 'manual';
+      hasManualAddressEdit.value = false;
+      addressEditError.value = '';
+      saveError.value = '';
       streetName.value = '';
       streetNumber.value = '';
       currentRua.value = '';
       currentBairro.value = '';
       addressText.value = 'Buscando endereço...';
     }
+    isResolvingAddress.value = true;
 
     if (geocodeDebounceTimer) clearTimeout(geocodeDebounceTimer);
     geocodeDebounceTimer = setTimeout(() => {

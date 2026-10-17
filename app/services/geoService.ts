@@ -191,6 +191,38 @@ export function extractCityAndStateFromText(text?: string | null): { rua: string
 
 const detailsCache = new Map<string, GeoAddressDetails>();
 
+async function getGoogleGeocoder(): Promise<any | null> {
+  if (typeof window === 'undefined') return null;
+  const gMaps = (window as any).google?.maps;
+  if (!gMaps) return null;
+  if (typeof gMaps.Geocoder === 'function') {
+    return new gMaps.Geocoder();
+  }
+  if (typeof gMaps.importLibrary === 'function') {
+    try {
+      const lib = await gMaps.importLibrary('geocoding');
+      const GeocoderClass = lib?.Geocoder || gMaps.Geocoder;
+      if (typeof GeocoderClass === 'function') {
+        return new GeocoderClass();
+      }
+    } catch (err) {
+      console.warn('[geoService] Falha ao carregar biblioteca geocoding do Google Maps:', err);
+    }
+  }
+  return null;
+}
+
+function extractCleanStreetNum(rawNum: string): string {
+  const s = String(rawNum || '').trim();
+  if (!s) return '';
+  const rangeMatch = s.match(/^(\d+[A-Za-z]?)\s*[-–/]\s*\d+/);
+  if (rangeMatch && rangeMatch[1]) {
+    return rangeMatch[1];
+  }
+  const numMatch = s.match(/^(\d+[A-Za-z0-9\/-]*)$/);
+  return numMatch ? numMatch[1] : '';
+}
+
 /**
  * Converte coordenadas (latitude, longitude) em detalhes completos de localização (rua, bairro, cidade, estado).
  */
@@ -205,10 +237,12 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     };
   }
 
+  const hasStreetNumber = (s: string) => /,\s*\d+/.test(s);
   const cacheKey = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
   if (detailsCache.has(cacheKey)) {
     const cached = detailsCache.get(cacheKey)!;
-    if (cached.cidade && cached.estado) {
+    // Só retorna do cache imediatamente se já possuir número na rua
+    if (cached.cidade && cached.estado && hasStreetNumber(cached.rua)) {
       return cached;
     }
   }
@@ -219,9 +253,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
   let accCidade = '';
   let accEstado = '';
 
-  const hasStreetNumber = (s: string) => /,\s*\d+/.test(s);
-
-  // 1. Tentar endpoint interno do servidor Nuxt /api/geocode (sem problemas de CORS ou bloqueio 403)
+  // 1. Tentar endpoint interno do servidor Nuxt /api/geocode (Nominatim + ArcGIS Reverse Geocode)
   try {
     const res = await fetch(`/api/geocode?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`);
     if (res.ok) {
@@ -235,10 +267,10 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         if (data.cidade) accCidade = String(data.cidade).trim();
         if (data.estado) accEstado = normalizeState(data.estado);
 
-        const canTryGoogleForNumber = typeof window !== 'undefined' && Boolean((window as any).google?.maps?.Geocoder);
-        if (accCidade && accEstado && accBairro && (hasStreetNumber(accRua) || !canTryGoogleForNumber)) {
+        if (accCidade && accEstado && accBairro && hasStreetNumber(accRua)) {
+          const composed = [accRua, accBairro, accCidade, accEstado].filter(Boolean).join(' - ');
           const details: GeoAddressDetails = {
-            formattedAddress: accFormattedAddress || [accRua, accBairro, accCidade, accEstado].filter(Boolean).join(' - '),
+            formattedAddress: composed || accFormattedAddress,
             rua: accRua,
             bairro: accBairro,
             cidade: accCidade,
@@ -255,9 +287,9 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
   }
 
   // 2. Tentar Google Maps Geocoder se a API estiver carregada no navegador (excelente para obter o número aproximado da via)
-  if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
+  const geocoder = await getGoogleGeocoder();
+  if (geocoder) {
     try {
-      const geocoder = new (window as any).google.maps.Geocoder();
       const results = await new Promise<any[]>((resolve, reject) => {
         geocoder.geocode(
           { location: { lat: latitude, lng: longitude } },
@@ -286,7 +318,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
                 resRoute = comp.long_name || comp.short_name || '';
               }
               if (!resNum && types.includes('street_number')) {
-                resNum = comp.long_name || comp.short_name || '';
+                resNum = extractCleanStreetNum(comp.long_name || comp.short_name || '');
               }
               if (!accBairro && (types.includes('sublocality_level_1') || types.includes('sublocality') || types.includes('neighborhood'))) {
                 accBairro = comp.long_name || comp.short_name || '';
@@ -314,7 +346,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
             const firstSegment = res.formatted_address.split(/\s+[–-]\s+/)[0] || '';
             const numMatch = firstSegment.match(/,\s*(\d+[A-Za-z0-9\/-]*)/);
             if (numMatch && numMatch[1]) {
-              foundStreetNum = numMatch[1].trim();
+              foundStreetNum = extractCleanStreetNum(numMatch[1]);
               if (!foundStreetName) {
                 foundStreetName = firstSegment.substring(0, numMatch.index).trim();
               }
@@ -341,7 +373,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
           accFormattedAddress = results[0].formatted_address;
         }
 
-        if (accCidade && accEstado) {
+        if (accCidade && accEstado && hasStreetNumber(accRua)) {
           const details: GeoAddressDetails = {
             formattedAddress: accFormattedAddress,
             rua: accRua,
@@ -359,7 +391,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     }
   }
 
-  // 3. Fallback: OpenStreetMap Nominatim
+  // 3. Fallback: OpenStreetMap Nominatim se ainda faltar rua, bairro, cidade ou estado
   if (!accCidade || !accEstado || !accRua || !accBairro) {
     try {
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&zoom=18&addressdetails=1&email=contato@valepcd.com.br`;
@@ -374,10 +406,13 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         if (data && data.address) {
           const addr = data.address;
           const street = addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || '';
-          const number = addr.house_number ? `, ${addr.house_number}` : '';
+          const cleanHouseNum = extractCleanStreetNum(addr.house_number || '');
+          const number = cleanHouseNum ? `, ${cleanHouseNum}` : '';
           const suburb = addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || '';
           if (!accRua && street) {
             accRua = `${street}${number}`;
+          } else if (!hasStreetNumber(accRua) && accRua && cleanHouseNum) {
+            accRua = `${accRua.replace(/,\s*$/, '').trim()}, ${cleanHouseNum}`;
           }
           if (!accBairro && suburb) {
             accBairro = suburb;
@@ -398,21 +433,56 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
           if (accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
             accCidade = 'Brasília';
           }
-
-          const parts = [
-            accRua,
-            accBairro,
-            accCidade,
-            accEstado
-          ].filter(Boolean);
-
-          if (!accFormattedAddress) {
-            accFormattedAddress = parts.length > 0 ? parts.join(' - ') : (data.display_name || '');
-          }
         }
       }
     } catch (osmErr) {
       console.warn('[geoService] Fallback Nominatim falhou:', osmErr);
+    }
+  }
+
+  // 3.5. Fallback direto ArcGIS Reverse Geocode no cliente caso a rua ainda esteja sem número
+  if (!hasStreetNumber(accRua)) {
+    try {
+      const arcUrl = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?f=json&location=${encodeURIComponent(longitude)},${encodeURIComponent(latitude)}&langCode=pt&featureTypes=PointAddress,StreetAddress,StreetName`;
+      const arcRes = await fetch(arcUrl);
+      if (arcRes.ok) {
+        const arcData = await arcRes.json();
+        const arcAddr = arcData?.address;
+        if (arcAddr) {
+          const arcNum = extractCleanStreetNum(arcAddr.AddNum || '');
+          const rawAddress = String(arcAddr.Address || arcAddr.ShortLabel || '').trim();
+          let arcStreet = '';
+          let parsedNum = arcNum;
+
+          if (rawAddress) {
+            const commaMatch = rawAddress.match(/^(.*?),\s*(\d+[A-Za-z0-9\/-]*)$/);
+            if (commaMatch) {
+              arcStreet = commaMatch[1].trim();
+              if (!parsedNum) parsedNum = extractCleanStreetNum(commaMatch[2]);
+            } else {
+              arcStreet = rawAddress.replace(/,\s*$/, '').trim();
+            }
+          }
+
+          if (accRua && parsedNum) {
+            accRua = `${accRua.replace(/,\s*$/, '').trim()}, ${parsedNum}`;
+          } else if (!accRua && arcStreet) {
+            accRua = parsedNum ? `${arcStreet}, ${parsedNum}` : arcStreet;
+          }
+
+          if (!accBairro && (arcAddr.Neighborhood || arcAddr.District)) {
+            accBairro = String(arcAddr.Neighborhood || arcAddr.District).trim();
+          }
+          if (!accCidade && (arcAddr.City || arcAddr.Subregion)) {
+            accCidade = String(arcAddr.City || arcAddr.Subregion).trim();
+          }
+          if (!accEstado && (arcAddr.RegionAbbr || arcAddr.Region)) {
+            accEstado = normalizeState(String(arcAddr.RegionAbbr || arcAddr.Region).trim());
+          }
+        }
+      }
+    } catch (arcClientErr) {
+      console.warn('[geoService] Fallback ArcGIS client falhou:', arcClientErr);
     }
   }
 
@@ -447,10 +517,6 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         if (accEstado === 'DF' && (!accCidade || accCidade.toLowerCase().includes('plano piloto'))) {
           accCidade = 'Brasília';
         }
-        if (!accFormattedAddress) {
-          const parts = [accRua, accBairro || bdcData.locality, accCidade, accEstado].filter(Boolean);
-          accFormattedAddress = parts.join(' - ');
-        }
       }
     } catch (bdcErr) {
       console.warn('[geoService] Fallback BigDataCloud falhou:', bdcErr);
@@ -463,6 +529,11 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     if (!accBairro && parsed.bairro) accBairro = parsed.bairro;
     if (!accCidade && parsed.cidade) accCidade = parsed.cidade;
     if (!accEstado && parsed.estado) accEstado = parsed.estado;
+  }
+
+  const composedFinal = [accRua, accBairro, accCidade, accEstado].filter(Boolean).join(' - ');
+  if (composedFinal) {
+    accFormattedAddress = composedFinal;
   }
 
   const finalDetails: GeoAddressDetails = {
@@ -529,9 +600,9 @@ export async function searchAddresses(query: string): Promise<GeoSearchResult[]>
   }
 
   // 2. Fallback: Google Maps Geocoder no navegador
-  if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
+  const geocoder = await getGoogleGeocoder();
+  if (geocoder) {
     try {
-      const geocoder = new (window as any).google.maps.Geocoder();
       const gResults = await new Promise<any[]>((resolve, reject) => {
         geocoder.geocode(
           { address: clean, region: 'BR' },
@@ -691,10 +762,10 @@ export async function geocodeAddressForValidation(params: {
   const candidates: AddressValidationCandidate[] = [];
 
   // 1. Google Maps Geocoder no navegador (suporta interpolação de numeração da rua)
-  if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
+  const geocoder = await getGoogleGeocoder();
+  if (geocoder) {
     try {
       const googleMaps = (window as any).google.maps;
-      const geocoder = new googleMaps.Geocoder();
       const request: any = {
         address: fullQuery,
         region: 'BR'

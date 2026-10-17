@@ -241,7 +241,7 @@ const loadGoogleMapsScript = () => {
 
     const script = document.createElement('script');
     script.id = 'google-maps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsApiKey}&v=quarterly&loading=async&callback=${GOOGLE_MAPS_CALLBACK}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsApiKey}&libraries=geocoding&v=quarterly&loading=async&callback=${GOOGLE_MAPS_CALLBACK}`;
     script.async = true;
     script.onerror = (err) => {
       window.__googleMapsLoaderPromise = null;
