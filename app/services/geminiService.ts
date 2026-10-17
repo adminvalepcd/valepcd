@@ -120,7 +120,7 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
 - "verification": se "hasTrafficInfractionVehicle" for true, preencha com "faixa de pedestres", "transferencia" ou "Vaga exclusiva". Senão, retorne "".
 
 3. Descrição de Acessibilidade Urbana ("urbanDescription"):
-- Descreva em português (máximo de 300 caracteres) o que há na imagem com foco na acessibilidade e mobilidade urbana (ex: "Buraco na calçada dificultando a passagem", "Rampa de acessibilidade quebrada", "Piso tátil danificado ou interrompido", "Calçada obstruída por entulho/obras", etc.).
+- Descreva em português (máximo de 300 caracteres) o que há na imagem com foco na acessibilidade e mobilidade urbana (ex: "Buraco na calçada dificultando a passagem", "Rampa de acessibilidade quebrada/inexistente", "Piso tátil danificado ou interrompido", "Calçada obstruída por entulho/obras", etc.).
 
 4. Proteção de Privacidade / LGPD ("plates" e "faces") — OBRIGATÓRIO:
 - "plates": IMPORTANTE: Localize com precisão as caixas delimitadoras (bounding boxes) de TODAS as placas de veículos visíveis na cena (dianteiras e traseiras de qualquer veículo estacionado, em movimento ou ao fundo), cobrindo toda a extensão da placa (incluindo moldura e caracteres), onde x e y são o canto superior esquerdo (xmin, ymin) e width e height são a largura e altura da caixa para aplicação do desfoque pesado de privacidade.
