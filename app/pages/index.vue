@@ -100,9 +100,14 @@
 
             <h3>{{ $t('home.cardMulteiTitle') }}</h3>
             <p>{{ $t('home.cardMulteiDesc') }}</p>
-            <span class="link-more multei-coming-soon-label">
-              {{ $t('home.cardMulteiComingSoon') }}
-            </span>
+            <a
+              href="https://forms.gle/eYk83VudkMAKuYir6"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="link-more"
+            >
+              {{ $t('home.cardMulteiComingSoon') }}<span class="sr-only">{{ $t('home.opensInAnotherWindow') }}</span> &rarr;
+            </a>
           </div>
 
         </div>
