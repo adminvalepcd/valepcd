@@ -46,6 +46,12 @@ export interface UseModalAccessibilityOptions {
   onRequestClose: () => 'subview' | 'closed' | boolean | void;
 }
 
+const activeModalStack: string[] = [];
+let programmaticBackCount = 0;
+
+const isTopMostModal = (id: string): boolean =>
+  activeModalStack.length > 0 && activeModalStack[activeModalStack.length - 1] === id;
+
 export function useModalAccessibility(options: UseModalAccessibilityOptions) {
   const {
     modalRef,
@@ -92,6 +98,7 @@ export function useModalAccessibility(options: UseModalAccessibilityOptions) {
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (!isTopMostModal(instanceId)) return;
     const container = getActiveContainer();
     if (!container) return;
 
@@ -136,6 +143,11 @@ export function useModalAccessibility(options: UseModalAccessibilityOptions) {
   };
 
   const handlePopState = () => {
+    if (!isTopMostModal(instanceId)) return;
+    if (programmaticBackCount > 0) {
+      programmaticBackCount--;
+      return;
+    }
     if (!hasPushedHistory) return;
 
     if (!canClose()) {
@@ -166,6 +178,10 @@ export function useModalAccessibility(options: UseModalAccessibilityOptions) {
     closedViaPopState = false;
     previouslyFocusedElement = document.activeElement as HTMLElement | null;
 
+    if (!activeModalStack.includes(instanceId)) {
+      activeModalStack.push(instanceId);
+    }
+
     try {
       window.history.pushState({ multeiModalId: instanceId }, '');
       hasPushedHistory = true;
@@ -183,6 +199,11 @@ export function useModalAccessibility(options: UseModalAccessibilityOptions) {
     if (!isActive || typeof window === 'undefined' || typeof document === 'undefined') return;
     isActive = false;
 
+    const stackIdx = activeModalStack.lastIndexOf(instanceId);
+    if (stackIdx !== -1) {
+      activeModalStack.splice(stackIdx, 1);
+    }
+
     window.removeEventListener('popstate', handlePopState);
     document.removeEventListener('keydown', handleKeyDown, true);
 
@@ -190,7 +211,11 @@ export function useModalAccessibility(options: UseModalAccessibilityOptions) {
       hasPushedHistory = false;
       try {
         if (window.history.state?.multeiModalId === instanceId) {
+          programmaticBackCount++;
           window.history.back();
+          setTimeout(() => {
+            if (programmaticBackCount > 0) programmaticBackCount = 0;
+          }, 250);
         }
       } catch {}
     }

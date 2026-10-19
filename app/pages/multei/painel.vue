@@ -732,10 +732,6 @@
                       {{ [selectedItem.classificacao ? `Classe ${selectedItem.classificacao}` : '', selectedItem.verificacao].filter(Boolean).join(' • ') || 'Padrão' }}
                     </span>
                   </div>
-                  <div v-if="selectedItem.descricao" class="meta-item meta-item-full">
-                    <span class="meta-label">Descrição Registrada</span>
-                    <span class="meta-value">{{ selectedItem.descricao }}</span>
-                  </div>
                   <div class="meta-item meta-item-full">
                     <span class="meta-label">Coordenadas GPS</span>
                     <span class="meta-value meta-coords-row">
@@ -749,6 +745,13 @@
                         🗺️ Abrir local no Multei
                       </button>
                     </span>
+                  </div>
+                  <div
+                    v-if="selectedItem.natureza === 'urbana' || selectedItem.descricao"
+                    class="meta-item meta-item-full"
+                  >
+                    <span class="meta-label">Descrição da Denúncia</span>
+                    <span class="meta-value">{{ selectedItem.descricao || 'Não informada' }}</span>
                   </div>
                 </div>
               </div>
@@ -1342,6 +1345,15 @@
                       </button>
                     </span>
                   </div>
+                  <div
+                    v-if="selectedPartnerIncident.natureza === 'urbana' || selectedPartnerIncident.descricao"
+                    class="meta-item meta-item-full"
+                  >
+                    <span class="meta-label">Descrição da Denúncia</span>
+                    <span class="meta-value">
+                      {{ selectedPartnerIncident.descricao || 'Não informada' }}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1730,6 +1742,7 @@
     <!-- Modal do Mapa do Multei no próprio Painel -->
     <div
       v-if="isMulteiMapModalOpen && mapModalTarget"
+      ref="multeiMapModalRef"
       class="multei-map-modal-backdrop"
       role="dialog"
       aria-modal="true"
@@ -1806,18 +1819,19 @@
     <!-- Modal Lightbox para Inspecionar Foto em Tamanho Grande -->
     <div
       v-if="isLightboxOpen && lightboxPhotoUrl"
+      ref="lightboxModalRef"
       class="lightbox-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label="Visualização ampliada da foto da ocorrência"
-      @click.self="isLightboxOpen = false"
+      @click.self="closePanelLightbox"
     >
       <div class="lightbox-content">
         <button
           type="button"
           class="btn-close-lightbox"
           aria-label="Fechar foto ampliada"
-          @click="isLightboxOpen = false"
+          @click="closePanelLightbox"
         >
           ✕ Fechar
         </button>
@@ -1834,6 +1848,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import type { ReportedIncident } from '~/types';
+import { useModalAccessibility } from '~/composables/useModalAccessibility';
 import { requestUserLocation, normalizeState } from '~/services/geoService';
 import {
   BRAZIL_STATES,
@@ -2109,6 +2124,21 @@ const openPanelLightbox = (url?: string) => {
   lightboxPhotoUrl.value = url;
   isLightboxOpen.value = true;
 };
+
+const closePanelLightbox = () => {
+  isLightboxOpen.value = false;
+};
+
+const lightboxModalRef = ref<HTMLElement | null>(null);
+
+useModalAccessibility({
+  modalRef: lightboxModalRef,
+  isOpen: isLightboxOpen,
+  onRequestClose: () => {
+    closePanelLightbox();
+    return 'closed';
+  }
+});
 
 const getDistanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371000;
@@ -2455,6 +2485,21 @@ const closeMulteiLocationModal = () => {
   mapModalTarget.value = null;
   inspectedMapIncident.value = null;
 };
+
+const multeiMapModalRef = ref<HTMLElement | null>(null);
+
+useModalAccessibility({
+  modalRef: multeiMapModalRef,
+  isOpen: isMulteiMapModalOpen,
+  onRequestClose: () => {
+    if (inspectedMapIncident.value) {
+      inspectedMapIncident.value = null;
+      return 'subview';
+    }
+    closeMulteiLocationModal();
+    return 'closed';
+  }
+});
 
 const handlePanelMapMarkerClick = (incident: any) => {
   inspectedMapIncident.value = incident;
@@ -3113,8 +3158,14 @@ const scheduleSilentPartnerRefresh = () => {
 onMounted(() => {
   unsubscribeAuth = subscribeToMulteiPanelAuth(
     async (profile) => {
+      const wasAlreadyLoggedIn = Boolean(
+        userProfile.value && profile && userProfile.value.uid === profile.uid
+      );
       userProfile.value = profile;
       isCheckingAuth.value = false;
+      if (wasAlreadyLoggedIn) {
+        return;
+      }
       if (profile?.role === 'admin') {
         adminMainSection.value = 'ocorrencias';
         await Promise.all([loadReports(), loadPanelUsers(), loadPartnerDenuncias()]);

@@ -33,6 +33,7 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   sendPasswordResetEmail,
+  browserLocalPersistence,
   inMemoryPersistence,
   setPersistence,
   signOut,
@@ -2165,13 +2166,23 @@ interface PanelSessionMeta {
   uid: string;
   loginAt: number;
   expiresAt: number;
+  profile?: MulteiPanelUserProfile;
 }
 
-function savePanelSessionMeta(uid: string, loginAt = Date.now()): PanelSessionMeta {
+let isSigningInPanel = false;
+
+function savePanelSessionMeta(
+  uid: string,
+  loginAt = Date.now(),
+  profile?: MulteiPanelUserProfile
+): PanelSessionMeta {
+  const existing = getRawValidPanelSessionMeta(uid);
+  const effectiveLoginAt = existing && existing.uid === uid ? existing.loginAt : loginAt;
   const meta: PanelSessionMeta = {
     uid,
-    loginAt,
-    expiresAt: loginAt + PANEL_SESSION_MAX_DURATION_MS
+    loginAt: effectiveLoginAt,
+    expiresAt: effectiveLoginAt + PANEL_SESSION_MAX_DURATION_MS,
+    profile: profile || existing?.profile
   };
   if (typeof window !== 'undefined') {
     try {
@@ -2188,8 +2199,8 @@ function clearPanelSessionMeta(): void {
   } catch {}
 }
 
-function getValidPanelSessionMeta(user: User): PanelSessionMeta | null {
-  if (typeof window === 'undefined' || !user?.uid) return null;
+function getRawValidPanelSessionMeta(expectedUid?: string): PanelSessionMeta | null {
+  if (typeof window === 'undefined') return null;
 
   try {
     const raw = localStorage.getItem(PANEL_SESSION_STORAGE_KEY);
@@ -2198,7 +2209,9 @@ function getValidPanelSessionMeta(user: User): PanelSessionMeta | null {
     const parsed = JSON.parse(raw) as Partial<PanelSessionMeta>;
     if (
       !parsed ||
-      parsed.uid !== user.uid ||
+      typeof parsed.uid !== 'string' ||
+      !parsed.uid ||
+      (expectedUid && parsed.uid !== expectedUid) ||
       typeof parsed.loginAt !== 'number' ||
       typeof parsed.expiresAt !== 'number' ||
       !Number.isFinite(parsed.loginAt) ||
@@ -2212,27 +2225,34 @@ function getValidPanelSessionMeta(user: User): PanelSessionMeta | null {
     if (
       parsed.loginAt <= 0 ||
       parsed.loginAt > now + 60_000 ||
-      parsed.expiresAt - parsed.loginAt > PANEL_SESSION_MAX_DURATION_MS
+      parsed.expiresAt - parsed.loginAt > PANEL_SESSION_MAX_DURATION_MS ||
+      now >= parsed.expiresAt
     ) {
       return null;
-    }
-
-    // Caso o Firebase Auth informe lastSignInTime, também valida que não ultrapassou 24h no servidor
-    if (user.metadata?.lastSignInTime) {
-      const firebaseSignInMs = Date.parse(user.metadata.lastSignInTime);
-      if (!Number.isFinite(firebaseSignInMs) || now - firebaseSignInMs >= PANEL_SESSION_MAX_DURATION_MS) {
-        return null;
-      }
     }
 
     return {
       uid: parsed.uid,
       loginAt: parsed.loginAt,
-      expiresAt: parsed.expiresAt
+      expiresAt: parsed.expiresAt,
+      profile: parsed.profile
     };
   } catch {
     return null;
   }
+}
+
+function getValidPanelSessionMeta(user: User): PanelSessionMeta | null {
+  if (typeof window === 'undefined' || !user?.uid) return null;
+  const existing = getRawValidPanelSessionMeta(user.uid);
+  if (existing) return existing;
+
+  // Se o login acabou de acontecer (`isSigningInPanel`), registra imediatamente a janela de 24h
+  if (isSigningInPanel) {
+    return savePanelSessionMeta(user.uid, Date.now());
+  }
+
+  return null;
 }
 
 /**
@@ -2252,13 +2272,18 @@ export async function refreshCurrentMulteiPanelProfile(): Promise<MulteiPanelUse
   if (typeof window === 'undefined') return null;
   try {
     const { auth } = getFirebaseServices();
-    if (!auth.currentUser) return null;
+    if (!auth.currentUser) {
+      const cachedMeta = getRawValidPanelSessionMeta();
+      return cachedMeta?.profile || null;
+    }
     if (getPanelSessionRemainingMs(auth.currentUser) <= 0) {
       clearPanelSessionMeta();
       await signOut(auth);
       return null;
     }
-    return await resolveMulteiPanelUserProfile(auth.currentUser);
+    const profile = await resolveMulteiPanelUserProfile(auth.currentUser);
+    savePanelSessionMeta(auth.currentUser.uid, Date.now(), profile);
+    return profile;
   } catch {
     return null;
   }
@@ -2273,9 +2298,22 @@ export async function signInMulteiPanel(
   if (!cleanEmail || !password) {
     throw new Error('Preencha o e-mail e a senha.');
   }
-  const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
-  savePanelSessionMeta(cred.user.uid, Date.now());
-  return await resolveMulteiPanelUserProfile(cred.user);
+
+  isSigningInPanel = true;
+  try {
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch {}
+    clearPanelSessionMeta();
+    const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    const loginAt = Date.now();
+    savePanelSessionMeta(cred.user.uid, loginAt);
+    const profile = await resolveMulteiPanelUserProfile(cred.user);
+    savePanelSessionMeta(cred.user.uid, loginAt, profile);
+    return profile;
+  } finally {
+    isSigningInPanel = false;
+  }
 }
 
 export async function signOutMulteiPanel(): Promise<void> {
@@ -2317,7 +2355,13 @@ export function subscribeToMulteiPanelAuth(
 
     const verifyActiveSession = () => {
       const current = auth.currentUser;
-      if (!current) return;
+      if (!current) {
+        const rawMeta = localStorage.getItem(PANEL_SESSION_STORAGE_KEY);
+        if (rawMeta && !getRawValidPanelSessionMeta()) {
+          void expireSessionNow();
+        }
+        return;
+      }
       if (getPanelSessionRemainingMs(current) <= 0) {
         void expireSessionNow();
       }
@@ -2331,12 +2375,49 @@ export function subscribeToMulteiPanelAuth(
     window.addEventListener('focus', handleVisibilityOrFocus);
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
 
+    // Restaura imediatamente a sessão válida (< 24h) ao navegar (Voltar/Avançar) enquanto o Firebase Auth inicializa
+    const initialValidMeta = getRawValidPanelSessionMeta();
+    if (initialValidMeta?.profile) {
+      const initialRemaining = initialValidMeta.expiresAt - Date.now();
+      if (initialRemaining > 0) {
+        expiryTimeout = setTimeout(() => {
+          void expireSessionNow();
+        }, initialRemaining);
+        checkInterval = setInterval(verifyActiveSession, 60_000);
+        onChange(initialValidMeta.profile);
+      }
+    }
+
     const unsubscribeFirebase = onAuthStateChanged(auth, async (user) => {
+      if (typeof (auth as any).authStateReady === 'function') {
+        try {
+          await (auth as any).authStateReady();
+        } catch {}
+      }
+
       clearTimers();
       if (!user) {
+        // Se existe uma sessão válida de 24h recém-autenticada no localStorage, mantém até expirar ou logout explícito
+        const validMeta = getRawValidPanelSessionMeta();
+        if (validMeta?.profile) {
+          const rem = validMeta.expiresAt - Date.now();
+          if (rem > 0) {
+            expiryTimeout = setTimeout(() => {
+              void expireSessionNow();
+            }, rem);
+            checkInterval = setInterval(verifyActiveSession, 60_000);
+            onChange(validMeta.profile);
+            return;
+          }
+        }
         clearPanelSessionMeta();
         onChange(null);
         return;
+      }
+
+      // Caso o usuário já esteja autenticado no Firebase Auth mas a chave local ainda não exista, inicializa a janela de 24h
+      if (!getRawValidPanelSessionMeta(user.uid)) {
+        savePanelSessionMeta(user.uid, Date.now());
       }
 
       const remainingMs = getPanelSessionRemainingMs(user);
@@ -2353,9 +2434,11 @@ export function subscribeToMulteiPanelAuth(
 
       try {
         const profile = await resolveMulteiPanelUserProfile(user);
+        savePanelSessionMeta(user.uid, Date.now(), profile);
         onChange(profile);
       } catch {
-        onChange(null);
+        const cachedMeta = getRawValidPanelSessionMeta(user.uid);
+        onChange(cachedMeta?.profile || null);
       }
     });
 
@@ -2803,6 +2886,19 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
       existing.total_reports = mergedTotal;
       existing.outras_revisoes_solicitadas = mergedTotal > 1;
       existing.historico_reports = mergedHistory;
+      if (!existing.descricao && d.descricao) {
+        existing.descricao = String(d.descricao);
+      }
+      if ((!existing.natureza || existing.natureza === 'infracao_veicular') && d.natureza === 'urbana') {
+        existing.natureza = 'urbana';
+      }
+      if (!existing.fotoUrl && (d.fotoUrl || d.foto || d.image)) {
+        existing.fotoUrl = String(d.fotoUrl || d.foto || d.image);
+      }
+      if (!existing.rua && d.rua) existing.rua = String(d.rua);
+      if (!existing.bairro && d.bairro) existing.bairro = String(d.bairro);
+      if (!existing.cidade && d.cidade) existing.cidade = String(d.cidade);
+      if (!existing.estado && d.estado) existing.estado = String(d.estado);
       if (isPossivelDuplicidade) {
         existing.possivel_duplicidade = true;
         existing.duplicidade_de_id = duplicidadeDeId || existing.duplicidade_de_id;
@@ -2888,9 +2984,24 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
 
   const list = Array.from(groupedByOcorrencia.values());
 
-  // Busca a foto da ocorrência original (`duplicidade_de_id`) quando houver vínculo de possível duplicidade
+  // Busca a foto da ocorrência original (`duplicidade_de_id`) e hidrata `descricao` / dados da ocorrência original se ausentes
   await Promise.all(
     list.map(async (item) => {
+      if (!item.descricao && item.ocorrenciaId) {
+        try {
+          const selfSnap = await getDoc(doc(db, OCORRENCIAS_COLLECTION, item.ocorrenciaId));
+          if (selfSnap.exists()) {
+            const selfData = selfSnap.data() || {};
+            if (selfData.descricao) {
+              item.descricao = String(selfData.descricao).trim();
+            }
+            if ((!item.natureza || item.natureza === 'infracao_veicular') && selfData.natureza === 'urbana') {
+              item.natureza = 'urbana';
+            }
+          }
+        } catch {}
+      }
+
       if (!item.duplicidade_de_id) return;
       try {
         const origSnap = await getDoc(doc(db, OCORRENCIAS_COLLECTION, item.duplicidade_de_id));
@@ -3235,9 +3346,60 @@ export async function fetchPartnerIncidentsFromFirebase(options: {
     } catch {
       snap = await getDocs(colRef);
     }
+    let realTransito = 0;
+    let realUrbana = 0;
+    let realResolvidos = 0;
     snap.forEach((docSnap) => {
-      docsList.push({ id: docSnap.id, data: docSnap.data() || {} });
+      const d = docSnap.data() || {};
+      docsList.push({ id: docSnap.id, data: d });
+
+      const lat = Number(d.latitude ?? d.lat);
+      const lng = Number(d.longitude ?? d.lng ?? d.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      const isAtivo =
+        d.ativo !== undefined && d.ativo !== ''
+          ? d.ativo === true || String(d.ativo).toLowerCase() === 'true'
+          : true;
+      if (!isAtivo) return;
+
+      const isPossivelDup = Boolean(
+        d.possivel_duplicidade === true ||
+          String(d.possivel_duplicidade).toLowerCase() === 'true'
+      );
+      if (isPossivelDup) return;
+
+      if (d.natureza === 'urbana') {
+        realUrbana++;
+      } else {
+        realTransito++;
+      }
+
+      const fotoRes = String(d.foto_resolucao || d.fotoResolucaoUrl || d.foto_resolvido || '').trim();
+      const isRes = Boolean(
+        d.resolvido === true ||
+          String(d.resolvido).toLowerCase() === 'true' ||
+          String(d.status_resolucao || '').toLowerCase() === 'resolvido' ||
+          (fotoRes && String(d.status_resolucao || '').toLowerCase() !== 'em_validacao')
+      );
+      if (isRes) {
+        realResolvidos++;
+      }
     });
+
+    // Sincroniza automaticamente `estatisticas/resumo` com a contagem real da coleção `ocorrencias`
+    const realTotal = realTransito + realUrbana;
+    const syncedStats: MulteiStats = {
+      totalGeral: realTotal,
+      infracoesTransito: realTransito,
+      mobilidadeUrbana: realUrbana,
+      resolvidos: realResolvidos,
+      updatedAt: new Date().toISOString()
+    };
+    saveCachedStatsEntry(syncedStats);
+    setDoc(doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID), syncedStats, { merge: true }).catch(
+      () => {}
+    );
   }
 
   const results: ReportedIncident[] = [];
@@ -3245,6 +3407,7 @@ export async function fetchPartnerIncidentsFromFirebase(options: {
   for (const item of docsList) {
     const incident = mapDocToIncident(item.id, item.data);
     if (!incident) continue;
+    if (incident.possivel_duplicidade) continue;
 
     if (targetCityKey) {
       const incCityKey = normalizeCityKey(incident.cidade);
