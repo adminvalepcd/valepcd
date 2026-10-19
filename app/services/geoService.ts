@@ -163,6 +163,12 @@ export function evaluateIsBrazil(params: {
     return isValidBrazilUF(estado);
   }
 
+  // Se todos os provedores de geocodificação falharam por rede/rate-limit (sem país/UF retornados),
+  // mantém true apenas se as coordenadas estiverem dentro dos limites geográficos do Brasil
+  if (typeof latitude === 'number' && typeof longitude === 'number') {
+    return isCoordinateInBrazilBounds(latitude, longitude);
+  }
+
   return false;
 }
 
@@ -318,8 +324,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
     if (cached.isBrazil === false) {
       return cached;
     }
-    // Só retorna do cache imediatamente se já possuir número na rua
-    if (cached.cidade && cached.estado && hasStreetNumber(cached.rua)) {
+    if (cached.cidade && cached.estado) {
       return cached;
     }
   }

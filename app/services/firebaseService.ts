@@ -828,7 +828,7 @@ export async function saveIncidentToFirebase(
   const hasStreetNum = (s: string) => /,\s*\d+/.test(s);
 
   if (
-    (!resolvedCidade || !resolvedEstado || !resolvedRua || !resolvedBairro || !hasStreetNum(resolvedRua)) &&
+    (!resolvedCidade || !resolvedEstado) &&
     Number.isFinite(incident.latitude) &&
     Number.isFinite(incident.longitude)
   ) {
@@ -862,8 +862,9 @@ export async function saveIncidentToFirebase(
     }
   }
 
-  const confirmedBrazil = await checkIfCoordsInBrazil(latNum, lngNum);
-  if (!confirmedBrazil || !isValidBrazilUF(resolvedEstado)) {
+  const hasValidUf = isValidBrazilUF(resolvedEstado);
+  const confirmedBrazil = hasValidUf ? true : await checkIfCoordsInBrazil(latNum, lngNum);
+  if (!confirmedBrazil || (resolvedEstado && !hasValidUf)) {
     throw new Error('Ocorrências no Multei só podem ser incluídas no Brasil.');
   }
 
@@ -873,15 +874,21 @@ export async function saveIncidentToFirebase(
   const newDocRef = doc(collection(db, OCORRENCIAS_COLLECTION));
   const id = newDocRef.id;
 
-  // 2. Converte a foto WebP (Base64) para binário e faz upload em /ocorrencias/{id}.webp
+  // 2. Converte a foto WebP (Base64) para binário e faz upload em /ocorrencias/{id}.webp (com retry automático em caso de oscilação de rede móvel)
   let fotoUrl = '';
   if (incident.foto) {
     const { bytes, contentType } = base64ToUint8Array(incident.foto);
     const imageFileRef = storageRef(storage, `ocorrencias/${id}.webp`);
-    await uploadBytes(imageFileRef, bytes, {
+    const uploadMeta = {
       contentType: contentType || 'image/webp',
       cacheControl: 'public, max-age=31536000, immutable'
-    });
+    };
+    try {
+      await uploadBytes(imageFileRef, bytes, uploadMeta);
+    } catch {
+      await new Promise((r) => setTimeout(r, 600));
+      await uploadBytes(imageFileRef, bytes, uploadMeta);
+    }
     fotoUrl = await getDownloadURL(imageFileRef);
     await seedIncidentImageCache(fotoUrl, bytes, contentType || 'image/webp');
     recentIncidentBase64Memory.set(id, incident.foto);
