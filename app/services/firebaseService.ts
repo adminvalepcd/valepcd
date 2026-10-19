@@ -1485,7 +1485,35 @@ export async function notifyMulteiLiveDelta(
   } catch {}
 }
 
+const STATS_SESSION_STORAGE_KEY = 'multei_stats_session_v1';
+let inMemoryLiveStatsEntry: { stats: MulteiStats; fetchedAt: number } | null = null;
+let inFlightStatsPromise: Promise<MulteiStats> | null = null;
+
+function loadSessionStatsEntry(): { stats: MulteiStats; fetchedAt: number } | null {
+  if (inMemoryLiveStatsEntry && Date.now() - inMemoryLiveStatsEntry.fetchedAt < STATS_CACHE_TTL_MS) {
+    return inMemoryLiveStatsEntry;
+  }
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(STATS_SESSION_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (
+        parsed?.stats &&
+        typeof parsed.fetchedAt === 'number' &&
+        Date.now() - parsed.fetchedAt < STATS_CACHE_TTL_MS
+      ) {
+        inMemoryLiveStatsEntry = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
+  return null;
+}
+
 function loadCachedStatsEntry(): { stats: MulteiStats; fetchedAt: number } | null {
+  const sessionEntry = loadSessionStatsEntry();
+  if (sessionEntry) return sessionEntry;
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(STATS_CACHE_STORAGE_KEY);
@@ -1500,15 +1528,17 @@ function loadCachedStatsEntry(): { stats: MulteiStats; fetchedAt: number } | nul
 }
 
 function saveCachedStatsEntry(stats: MulteiStats) {
+  const payload = {
+    stats,
+    fetchedAt: Date.now()
+  };
+  inMemoryLiveStatsEntry = payload;
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(
-      STATS_CACHE_STORAGE_KEY,
-      JSON.stringify({
-        stats,
-        fetchedAt: Date.now()
-      })
-    );
+    sessionStorage.setItem(STATS_SESSION_STORAGE_KEY, JSON.stringify(payload));
+  } catch {}
+  try {
+    localStorage.setItem(STATS_CACHE_STORAGE_KEY, JSON.stringify(payload));
   } catch {}
 }
 
@@ -1601,48 +1631,75 @@ export async function recalculateAndSyncMulteiStats(forceRefresh = false): Promi
 }
 
 /**
- * Realiza UMA ÚNICA busca no Firebase ao carregar ou atualizar (F5) a página `/multei/sobre`,
- * sem manter conexão `onSnapshot` aberta no Firestore.
+ * Realiza UMA ÚNICA busca no Firebase na sessão da aba e reutiliza `sessionStorage` + memória
+ * ao navegar entre páginas (`/` <-> `/multei/sobre`), mantendo os valores vivos via SSE (`+1` / `-1`).
  */
 export async function fetchMulteiStatsOnce(
-  onCached?: (stats: MulteiStats) => void
+  onCached?: (stats: MulteiStats) => void,
+  options?: { forceRefresh?: boolean }
 ): Promise<MulteiStats> {
+  if (!options?.forceRefresh) {
+    const sessionEntry = loadSessionStatsEntry();
+    if (sessionEntry?.stats) {
+      if (onCached) {
+        onCached(sessionEntry.stats);
+      }
+      return sessionEntry.stats;
+    }
+  }
+
   const cachedEntry = loadCachedStatsEntry();
   if (cachedEntry?.stats && onCached) {
     onCached(cachedEntry.stats);
   }
 
-  try {
-    const { db } = getFirebaseServices();
-    const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
-    const snap = await getDoc(statsRef);
+  if (!options?.forceRefresh && inFlightStatsPromise) {
+    return await inFlightStatsPromise;
+  }
 
-    if (snap.exists()) {
-      const d = snap.data() || {};
-      if (typeof d.totalGeral === 'number') {
-        const infracoesTransito = Math.max(0, Number(d.infracoesTransito || 0));
-        const mobilidadeUrbana = Math.max(0, Number(d.mobilidadeUrbana || 0));
-        const resolvidos = Math.max(0, Number(d.resolvidos || 0));
-        const totalGeral = Math.max(infracoesTransito + mobilidadeUrbana, Number(d.totalGeral || 0));
-        const nextStats: MulteiStats = {
-          totalGeral,
-          infracoesTransito,
-          mobilidadeUrbana,
-          resolvidos,
-          updatedAt: d.updatedAt ? String(d.updatedAt) : undefined
-        };
-        saveCachedStatsEntry(nextStats);
-        return nextStats;
+  const fetchPromise = (async (): Promise<MulteiStats> => {
+    try {
+      const { db } = getFirebaseServices();
+      const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+      const snap = await getDoc(statsRef);
+
+      if (snap.exists()) {
+        const d = snap.data() || {};
+        if (typeof d.totalGeral === 'number') {
+          const infracoesTransito = Math.max(0, Number(d.infracoesTransito || 0));
+          const mobilidadeUrbana = Math.max(0, Number(d.mobilidadeUrbana || 0));
+          const resolvidos = Math.max(0, Number(d.resolvidos || 0));
+          const totalGeral = Math.max(
+            infracoesTransito + mobilidadeUrbana,
+            Number(d.totalGeral || 0)
+          );
+          const nextStats: MulteiStats = {
+            totalGeral,
+            infracoesTransito,
+            mobilidadeUrbana,
+            resolvidos,
+            updatedAt: d.updatedAt ? String(d.updatedAt) : undefined
+          };
+          saveCachedStatsEntry(nextStats);
+          return nextStats;
+        }
       }
-    }
 
-    return await recalculateAndSyncMulteiStats(true);
-  } catch (err) {
-    console.warn('[firebaseService] Aviso ao buscar estatísticas únicas no Firebase:', err);
-    if (cachedEntry?.stats) {
-      return cachedEntry.stats;
+      return await recalculateAndSyncMulteiStats(true);
+    } catch (err) {
+      console.warn('[firebaseService] Aviso ao buscar estatísticas únicas no Firebase:', err);
+      if (cachedEntry?.stats) {
+        return cachedEntry.stats;
+      }
+      throw err;
     }
-    throw err;
+  })();
+
+  inFlightStatsPromise = fetchPromise;
+  try {
+    return await fetchPromise;
+  } finally {
+    inFlightStatsPromise = null;
   }
 }
 
