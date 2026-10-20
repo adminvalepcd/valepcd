@@ -835,7 +835,7 @@ const resolveAddress = async () => {
 
 const handleOpenReport = () => {
   isReportModalOpen.value = true;
-  reportReason.value = '';
+  reportReason.value = isCurrentDuplicate.value ? 'Ocorrência duplicada' : '';
   reportError.value = '';
   reportSuccess.value = false;
 };
