@@ -2090,137 +2090,204 @@ export async function getCachedIncidentImageUrl(url: string): Promise<string> {
  * Resolve o perfil do usuário autenticado na coleção `usuarios` do Firestore (`admin` ou `parceiro`).
  * Caso a coleção `usuarios` ainda esteja vazia no primeiro acesso, registra o primeiro usuário autenticado como `admin`.
  */
-export async function resolveMulteiPanelUserProfile(user: User): Promise<MulteiPanelUserProfile> {
-  const { db, auth } = getFirebaseServices();
-  const email = (user.email || '').trim().toLowerCase();
-  const authDisplayName = (user.displayName || '').trim();
+const recentPanelProfileCache = new Map<string, { profile: MulteiPanelUserProfile; fetchedAt: number }>();
+const inFlightPanelProfilePromises = new Map<string, Promise<MulteiPanelUserProfile>>();
+const PANEL_PROFILE_CACHE_TTL_MS = 60_000;
 
-  const normalizeDocFields = (rawDoc: Record<string, any>): Record<string, any> => {
-    const out: Record<string, any> = { ...rawDoc };
-    for (const [k, v] of Object.entries(rawDoc || {})) {
-      out[k.trim().toLowerCase()] = v;
+export function invalidatePanelProfileCache(uid?: string) {
+  if (uid) {
+    recentPanelProfileCache.delete(uid);
+  } else {
+    recentPanelProfileCache.clear();
+  }
+}
+
+export async function resolveMulteiPanelUserProfile(
+  user: User,
+  options?: { forceRefresh?: boolean }
+): Promise<MulteiPanelUserProfile> {
+  if (!options?.forceRefresh && user?.uid) {
+    const cached = recentPanelProfileCache.get(user.uid);
+    if (cached && Date.now() - cached.fetchedAt < PANEL_PROFILE_CACHE_TTL_MS) {
+      return cached.profile;
     }
-    return out;
-  };
-
-  const hasNameInDoc = (rawDoc: Record<string, any>): boolean => {
-    const d = normalizeDocFields(rawDoc);
-    return Boolean(
-      String(d.nome ?? d.name ?? d.primeiro_nome ?? d.sobrenome ?? d.lastname ?? '').trim()
-    );
-  };
-
-  const isDocActive = (rawDoc: Record<string, any>): boolean => {
-    const d = normalizeDocFields(rawDoc);
-    if (d.ativo === false || String(d.ativo).trim().toLowerCase() === 'false') {
-      return false;
+    const inflight = inFlightPanelProfilePromises.get(user.uid);
+    if (inflight) {
+      return await inflight;
     }
-    return true;
-  };
+  }
 
-  const buildProfileFromDoc = (rawDoc: Record<string, any>): MulteiPanelUserProfile => {
-    const d = normalizeDocFields(rawDoc);
-    const rawRole = String(d.role || d.tipo || d.cargo || d.perfil || 'admin').trim().toLowerCase();
-    const role: MulteiUserRole =
-      rawRole === 'parceria' || rawRole === 'parceiro' ? 'parceria' : 'admin';
-    const nome = String(d.nome ?? d.name ?? d.primeiro_nome ?? '').trim() || undefined;
-    const sobrenome = String(d.sobrenome ?? d.lastname ?? d.ultimo_nome ?? '').trim() || undefined;
-    const joinedName = [nome, sobrenome].filter(Boolean).join(' ').trim();
-    const nomeCompleto = joinedName || authDisplayName || undefined;
-    const ativo = isDocActive(rawDoc);
+  const runResolve = async (): Promise<MulteiPanelUserProfile> => {
+    const { db, auth } = getFirebaseServices();
+    const email = (user.email || '').trim().toLowerCase();
+    const authDisplayName = (user.displayName || '').trim();
 
-    return {
-      uid: user.uid,
-      email: d.email ? String(d.email).trim() : email,
-      nome: nome || nomeCompleto,
-      sobrenome,
-      nomeCompleto,
-      role,
-      cidade: d.cidade ? String(d.cidade).trim() : undefined,
-      estado: d.estado ? String(d.estado).trim() : undefined,
-      ativo
+    const normalizeDocFields = (rawDoc: Record<string, any>): Record<string, any> => {
+      const out: Record<string, any> = { ...rawDoc };
+      for (const [k, v] of Object.entries(rawDoc || {})) {
+        out[k.trim().toLowerCase()] = v;
+      }
+      return out;
     };
-  };
 
-  const fetchCollectionDocsFresh = async (colName: string) => {
-    const colRef = collection(db, colName);
-    try {
-      return await getDocsFromServer(colRef);
-    } catch {
-      return await getDocs(colRef);
-    }
-  };
+    const hasNameInDoc = (rawDoc: Record<string, any>): boolean => {
+      const d = normalizeDocFields(rawDoc);
+      return Boolean(
+        String(d.nome ?? d.name ?? d.primeiro_nome ?? d.sobrenome ?? d.lastname ?? '').trim()
+      );
+    };
 
-  const candidateCollections = [USUARIOS_COLLECTION, 'usarios', 'usuários'];
-  let fallbackDocData: Record<string, any> | null = null;
+    const isDocActive = (rawDoc: Record<string, any>): boolean => {
+      const d = normalizeDocFields(rawDoc);
+      if (d.ativo === false || String(d.ativo).trim().toLowerCase() === 'false') {
+        return false;
+      }
+      return true;
+    };
 
-  for (const colName of candidateCollections) {
-    try {
-      const snap = await fetchCollectionDocsFresh(colName);
-      if (snap.empty) continue;
+    const buildProfileFromDoc = (rawDoc: Record<string, any>): MulteiPanelUserProfile => {
+      const d = normalizeDocFields(rawDoc);
+      const rawRole = String(d.role || d.tipo || d.cargo || d.perfil || 'admin').trim().toLowerCase();
+      const role: MulteiUserRole =
+        rawRole === 'parceria' || rawRole === 'parceiro' ? 'parceria' : 'admin';
+      const nome = String(d.nome ?? d.name ?? d.primeiro_nome ?? '').trim() || undefined;
+      const sobrenome = String(d.sobrenome ?? d.lastname ?? d.ultimo_nome ?? '').trim() || undefined;
+      const joinedName = [nome, sobrenome].filter(Boolean).join(' ').trim();
+      const nomeCompleto = joinedName || authDisplayName || undefined;
+      const ativo = isDocActive(rawDoc);
 
-      // 1. Procura documento correspondente ao usuário autenticado (por uid ou email)
-      for (const docSnap of snap.docs) {
-        const raw = docSnap.data() || {};
-        const d = normalizeDocFields(raw);
-        const docEmail = String(d.email || d['e-mail'] || '').trim().toLowerCase();
-        const docUid = String(d.uid || d.id || '').trim();
-        const isMatch =
-          docSnap.id === user.uid ||
-          (email && docSnap.id.toLowerCase() === email) ||
-          (email && docEmail === email) ||
-          (docUid && docUid === user.uid);
+      return {
+        uid: user.uid,
+        email: d.email ? String(d.email).trim() : email,
+        nome: nome || nomeCompleto,
+        sobrenome,
+        nomeCompleto,
+        role,
+        cidade: d.cidade ? String(d.cidade).trim() : undefined,
+        estado: d.estado ? String(d.estado).trim() : undefined,
+        ativo
+      };
+    };
 
-        if (isMatch) {
+    let fallbackDocData: Record<string, any> | null = null;
+
+    // 1. Busca direta pelo documento `usuarios/{uid}` (custo: apenas 1 leitura)
+    if (user.uid) {
+      try {
+        const directSnap = await getDoc(doc(db, USUARIOS_COLLECTION, user.uid));
+        if (directSnap.exists()) {
+          const raw = directSnap.data() || {};
           if (!isDocActive(raw)) {
             await signOut(auth);
-            const disabledErr: any = new Error('Sua conta está desativada no painel. Entre em contato com o administrador.');
+            const disabledErr: any = new Error(
+              'Sua conta está desativada no painel. Entre em contato com o administrador.'
+            );
             disabledErr.code = 'auth/user-disabled';
             throw disabledErr;
           }
           if (hasNameInDoc(raw)) {
             return buildProfileFromDoc(raw);
           }
-          if (!fallbackDocData) {
-            fallbackDocData = raw;
+          fallbackDocData = raw;
+        }
+      } catch (err: any) {
+        if (err?.code === 'auth/user-disabled') {
+          throw err;
+        }
+      }
+    }
+
+    // 2. Fallback: varre a coleção apenas se o documento direto por UID não existir ou estiver incompleto
+    const candidateCollections = [USUARIOS_COLLECTION, 'usarios', 'usuários'];
+
+    for (const colName of candidateCollections) {
+      try {
+        const snap = await getDocs(collection(db, colName));
+        if (snap.empty) continue;
+
+        for (const docSnap of snap.docs) {
+          const raw = docSnap.data() || {};
+          const d = normalizeDocFields(raw);
+          const docEmail = String(d.email || d['e-mail'] || '').trim().toLowerCase();
+          const docUid = String(d.uid || d.id || '').trim();
+          const isMatch =
+            docSnap.id === user.uid ||
+            (email && docSnap.id.toLowerCase() === email) ||
+            (email && docEmail === email) ||
+            (docUid && docUid === user.uid);
+
+          if (isMatch) {
+            if (!isDocActive(raw)) {
+              await signOut(auth);
+              const disabledErr: any = new Error(
+                'Sua conta está desativada no painel. Entre em contato com o administrador.'
+              );
+              disabledErr.code = 'auth/user-disabled';
+              throw disabledErr;
+            }
+            if (hasNameInDoc(raw)) {
+              return buildProfileFromDoc(raw);
+            }
+            if (!fallbackDocData) {
+              fallbackDocData = raw;
+            }
           }
         }
-      }
 
-      if (fallbackDocData) {
-        break;
-      }
-
-      // 2. Fallback legado: caso exista apenas 1 documento na coleção sem vínculo de email/uid
-      if (snap.docs.length === 1) {
-        const onlyRaw = snap.docs[0].data() || {};
-        const onlyNorm = normalizeDocFields(onlyRaw);
-        const onlyEmail = String(onlyNorm.email || onlyNorm['e-mail'] || '').trim();
-        const onlyUid = String(onlyNorm.uid || '').trim();
-        if (!onlyEmail && !onlyUid) {
-          fallbackDocData = onlyRaw;
+        if (fallbackDocData) {
+          break;
         }
+
+        // Fallback legado: caso exista apenas 1 documento na coleção sem vínculo de email/uid
+        if (snap.docs.length === 1) {
+          const onlyRaw = snap.docs[0].data() || {};
+          const onlyNorm = normalizeDocFields(onlyRaw);
+          const onlyEmail = String(onlyNorm.email || onlyNorm['e-mail'] || '').trim();
+          const onlyUid = String(onlyNorm.uid || '').trim();
+          if (!onlyEmail && !onlyUid) {
+            fallbackDocData = onlyRaw;
+          }
+        }
+      } catch (err: any) {
+        if (err?.code === 'auth/user-disabled') {
+          throw err;
+        }
+        console.warn(`[firebaseService] Aviso ao ler coleção '${colName}':`, err);
       }
-    } catch (err: any) {
-      if (err?.code === 'auth/user-disabled') {
-        throw err;
-      }
-      console.warn(`[firebaseService] Aviso ao ler coleção '${colName}':`, err);
+    }
+
+    if (fallbackDocData) {
+      return buildProfileFromDoc(fallbackDocData);
+    }
+
+    return {
+      uid: user.uid,
+      email,
+      nome: authDisplayName || undefined,
+      nomeCompleto: authDisplayName || undefined,
+      role: 'admin',
+      ativo: true
+    };
+  };
+
+  const promise = runResolve().then((resolved) => {
+    if (user?.uid) {
+      recentPanelProfileCache.set(user.uid, { profile: resolved, fetchedAt: Date.now() });
+    }
+    return resolved;
+  });
+
+  if (user?.uid) {
+    inFlightPanelProfilePromises.set(user.uid, promise);
+  }
+
+  try {
+    return await promise;
+  } finally {
+    if (user?.uid) {
+      inFlightPanelProfilePromises.delete(user.uid);
     }
   }
-
-  if (fallbackDocData) {
-    return buildProfileFromDoc(fallbackDocData);
-  }
-
-  return {
-    uid: user.uid,
-    email,
-    nome: authDisplayName || undefined,
-    nomeCompleto: authDisplayName || undefined,
-    role: 'admin',
-    ativo: true
-  };
 }
 
 const PANEL_SESSION_STORAGE_KEY = 'multei_panel_session_meta_v1';
@@ -2257,6 +2324,7 @@ function savePanelSessionMeta(
 }
 
 function clearPanelSessionMeta(): void {
+  invalidatePanelProfileCache();
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem(PANEL_SESSION_STORAGE_KEY);
@@ -2345,7 +2413,7 @@ export async function refreshCurrentMulteiPanelProfile(): Promise<MulteiPanelUse
       await signOut(auth);
       return null;
     }
-    const profile = await resolveMulteiPanelUserProfile(auth.currentUser);
+    const profile = await resolveMulteiPanelUserProfile(auth.currentUser, { forceRefresh: true });
     savePanelSessionMeta(auth.currentUser.uid, Date.now(), profile);
     return profile;
   } catch {
@@ -2524,12 +2592,7 @@ export function subscribeToMulteiPanelAuth(
 export async function fetchPanelUsersFromFirebase(): Promise<MulteiPanelManagedUser[]> {
   const { db } = getFirebaseServices();
   const colRef = collection(db, USUARIOS_COLLECTION);
-  let snap;
-  try {
-    snap = await getDocsFromServer(colRef);
-  } catch {
-    snap = await getDocs(colRef);
-  }
+  const snap = await getDocs(colRef);
 
   const normalizeDocFields = (rawDoc: Record<string, any>): Record<string, any> => {
     const out: Record<string, any> = { ...rawDoc };
@@ -2744,6 +2807,7 @@ export async function updatePanelUserInFirebase(
     },
     { merge: true }
   );
+  invalidatePanelProfileCache(docId);
 }
 
 /**
@@ -2765,6 +2829,7 @@ export async function togglePanelUserActiveInFirebase(
     },
     { merge: true }
   );
+  invalidatePanelProfileCache(docId);
 }
 
 /**
@@ -2776,6 +2841,7 @@ export async function deletePanelUserFromFirebase(docId: string): Promise<void> 
     throw new Error('ID do usuário inválido.');
   }
   await deleteDoc(doc(db, USUARIOS_COLLECTION, docId));
+  invalidatePanelProfileCache(docId);
 }
 
 /**
@@ -2803,10 +2869,8 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
     where('possivel_duplicidade', '==', true)
   );
   const [snap, dupOcorrenciasSnap] = await Promise.all([
-    getDocsFromServer(reportadasCol).catch(() => getDocs(reportadasCol)),
-    getDocsFromServer(dupQuery)
-      .catch(() => getDocs(dupQuery))
-      .catch(() => null)
+    getDocs(reportadasCol),
+    getDocs(dupQuery).catch(() => null)
   ]);
 
   const groupedByOcorrencia = new Map<string, ReportedIncidentPanelItem>();
@@ -3051,13 +3115,16 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
   // Busca a foto da ocorrência original (`duplicidade_de_id`) e hidrata `descricao` / dados da ocorrência original se ausentes
   await Promise.all(
     list.map(async (item) => {
-      if (!item.descricao && item.ocorrenciaId) {
+      if (((!item.descricao && item.natureza === 'urbana') || !item.fotoUrl) && item.ocorrenciaId) {
         try {
           const selfSnap = await getDoc(doc(db, OCORRENCIAS_COLLECTION, item.ocorrenciaId));
           if (selfSnap.exists()) {
             const selfData = selfSnap.data() || {};
             if (selfData.descricao) {
               item.descricao = String(selfData.descricao).trim();
+            }
+            if (!item.fotoUrl && (selfData.fotoUrl || selfData.foto || selfData.image)) {
+              item.fotoUrl = String(selfData.fotoUrl || selfData.foto || selfData.image).trim();
             }
             if ((!item.natureza || item.natureza === 'infracao_veicular') && selfData.natureza === 'urbana') {
               item.natureza = 'urbana';
@@ -3066,7 +3133,7 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
         } catch {}
       }
 
-      if (!item.duplicidade_de_id) return;
+      if (!item.duplicidade_de_id || item.duplicidade_original_fotoUrl) return;
       try {
         const origSnap = await getDoc(doc(db, OCORRENCIAS_COLLECTION, item.duplicidade_de_id));
         if (origSnap.exists()) {
@@ -3392,7 +3459,7 @@ export async function fetchPartnerIncidentsFromFirebase(options: {
     const snapshots = await Promise.all(
       queryBounds.map(([startHash, endHash]) => {
         const q = query(colRef, orderBy('geohash'), startAt(startHash), endAt(endHash));
-        return getDocsFromServer(q).catch(() => getDocs(q));
+        return getDocs(q);
       })
     );
     const seen = new Set<string>();
@@ -3404,12 +3471,7 @@ export async function fetchPartnerIncidentsFromFirebase(options: {
       });
     }
   } else {
-    let snap;
-    try {
-      snap = await getDocsFromServer(colRef);
-    } catch {
-      snap = await getDocs(colRef);
-    }
+    const snap = await getDocs(colRef);
     let realTransito = 0;
     let realUrbana = 0;
     let realResolvidos = 0;
@@ -3451,19 +3513,44 @@ export async function fetchPartnerIncidentsFromFirebase(options: {
       }
     });
 
-    // Sincroniza automaticamente `estatisticas/resumo` com a contagem real da coleção `ocorrencias`
+    // Sincroniza `estatisticas/resumo` apenas se houver divergência real nos contadores (evita gravações desnecessárias)
     const realTotal = realTransito + realUrbana;
+    const prevCached = loadCachedStatsEntry()?.stats;
+    const hasDiffFromCache =
+      !prevCached ||
+      prevCached.totalGeral !== realTotal ||
+      prevCached.infracoesTransito !== realTransito ||
+      prevCached.mobilidadeUrbana !== realUrbana ||
+      prevCached.resolvidos !== realResolvidos;
+
     const syncedStats: MulteiStats = {
       totalGeral: realTotal,
       infracoesTransito: realTransito,
       mobilidadeUrbana: realUrbana,
       resolvidos: realResolvidos,
-      updatedAt: new Date().toISOString()
+      updatedAt: hasDiffFromCache
+        ? new Date().toISOString()
+        : prevCached?.updatedAt || new Date().toISOString()
     };
     saveCachedStatsEntry(syncedStats);
-    setDoc(doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID), syncedStats, { merge: true }).catch(
-      () => {}
-    );
+
+    if (hasDiffFromCache) {
+      void (async () => {
+        try {
+          const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+          const currentSnap = await getDoc(statsRef);
+          const cur = currentSnap.exists() ? currentSnap.data() || {} : {};
+          const differsFromRemote =
+            Number(cur.totalGeral) !== realTotal ||
+            Number(cur.infracoesTransito) !== realTransito ||
+            Number(cur.mobilidadeUrbana) !== realUrbana ||
+            Number(cur.resolvidos) !== realResolvidos;
+          if (differsFromRemote) {
+            await setDoc(statsRef, syncedStats, { merge: true });
+          }
+        } catch {}
+      })();
+    }
   }
 
   const results: ReportedIncident[] = [];

@@ -182,7 +182,7 @@
         >
           <span aria-hidden="true">📍</span>
           <span>Denúncias</span>
-          <span class="module-tab-badge">{{ partnerScopedIncidents.length }}</span>
+          <span v-if="partnerTabBadgeCount !== null" class="module-tab-badge">{{ partnerTabBadgeCount }}</span>
         </button>
 
         <button
@@ -1873,6 +1873,7 @@ import {
   sendPanelUserPasswordReset,
   fetchPartnerIncidentsFromFirebase,
   resolveUrbanIncidentByPartnerInFirebase,
+  fetchMulteiStatsOnce,
   subscribeToMulteiLiveEvents,
   type MulteiLiveDeltaEvent,
   type MulteiPanelUserProfile,
@@ -1989,6 +1990,8 @@ const srAnnouncement = ref('');
 
 // Estado da Aba "Denúncias" (Parcerias / Cidade + Ao meu redor 5km)
 const partnerIncidents = ref<ReportedIncident[]>([]);
+const hasLoadedPartnerIncidents = ref(false);
+const panelStatsTotalGeral = ref<number | null>(null);
 const isLoadingPartnerIncidents = ref(false);
 const isLocatingPartnerGps = ref(false);
 const partnerNearMeCenter = ref<{ latitude: number; longitude: number } | null>(null);
@@ -2207,6 +2210,29 @@ const filteredPartnerIncidents = computed(() =>
     : resolvedPartnerIncidents.value
 );
 
+const partnerTabBadgeCount = computed<number | null>(() => {
+  if (hasLoadedPartnerIncidents.value || partnerIncidents.value.length > 0) {
+    return partnerScopedIncidents.value.length;
+  }
+  if (isAdminRole.value && typeof panelStatsTotalGeral.value === 'number') {
+    return panelStatsTotalGeral.value;
+  }
+  return null;
+});
+
+const loadAdminStatsSummary = async () => {
+  try {
+    const stats = await fetchMulteiStatsOnce((cached) => {
+      if (typeof cached?.totalGeral === 'number') {
+        panelStatsTotalGeral.value = cached.totalGeral;
+      }
+    });
+    if (typeof stats?.totalGeral === 'number') {
+      panelStatsTotalGeral.value = stats.totalGeral;
+    }
+  } catch {}
+};
+
 watch(filteredPartnerIncidents, (list) => {
   if (!selectedPartnerIncident.value) {
     selectedPartnerIncident.value = list[0] || null;
@@ -2235,6 +2261,10 @@ const loadPartnerDenuncias = async (options?: { silent?: boolean } | Event) => {
       radiusKm: 5
     });
     partnerIncidents.value = items;
+    hasLoadedPartnerIncidents.value = true;
+    if (isAdminRole.value && !partnerNearMeCenter.value) {
+      panelStatsTotalGeral.value = items.length;
+    }
 
     const currentList =
       partnerFilterTab.value === 'pendentes'
@@ -2853,7 +2883,7 @@ const handleLogin = async () => {
     announceSr('Login realizado com sucesso.');
     if (profile.role === 'admin') {
       adminMainSection.value = 'ocorrencias';
-      await Promise.all([loadReports(), loadPanelUsers(), loadPartnerDenuncias()]);
+      await Promise.all([loadReports(), loadAdminStatsSummary()]);
     } else {
       adminMainSection.value = 'denuncias';
       await loadPartnerDenuncias();
@@ -2906,6 +2936,8 @@ const handleLogout = async () => {
     allReports.value = [];
     panelUsers.value = [];
     partnerIncidents.value = [];
+    hasLoadedPartnerIncidents.value = false;
+    panelStatsTotalGeral.value = null;
     selectedItem.value = null;
     selectedPartnerIncident.value = null;
     partnerNearMeCenter.value = null;
@@ -3146,6 +3178,14 @@ const scheduleSilentReportsRefresh = () => {
 
 const scheduleSilentPartnerRefresh = () => {
   if (!userProfile.value) return;
+  if (
+    isAdminRole.value &&
+    !hasLoadedPartnerIncidents.value &&
+    adminMainSection.value !== 'denuncias'
+  ) {
+    void loadAdminStatsSummary();
+    return;
+  }
   if (livePartnerDebounceTimer) {
     clearTimeout(livePartnerDebounceTimer);
   }
@@ -3168,7 +3208,7 @@ onMounted(() => {
       }
       if (profile?.role === 'admin') {
         adminMainSection.value = 'ocorrencias';
-        await Promise.all([loadReports(), loadPanelUsers(), loadPartnerDenuncias()]);
+        await Promise.all([loadReports(), loadAdminStatsSummary()]);
       } else if (profile) {
         adminMainSection.value = 'denuncias';
         await loadPartnerDenuncias();
@@ -3177,6 +3217,8 @@ onMounted(() => {
         allReports.value = [];
         panelUsers.value = [];
         partnerIncidents.value = [];
+        hasLoadedPartnerIncidents.value = false;
+        panelStatsTotalGeral.value = null;
         selectedItem.value = null;
         selectedPartnerIncident.value = null;
         partnerNearMeCenter.value = null;
@@ -3187,6 +3229,8 @@ onMounted(() => {
       allReports.value = [];
       panelUsers.value = [];
       partnerIncidents.value = [];
+      hasLoadedPartnerIncidents.value = false;
+      panelStatsTotalGeral.value = null;
       selectedItem.value = null;
       selectedPartnerIncident.value = null;
       partnerNearMeCenter.value = null;
@@ -3210,6 +3254,15 @@ onMounted(() => {
 
     if (!matchesCity) {
       return;
+    }
+
+    if (
+      isAdmin &&
+      !hasLoadedPartnerIncidents.value &&
+      (evt.category === 'infracoesTransito' || evt.category === 'mobilidadeUrbana') &&
+      typeof panelStatsTotalGeral.value === 'number'
+    ) {
+      panelStatsTotalGeral.value = Math.max(0, panelStatsTotalGeral.value + evt.delta);
     }
 
     if (
