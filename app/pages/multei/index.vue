@@ -903,10 +903,12 @@ const handleMarkerClick = (incident) => {
 };
 
 const handleIncidentCreated = (newIncident) => {
-  incidents.value = [
-    newIncident,
-    ...incidents.value.filter((inc) => inc.id !== newIncident.id)
-  ];
+  if (newIncident?.ativo !== false) {
+    incidents.value = [
+      newIncident,
+      ...incidents.value.filter((inc) => inc.id !== newIncident.id)
+    ];
+  }
   initialCenter.value = {
     latitude: newIncident.latitude,
     longitude: newIncident.longitude

@@ -420,11 +420,17 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  const hasExplicitForeignCountry =
+    (countryCode !== '' && countryCode !== 'BR') ||
+    (!countryCode && countryName !== '' && !/brasil|brazil/i.test(countryName));
+
   const isConfirmedBrazil =
     inBrazilBounds &&
+    !hasExplicitForeignCountry &&
     (countryCode === 'BR' ||
-      (!countryCode && /^(brasil|brazil)$/i.test(countryName)) ||
-      (!countryCode && !countryName && Boolean(state && validBrazilUFs.has(state.toUpperCase()))));
+      /brasil|brazil/i.test(countryName) ||
+      Boolean(state && validBrazilUFs.has(state.toUpperCase())) ||
+      (!countryCode && !countryName));
 
   if (isConfirmedBrazil && state === 'DF' && (!city || city.toLowerCase().includes('plano piloto') || city.toLowerCase().includes('distrito federal'))) {
     city = 'Brasília';

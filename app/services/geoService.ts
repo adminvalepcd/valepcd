@@ -141,10 +141,6 @@ export function evaluateIsBrazil(params: {
     return false;
   }
 
-  if (typeof isBrazil === 'boolean') {
-    return isBrazil;
-  }
-
   const cleanCode = String(countryCode || '').trim().toUpperCase();
   if (cleanCode) {
     return cleanCode === 'BR' || cleanCode === 'BRA';
@@ -153,14 +149,17 @@ export function evaluateIsBrazil(params: {
   const cleanPais = String(pais || '').trim().toLowerCase();
   if (cleanPais) {
     return (
-      cleanPais === 'brasil' ||
-      cleanPais === 'brazil' ||
-      cleanPais === 'república federativa do brasil'
+      cleanPais.includes('brasil') ||
+      cleanPais.includes('brazil')
     );
   }
 
-  if (estado) {
-    return isValidBrazilUF(estado);
+  if (estado && isValidBrazilUF(estado)) {
+    return true;
+  }
+
+  if (typeof isBrazil === 'boolean') {
+    return isBrazil;
   }
 
   // Se todos os provedores de geocodificação falharam por rede/rate-limit (sem país/UF retornados),
@@ -321,10 +320,10 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
   const cacheKey = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
   if (detailsCache.has(cacheKey)) {
     const cached = detailsCache.get(cacheKey)!;
-    if (cached.isBrazil === false) {
+    if (cached.isBrazil === false && (!inBrazilBounds || (cached.countryCode && cached.countryCode !== 'BR'))) {
       return cached;
     }
-    if (cached.cidade && cached.estado) {
+    if (cached.cidade && cached.estado && cached.isBrazil !== false) {
       return cached;
     }
   }
@@ -353,7 +352,7 @@ export async function getAddressDetailsFromCoords(latitude: number, longitude: n
         }
         if (data.pais) accPais = String(data.pais).trim();
         if (data.countryCode) accCountryCode = normalizeIsoCountry(data.countryCode);
-        const isForeignFromApi = data.isBrazil === false || Boolean(accCountryCode && accCountryCode !== 'BR') || !inBrazilBounds;
+        const isForeignFromApi = Boolean(accCountryCode && accCountryCode !== 'BR') || !inBrazilBounds;
 
         if (data.rua) accRua = String(data.rua).trim();
         if (data.bairro) accBairro = String(data.bairro).trim();

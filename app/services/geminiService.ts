@@ -63,6 +63,7 @@ export async function analyzeIncidentImage(
   const defaultFailure: IncidentAnalysisResult = {
     hasVehicle: false,
     isAppropriate: false,
+    possibleCredential: false,
     isUrbanEnvironment: false,
     hasTrafficInfractionVehicle: false,
     urbanDescription: '',
@@ -82,31 +83,38 @@ export async function analyzeIncidentImage(
     };
   }
 
-  const trafficPrompt = `
-Audite a imagem (LGPD/Trânsito) e retorne o JSON:
-{"hasVehicle": bool, "isAppropriate": bool, "rejectionReason": str, "plates": [{box_2d: [ymin,xmin,ymax,xmax], label: str}], "faces": [{box_2d: [ymin,xmin,ymax,xmax]}], "verification": str}
+  const trafficPrompt = `Audite a imagem (LGPD/Trânsito) focando na vaga em primeiro plano (vaga auditada) e na sua área zebrada de transferência lateral para avaliação da infração, e ocultando TODAS as placas e rostos da cena para LGPD. Retorne o JSON:
 
-Diretrizes de Moderação e Auditoria:
+DIRETRIZES
 
-1. Moderação da Imagem:
-- "isAppropriate": true se a imagem for apropriada (imagem normal de trânsito/rua). false SOMENTE em caso de conteúdo impróprio (pornografia, nudismo, violência, gore).
-- "hasVehicle": true se houver qualquer veículo na imagem (carros, motos, caminhões), senão false.
-- "rejectionReason": motivo detalhado se "isAppropriate" ou "hasVehicle" for false. Se ambos forem true, retorne "".
+1. Moderação e Vaga Auditada em Primeiro Plano ("isAppropriate" e "hasVehicle"):
+- "isAppropriate": true (imagem adequada). false APENAS para conteúdo impróprio (pornografia, violência, gore).
+- "hasVehicle": true SOMENTE se houver um veículo estacionado DENTRO/SOBRE o piso da vaga auditada em primeiro plano.
+- ATENÇÃO CRÍTICA CONTRA FALSOS POSITIVOS DE SEGUNDO PLANO: Se o piso/chão da vaga em primeiro plano estiver vazio/desocupado (mesmo que existam outros carros estacionados ao fundo, atrás da vaga, do outro lado da via ou em vagas vizinhas), defina OBRIGATORIAMENTE "hasVehicle": false. NUNCA considere veículos em segundo plano/fundo como veículo da vaga auditada.
 
-2. Classificação de Infração ("verification"):
-Identifique o veículo PRINCIPAL (em destaque ou cometendo a infração) e classifique "verification" estritamente como um destes valores:
+2. Credencial no Para-brisa / Painel ("possibleCredential"):
+- Se "hasVehicle" for false, defina obrigatoriamente "possibleCredential": false.
+- Se "hasVehicle" for true, inspecione a BASE (parte inferior) do para-brisa e o topo do painel do veículo em primeiro plano em 3 zonas: esquerda, centro e direita (acima do volante).
+- true: visão dianteira com QUALQUER cartão, papel, documento, etiqueta retangular ou MANCHA CLARA/BRANCA GEOMÉTRICA (faixa, tira, trapézio ou retângulo branco/claro) na base do para-brisa ou deitada sobre o painel (mesmo pequena, achatada pela perspectiva, desfocada ou sob reflexo do vidro).
+- false: visão traseira/lateral, insulfilm 100% opaco impedindo visão interna, base do para-brisa/painel totalmente escura/limpa, ou quando houver adesivo/tag SOMENTE no topo do vidro (perto do retrovisor central) com o painel vazio.
 
-- "faixa de pedestres": veículo efetivamente com as rodas ou carroceria SOBRE a marcação de faixa de pedestres. (Se o veículo estiver apenas parado ANTES da faixa, NÃO considere infração).
-- "transferencia": veículo/moto ocupando ou com rodas sobre a pintura zebrada amarela/azul PCD (área de transferência de cadeirantes).
-- "Vaga exclusiva": veículo parado em vaga reservada (sinalizada por pintura no chão PCD/Idoso OU por placa R-6b de Estacionamento Regulamentado com informação complementar de vaga exclusiva) SEM credencial visível no painel.
-- "": se o veículo estiver estacionado em vaga comum/permitida ou se não houver infração clara identificável na imagem.
+3. Infrações ("verification") da Vaga Auditada / Área de Transferência:
+- "transferencia": quando a área de transferência zebrada (listras diagonais brancas ou amarelas no solo associadas à vaga em primeiro plano) estiver obstruída ou invadida parcial ou totalmente por qualquer veículo, motocicleta, roda/pneu, para-choque ou objeto (cone, carrinho de compras, placa/cavalete, lixeira, etc.), INCLUSIVE quando a vaga principal estiver vazia ("hasVehicle": false).
+- "faixa de pedestres": quando "hasVehicle" for true e as rodas ou carroceria estiverem SOBRE a faixa de pedestres (parado antes/depois = "").
+- "Vaga exclusiva": quando "hasVehicle" for true, o veículo estiver parado na vaga reservada (sinalização no solo PCD/idoso ou placa R-6b) E "possibleCredential" for false.
+- "": vaga vazia sem obstrução na área de transferência zebrada, vaga comum, "possibleCredential" = true (sem invadir área zebrada), ou sem infração clara.
 
-Regra de Incerteza Visual:
-- Se houver placa de vaga exclusiva ou pintura no chão, mas a credencial no painel do veículo não puder ser verificada devido a insulfilm/distância/ângulo da foto, priorize a verificação do espaço físico e retorne "Vaga exclusiva" caso o veículo esteja na vaga reservada sem credencial aparente.`;
+4. Motivo de Rejeição ("rejectionReason"):
+- Se "isAppropriate" for true E ("hasVehicle" for true OU "verification" for "transferencia"), retorne "".
+- Caso contrário, descreva brevemente o motivo (ex: "A vaga em primeiro plano está vazia.").
+
+5. Anonimização LGPD ("plates" e "faces"):
+- "plates": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem (independentemente de o veículo ser o principal na vaga auditada, adjacente ou ao fundo). Se não houver placas visíveis, retorne [].
+- "faces": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de rostos identificáveis na imagem. Se não houver, [].`;
 
   const urbanPrompt = `
 Audite a imagem (LGPD/Mobilidade e Acessibilidade Urbana) e retorne o JSON:
-{"isAppropriate": bool, "isUrbanEnvironment": bool, "hasTrafficInfractionVehicle": bool, "verification": str, "urbanDescription": str, "rejectionReason": str, "plates": [{box_2d: [ymin,xmin,ymax,xmax], label: str}], "faces": [{box_2d: [ymin,xmin,ymax,xmax]}]}
+{"isAppropriate": bool, "isUrbanEnvironment": bool, "hasTrafficInfractionVehicle": bool, "verification": str, "urbanDescription": str, "rejectionReason": str, "plates": [{box_2d: [ymin,xmin,ymax,xmax]}], "faces": [{box_2d: [ymin,xmin,ymax,xmax]}]}
 
 Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
 
@@ -145,6 +153,18 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
       height: { type: Type.NUMBER, description: 'Altura total da caixa cobrindo toda a placa ou rosto (0 a 1000 ou 0 a 1).' }
     },
     propertyOrdering: ['x', 'y', 'width', 'height']
+  };
+
+  const box2dItemSchema = {
+    type: Type.OBJECT,
+    properties: {
+      box_2d: {
+        type: Type.ARRAY,
+        items: { type: Type.NUMBER },
+        description: 'Coordenadas [ymin, xmin, ymax, xmax] de 0 a 1000.'
+      }
+    },
+    propertyOrdering: ['box_2d']
   };
 
   const schema = isUrbanMode
@@ -200,34 +220,46 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
     : {
         type: Type.OBJECT,
         properties: {
-          hasVehicle: {
-            type: Type.BOOLEAN,
-            description: 'True se houver qualquer veículo motorizado na foto.'
-          },
           isAppropriate: {
             type: Type.BOOLEAN,
-            description: 'True se a imagem for segura e apropriada para o aplicativo público.'
+            description: 'True (imagem adequada). False APENAS para conteúdo impróprio (pornografia, violência, gore).'
           },
-          rejectionReason: {
-            type: Type.STRING,
-            description: 'Motivo da rejeição em português se inválido, ou vazio se aprovado.'
+          hasVehicle: {
+            type: Type.BOOLEAN,
+            description: 'True SOMENTE se houver um veículo estacionado sobre o piso da vaga auditada em primeiro plano. Se o piso da vaga em primeiro plano estiver vazio (mesmo com veículos ao fundo ou em vagas vizinhas), defina obrigatoriamente false.'
           },
-          plates: {
-            type: Type.ARRAY,
-            description: 'Lista de caixas delimitadoras de placas de veículos encontradas.',
-            items: boundingBoxItemsSchema
-          },
-          faces: {
-            type: Type.ARRAY,
-            description: 'Lista de caixas delimitadoras de rostos humanos encontrados.',
-            items: boundingBoxItemsSchema
+          possibleCredential: {
+            type: Type.BOOLEAN,
+            description: 'Avalie ANTES de verification: True se hasVehicle for true em visão dianteira com QUALQUER cartão, papel, documento ou mancha clara/branca geométrica (faixa, tira, trapézio ou retângulo claro) na base do para-brisa ou sobre o painel (mesmo pequeno, desfocado ou sob reflexo).'
           },
           verification: {
             type: Type.STRING,
-            description: 'Retorne "Vaga exclusiva" se houver sinalização de vaga acessível (cadeira de rodas), "faixa de pedestres" se o veículo estiver sobre faixa de pedestres, "transferencia" se estiver sobre área de transferência de vaga PCD, ou "" se não identificado.'
+            description: '"transferencia" (se a área de transferência zebrada estiver obstruída/invadida por veículo, moto, roda ou objeto, inclusive quando hasVehicle for false), "faixa de pedestres", "Vaga exclusiva" (somente se hasVehicle=true E possibleCredential=false) ou "" (se possibleCredential=true ou sem infração).'
+          },
+          rejectionReason: {
+            type: Type.STRING,
+            description: 'Retorne "" se verification for "transferencia" ou se hasVehicle e isAppropriate forem true. Caso contrário, detalhe o motivo.'
+          },
+          plates: {
+            type: Type.ARRAY,
+            description: 'Lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem (independentemente de o veículo ser o principal, adjacente ou ao fundo). Se não houver, [].',
+            items: box2dItemSchema
+          },
+          faces: {
+            type: Type.ARRAY,
+            description: 'Lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODOS os rostos identificáveis na imagem. Se não houver, [].',
+            items: box2dItemSchema
           }
         },
-        propertyOrdering: ['hasVehicle', 'isAppropriate', 'rejectionReason', 'plates', 'faces', 'verification']
+        propertyOrdering: [
+          'isAppropriate',
+          'hasVehicle',
+          'possibleCredential',
+          'verification',
+          'rejectionReason',
+          'plates',
+          'faces'
+        ]
       };
 
   let lastError: unknown = null;
@@ -298,6 +330,10 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
             continue;
           }
 
+          if (width <= 0 || height <= 0) {
+            continue;
+          }
+
           // Se as coordenadas estiverem na escala 0-1000 (padrão de visão do Gemini)
           if (x > 1 || y > 1 || width > 1 || height > 1) {
             x = x / 1000;
@@ -321,6 +357,7 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
       const plates = sanitizeAndNormalizeBoxes(parsed.plates);
       const faces = sanitizeAndNormalizeBoxes(parsed.faces);
       const verification = typeof parsed.verification === 'string' ? parsed.verification.trim() : '';
+      const possibleCredential = Boolean(parsed.possibleCredential);
 
       if (isUrbanMode) {
         const isAppropriate = Boolean(parsed.isAppropriate);
@@ -346,6 +383,7 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
         return {
           hasVehicle: hasTrafficInfractionVehicle,
           isAppropriate,
+          possibleCredential: false,
           isUrbanEnvironment,
           hasTrafficInfractionVehicle,
           urbanDescription,
@@ -357,14 +395,24 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
         };
       }
 
-      console.log(`[geminiService] Sucesso com ${model}. Placas encontradas: ${plates.length}, Rostos encontrados: ${faces.length}, Verificação: "${verification}"`);
+      console.log(
+        `[geminiService] Sucesso com ${model}. Placas encontradas: ${plates.length}, Rostos encontrados: ${faces.length}, Possível credencial: ${possibleCredential}, Verificação: "${verification}"`
+      );
+
+      const parsedRejectionReason = typeof parsed.rejectionReason === 'string' ? parsed.rejectionReason.trim() : '';
+
+      const isTransferencia = verification.toLowerCase().includes('transfer');
 
       return {
         hasVehicle: Boolean(parsed.hasVehicle),
         isAppropriate: Boolean(parsed.isAppropriate),
+        possibleCredential,
         rejectionReason:
-          !parsed.hasVehicle ? 'Nenhum veículo identificado na imagem.' : 
-          (!parsed.isAppropriate ? 'A imagem enviada não atende às diretrizes de uso.' : ''),
+          !parsed.isAppropriate
+            ? parsedRejectionReason || 'A imagem enviada não atende às diretrizes de uso.'
+            : !parsed.hasVehicle && !isTransferencia
+              ? parsedRejectionReason || 'Nenhum veículo identificado na imagem.'
+              : '',
         plates,
         faces,
         verification,

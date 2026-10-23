@@ -199,6 +199,7 @@ export interface SaveFirebaseIncidentPayload {
   foto: string;
   ativo?: boolean;
   motivo_denuncia?: string;
+  possivel_credencial?: boolean;
   cidade?: string;
   estado?: string;
   rua?: string;
@@ -801,6 +802,9 @@ export async function saveIncidentToFirebase(
   id: string;
   fotoUrl: string;
   geohash: string;
+  ativo?: boolean;
+  motivo_denuncia?: string;
+  possivel_credencial?: boolean;
   descricao?: string;
   rua?: string;
   bairro?: string;
@@ -904,11 +908,21 @@ export async function saveIncidentToFirebase(
   const dataIso = incident.data || new Date().toISOString();
 
   const resolvedDescricao = (incident.descricao || '').trim().slice(0, 300);
-  const isPossivelDuplicidade = Boolean(incident.possivel_duplicidade);
+  const isPossivelCredencial = Boolean(incident.possivel_credencial);
+  const isPossivelDuplicidade = Boolean(!isPossivelCredencial && incident.possivel_duplicidade);
   const duplicidadeDeId = isPossivelDuplicidade ? (incident.duplicidade_de_id || '').trim() : '';
   const rotuloDuplicidade = isPossivelDuplicidade
     ? (incident.rotulo_duplicidade || 'Possível duplicidade').trim()
     : '';
+
+  const effectiveAtivo = isPossivelCredencial
+    ? false
+    : incident.ativo !== undefined
+      ? incident.ativo
+      : true;
+  const effectiveMotivoDenuncia = isPossivelCredencial
+    ? (incident.motivo_denuncia || '').trim() || 'possível credencial a vista'
+    : incident.motivo_denuncia || '';
 
   // 4. Monta e salva o documento na coleção "ocorrencias"
   const docData: Record<string, any> = {
@@ -920,8 +934,9 @@ export async function saveIncidentToFirebase(
     fotoUrl,
     natureza: incident.natureza || 'infracao_veicular',
     descricao: resolvedDescricao,
-    ativo: incident.ativo !== undefined ? incident.ativo : true,
-    motivo_denuncia: incident.motivo_denuncia || '',
+    ativo: effectiveAtivo,
+    motivo_denuncia: effectiveMotivoDenuncia,
+    possivel_credencial: isPossivelCredencial,
     cidade: resolvedCidade,
     estado: resolvedEstado,
     rua: resolvedRua,
@@ -935,6 +950,65 @@ export async function saveIncidentToFirebase(
   };
 
   await setDoc(newDocRef, docData);
+
+  // 4a. Se possível credencial foi detectada, marca imediatamente para revisão na coleção `reportadas` com "possível credencial a vista" e ativo: false
+  if (isPossivelCredencial) {
+    try {
+      await setDoc(
+        doc(db, REPORTADAS_COLLECTION, id),
+        {
+          id,
+          ocorrenciaId: id,
+          data: dataIso,
+          data_report: dataIso,
+          ultima_data_report: dataIso,
+          latitude,
+          longitude,
+          geohash,
+          fotoUrl,
+          natureza: docData.natureza,
+          descricao: resolvedDescricao,
+          rua: resolvedRua,
+          bairro: resolvedBairro,
+          cidade: resolvedCidade,
+          estado: resolvedEstado,
+          classificacao: resolvedClassificacao,
+          verificacao: resolvedVerificacao,
+          ativo: false,
+          possivel_credencial: true,
+          possivel_duplicidade: false,
+          origem_duplicidade: false,
+          duplicidade_de_id: '',
+          rotulo_duplicidade: '',
+          motivo_denuncia: effectiveMotivoDenuncia,
+          motivo_report: effectiveMotivoDenuncia,
+          total_reports: 1,
+          outras_revisoes_solicitadas: false,
+          historico_reports: [
+            {
+              motivo: effectiveMotivoDenuncia,
+              data: dataIso
+            }
+          ],
+          revisada: false,
+          status_revisao: 'pendente',
+          resultado_revisao: ''
+        },
+        { merge: true }
+      );
+      void notifyMulteiLiveDelta('reportadas', 1, {
+        cidade: resolvedCidade,
+        estado: resolvedEstado,
+        bairro: resolvedBairro,
+        rua: resolvedRua,
+        natureza: docData.natureza,
+        ocorrenciaId: id,
+        action: 'novo_report'
+      });
+    } catch (credRepErr) {
+      console.warn('[firebaseService] Aviso ao registrar possível credencial em reportadas:', credRepErr);
+    }
+  }
 
   // 4b. Se for possível duplicidade, inclui automaticamente na coleção `reportadas` para averiguação no Painel Admin
   if (isPossivelDuplicidade) {
@@ -1033,37 +1107,44 @@ export async function saveIncidentToFirebase(
     }
   }
 
-  saveIncidentToLocalCache({
-    id,
-    timestamp: dataIso,
-    latitude,
-    longitude,
-    geohash,
-    natureza: docData.natureza,
-    descricao: resolvedDescricao,
-    rua: resolvedRua,
-    bairro: resolvedBairro,
-    cidade: resolvedCidade,
-    estado: resolvedEstado,
-    classificacao: resolvedClassificacao,
-    verificacao: resolvedVerificacao,
-    fotoUrl,
-    maskedImageUrl: fotoUrl || incident.foto,
-    description:
-      [resolvedRua, resolvedBairro, resolvedCidade, resolvedEstado].filter(Boolean).join(' - ') ||
-      'Infração registrada',
-    ativo: docData.ativo,
-    motivo_denuncia: docData.motivo_denuncia,
-    possivel_duplicidade: isPossivelDuplicidade,
-    duplicidade_de_id: duplicidadeDeId,
-    rotulo_duplicidade: rotuloDuplicidade
-  });
+  // Só adiciona ao cache local de pinos ativos do mapa caso a ocorrência esteja ativa
+  if (docData.ativo) {
+    saveIncidentToLocalCache({
+      id,
+      timestamp: dataIso,
+      latitude,
+      longitude,
+      geohash,
+      natureza: docData.natureza,
+      descricao: resolvedDescricao,
+      rua: resolvedRua,
+      bairro: resolvedBairro,
+      cidade: resolvedCidade,
+      estado: resolvedEstado,
+      classificacao: resolvedClassificacao,
+      verificacao: resolvedVerificacao,
+      fotoUrl,
+      maskedImageUrl: fotoUrl || incident.foto,
+      description:
+        [resolvedRua, resolvedBairro, resolvedCidade, resolvedEstado].filter(Boolean).join(' - ') ||
+        'Infração registrada',
+      ativo: docData.ativo,
+      motivo_denuncia: docData.motivo_denuncia,
+      possivel_credencial: isPossivelCredencial,
+      possivel_duplicidade: isPossivelDuplicidade,
+      duplicidade_de_id: duplicidadeDeId,
+      rotulo_duplicidade: rotuloDuplicidade
+    });
+  }
 
   return {
     success: true,
     id,
     fotoUrl,
     geohash,
+    ativo: docData.ativo,
+    motivo_denuncia: docData.motivo_denuncia,
+    possivel_credencial: isPossivelCredencial,
     descricao: resolvedDescricao,
     rua: resolvedRua,
     bairro: resolvedBairro,
@@ -2868,9 +2949,14 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
     collection(db, OCORRENCIAS_COLLECTION),
     where('possivel_duplicidade', '==', true)
   );
-  const [snap, dupOcorrenciasSnap] = await Promise.all([
+  const credQuery = query(
+    collection(db, OCORRENCIAS_COLLECTION),
+    where('possivel_credencial', '==', true)
+  );
+  const [snap, dupOcorrenciasSnap, credOcorrenciasSnap] = await Promise.all([
     getDocs(reportadasCol),
-    getDocs(dupQuery).catch(() => null)
+    getDocs(dupQuery).catch(() => null),
+    getDocs(credQuery).catch(() => null)
   ]);
 
   const groupedByOcorrencia = new Map<string, ReportedIncidentPanelItem>();
@@ -3106,6 +3192,62 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
         origem_duplicidade: true,
         duplicidade_de_id: d.duplicidade_de_id ? String(d.duplicidade_de_id).trim() : '',
         rotulo_duplicidade: String(d.rotulo_duplicidade || 'Possível duplicidade').trim()
+      });
+    });
+  }
+
+  // Garante que qualquer ocorrência com `possivel_credencial: true` em `ocorrencias` apareça em `reportadas`
+  if (credOcorrenciasSnap && !credOcorrenciasSnap.empty) {
+    credOcorrenciasSnap.forEach((docSnap) => {
+      const ocorrenciaId = docSnap.id;
+      if (groupedByOcorrencia.has(ocorrenciaId)) return;
+      const d = docSnap.data() || {};
+      const dataIso = String(d.data || new Date().toISOString());
+      const defaultReason = 'possível credencial a vista';
+      const isRevisada = Boolean(d.revisada_admin === true);
+      const resultadoRevisao = parseResultadoRevisao(d.resultado_revisao);
+      const isAtivo =
+        d.ativo !== undefined && d.ativo !== ''
+          ? d.ativo === true || String(d.ativo).toLowerCase() === 'true'
+          : false;
+
+      groupedByOcorrencia.set(ocorrenciaId, {
+        id: ocorrenciaId,
+        ocorrenciaId,
+        data: dataIso,
+        data_report: dataIso,
+        ultima_data_report: dataIso,
+        latitude: Number(d.latitude ?? d.lat ?? 0),
+        longitude: Number(d.longitude ?? d.lng ?? d.lon ?? 0),
+        geohash: String(d.geohash || ''),
+        fotoUrl: String(d.fotoUrl || d.foto || d.image || ''),
+        natureza: String(d.natureza || 'infracao_veicular'),
+        descricao: String(d.descricao || ''),
+        rua: String(d.rua || ''),
+        bairro: String(d.bairro || ''),
+        cidade: String(d.cidade || ''),
+        estado: String(d.estado || ''),
+        classificacao: String(d.classificacao || ''),
+        verificacao: normalizeVerificacao(d.verificacao ?? d.verification),
+        ativo: isAtivo,
+        motivo_denuncia: String(d.motivo_denuncia || defaultReason),
+        motivo_report: String(d.motivo_denuncia || defaultReason),
+        total_reports: 1,
+        outras_revisoes_solicitadas: false,
+        historico_reports: [
+          {
+            motivo: String(d.motivo_denuncia || defaultReason),
+            data: dataIso
+          }
+        ],
+        revisada: isRevisada,
+        resultado_revisao: resultadoRevisao,
+        data_revisao: d.data_revisao ? String(d.data_revisao) : undefined,
+        legacyDocIds: [ocorrenciaId],
+        possivel_duplicidade: false,
+        origem_duplicidade: false,
+        duplicidade_de_id: '',
+        rotulo_duplicidade: ''
       });
     });
   }

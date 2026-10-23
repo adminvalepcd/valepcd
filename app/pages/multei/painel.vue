@@ -1856,7 +1856,11 @@ import {
   normalizeSearchText
 } from '~/services/ibgeService';
 import { initializeGeminiClient, analyzeIncidentImage } from '~/services/geminiService';
-import { prepareImageForGemini, blurSensitiveContentAndCompress } from '~/services/imageProcessor';
+import {
+  prepareImageForGemini,
+  blurSensitiveContentAndCompress,
+  resizeImageForServer
+} from '~/services/imageProcessor';
 import {
   signInMulteiPanel,
   signOutMulteiPanel,
@@ -2397,9 +2401,10 @@ const handlePartnerSubmitResolution = async () => {
       ? `${userProfile.value.nomeCompleto}${userProfile.value.cidade ? ` (${userProfile.value.cidade})` : ''}`
       : userProfile.value?.email || '';
 
+    const serverPartnerPhoto = await resizeImageForServer(partnerResolvedPhotoWebp.value);
     const res = await resolveUrbanIncidentByPartnerInFirebase({
       ocorrenciaId: current.id,
-      foto: partnerResolvedPhotoWebp.value,
+      foto: serverPartnerPhoto,
       descricao: partnerResolveDescription.value.trim(),
       resolvidoPor: partnerLabel,
       incident: current

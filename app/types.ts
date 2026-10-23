@@ -19,6 +19,7 @@ export interface GeminiSensitiveContentResponse {
 export interface IncidentAnalysisResult {
   hasVehicle: boolean;
   isAppropriate: boolean;
+  possibleCredential?: boolean;
   isUrbanEnvironment?: boolean;
   hasTrafficInfractionVehicle?: boolean;
   urbanDescription?: string;
@@ -55,6 +56,7 @@ export interface ReportedIncident {
   description?: string;
   ativo?: boolean;
   motivo_denuncia?: string;
+  possivel_credencial?: boolean;
   resolvido_em_validacao?: boolean;
   status_resolucao?: string;
   resolvido?: boolean;

@@ -504,7 +504,11 @@ import {
   getCachedIncidentImageUrl
 } from '../../services/firebaseService';
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
-import { prepareImageForGemini, blurSensitiveContentAndCompress } from '../../services/imageProcessor';
+import {
+  prepareImageForGemini,
+  blurSensitiveContentAndCompress,
+  resizeImageForServer
+} from '../../services/imageProcessor';
 import { useModalAccessibility } from '../../composables/useModalAccessibility';
 import LoadingSpinner from './LoadingSpinner.vue';
 
@@ -939,9 +943,10 @@ const handleSubmitResolve = async () => {
 
   try {
     const targetIncident = activeIncident.value;
+    const serverResolvedPhoto = await resizeImageForServer(resolvedPhotoWebp.value);
     await submitUrbanResolutionToFirebase({
       ocorrenciaId: targetIncident?.id || '',
-      foto: resolvedPhotoWebp.value,
+      foto: serverResolvedPhoto,
       descricao: resolveDescription.value.trim().slice(0, 300),
       incident: targetIncident
     });

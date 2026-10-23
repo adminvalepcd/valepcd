@@ -256,6 +256,21 @@
           <span class="badge-blur">Filtro privacidade aplicado</span>
         </div>
 
+        <!-- Alerta de Possível Credencial à Vista (exibido antes de salvar a ocorrência) -->
+        <div
+          v-if="detectedPossibleCredential && selectedNatureza !== 'urbana'"
+          class="credential-review-alert"
+          role="alert"
+        >
+          <span class="credential-alert-icon" aria-hidden="true">🪪</span>
+          <div class="credential-alert-content">
+            <strong class="credential-alert-title">Aviso: A imagem será validada</strong>
+            <p class="credential-alert-desc">
+              Há suspeita de credencial válida no para-brisa do veículo. Ao salvar, esta ocorrência ficará em análise e passará por revisão antes de aparecer no mapa.
+            </p>
+          </div>
+        </div>
+
         <!-- Campo de Breve Descrição (exclusivo para Mobilidade Urbana, máx 300 caracteres) -->
         <div v-if="selectedNatureza === 'urbana'" class="urban-description-box glass">
           <div class="urban-desc-header">
@@ -502,7 +517,10 @@
       <div v-if="step === 'success'" class="step-success">
         <div class="success-icon">✅</div>
         <h3 class="success-title">Ocorrência Registrada!</h3>
-        <p class="success-desc">
+        <p v-if="savedForCredentialReview" class="success-desc">
+          A ocorrência foi enviada para validação porque há suspeita de credencial válida na foto. Ela ficará visível no mapa após a revisão.
+        </p>
+        <p v-else class="success-desc">
           A infração foi salva e já está visível no mapa.
         </p>
         <button class="btn btn-primary mt-4" @click="emit('close')">
@@ -521,7 +539,12 @@ import {
   analyzeIncidentImage,
   compareVehicleDuplicityWithGemini
 } from '../../services/geminiService';
-import { extractPhotoMetadata, blurSensitiveContentAndCompress, prepareImageForGemini } from '../../services/imageProcessor';
+import {
+  extractPhotoMetadata,
+  blurSensitiveContentAndCompress,
+  prepareImageForGemini,
+  resizeImageForServer
+} from '../../services/imageProcessor';
 import {
   saveIncidentToFirebase,
   normalizeVerificacao,
@@ -633,6 +656,7 @@ const confirmSwitchToTraffic = () => {
 const declineSwitchToTraffic = () => {
   selectedNatureza.value = 'urbana';
   detectedVerificacao.value = '';
+  detectedPossibleCredential.value = false;
   showSwitchToTrafficModal.value = false;
 };
 const isAnalyzing = ref(false);
@@ -687,6 +711,8 @@ const currentBairro = ref('');
 const currentCidade = ref('');
 const currentEstado = ref('');
 const detectedVerificacao = ref('');
+const detectedPossibleCredential = ref(false);
+const savedForCredentialReview = ref(false);
 const isResolvingAddress = ref(false);
 let geocodeDebounceTimer = null;
 let addressValidationTimer = null;
@@ -1093,7 +1119,7 @@ const isLocationValid = computed(() => {
 });
 
 // --- Trava de Segurança 2: Cache de Análise Gemini (1x por dia por foto via SHA-256) ---
-const GEMINI_CACHE_PREFIX = 'multei_gemini_cache_v2_';
+const GEMINI_CACHE_PREFIX = 'multei_gemini_cache_v9_';
 const GEMINI_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
 
 const computeFileSha256 = async (file) => {
@@ -1578,6 +1604,8 @@ const resetToUpload = () => {
   isValidatingAddress.value = false;
   processedImageWebp.value = '';
   detectedVerificacao.value = '';
+  detectedPossibleCredential.value = false;
+  savedForCredentialReview.value = false;
   urbanDescricao.value = '';
   pendingVehicleVerification.value = '';
   showSwitchToTrafficModal.value = false;
@@ -1589,6 +1617,9 @@ const resetToUpload = () => {
   photoExifDate.value = null;
   lastGeocodedCoords.latitude = null;
   lastGeocodedCoords.longitude = null;
+  if (isCoordinateInBrazilBounds(selectedLocation.latitude, selectedLocation.longitude)) {
+    isLocationInBrazil.value = true;
+  }
 };
 
 const handleRetry = async () => {
@@ -1650,7 +1681,15 @@ const processSelectedImage = async (file) => {
   try {
     // 1. Tentar obter metadados EXIF da foto (coordenadas GPS + data/hora de captura)
     const exifMetadata = await extractPhotoMetadata(file);
-    const exifLocation = exifMetadata.location;
+    let exifLocation = exifMetadata.location;
+    if (exifLocation) {
+      const exifInBrazil = await checkIfCoordsInBrazil(exifLocation.latitude, exifLocation.longitude);
+      if (!exifInBrazil) {
+        // Se o EXIF da imagem apontar para fora do Brasil (ex: metadado corrompido ou imagem sem EXIF local válido),
+        // descarta o EXIF para priorizar o GPS real do dispositivo/mapa
+        exifLocation = null;
+      }
+    }
     photoExifLocation.value = exifLocation;
     photoExifDate.value = exifMetadata.capturedAt;
 
@@ -1659,13 +1698,21 @@ const processSelectedImage = async (file) => {
       selectedLocation.longitude = exifLocation.longitude;
       setGpsAnchorLocation(exifLocation.latitude, exifLocation.longitude);
       locationSource.value = 'exif';
-      // Tenta atualizar a âncora com o GPS ao vivo do aparelho se disponível, mantendo dentro da região real do usuário
+      // Atualiza a âncora com o GPS ao vivo apenas se estiver próximo da foto
       try {
         const liveGps = await requestUserLocation();
-        setGpsAnchorLocation(liveGps.latitude, liveGps.longitude);
+        const distFromExif = getDistanceMeters(
+          exifLocation.latitude,
+          exifLocation.longitude,
+          liveGps.latitude,
+          liveGps.longitude
+        );
+        if (distFromExif <= MAX_ADJUST_RADIUS_METERS) {
+          setGpsAnchorLocation(liveGps.latitude, liveGps.longitude);
+        }
       } catch {}
     } else {
-      // Foto sem metadados GPS (câmera HTML5 ou upload do WhatsApp/Galeria):
+      // Foto sem metadados GPS válidos no Brasil (câmera HTML5 ou upload do WhatsApp/Galeria):
       // Tentar capturar o GPS do dispositivo ao vivo
       try {
         const liveGps = await requestUserLocation();
@@ -1684,7 +1731,7 @@ const processSelectedImage = async (file) => {
       }
     }
 
-    // Trava geográfica: rejeita imediatamente se a foto ou o GPS estiverem fora do Brasil
+    // Trava geográfica: rejeita imediatamente se a localização selecionada ou âncora estiverem fora do Brasil
     if (locationSource.value !== 'fallback') {
       const inBrazil = await checkIfCoordsInBrazil(selectedLocation.latitude, selectedLocation.longitude);
       const anchorInBrazil = await checkIfCoordsInBrazil(gpsAnchorLocation.latitude, gpsAnchorLocation.longitude);
@@ -1695,6 +1742,7 @@ const processSelectedImage = async (file) => {
         errorMessage.value = OUTSIDE_BRAZIL_ERROR_MSG;
         return;
       }
+      isLocationInBrazil.value = true;
     }
 
     // Iniciar busca pelo nome da rua apenas se não for fallback sem localização real
@@ -1768,17 +1816,20 @@ const processSelectedImage = async (file) => {
       urbanDescricao.value = (analysis.urbanDescription || '').trim().slice(0, 300);
       pendingVehicleVerification.value = normalizeVerificacao(analysis.verification);
       detectedVerificacao.value = '';
+      detectedPossibleCredential.value = false;
       showSwitchToTrafficModal.value = Boolean(analysis.hasTrafficInfractionVehicle);
     } else {
-      // Validação de presença de veículo e adequação de conteúdo para Infração de Trânsito:
-      if (!analysis.hasVehicle || !analysis.isAppropriate) {
+      const normalizedVerif = normalizeVerificacao(analysis.verification);
+      // Validação de presença de veículo na vaga auditada (ou obstrução da área de transferência) e adequação de conteúdo:
+      if ((!analysis.hasVehicle && normalizedVerif !== 'transferencia') || !analysis.isAppropriate) {
         isApiError.value = false;
         step.value = 'error';
-        errorMessage.value = analysis.rejectionReason || 'A foto precisa conter um veículo automotor e cumprir as regras comunitárias.';
+        errorMessage.value = analysis.rejectionReason || 'A foto precisa conter um veículo automotor na vaga auditada e cumprir as regras comunitárias.';
         return;
       }
 
-      detectedVerificacao.value = normalizeVerificacao(analysis.verification);
+      detectedVerificacao.value = normalizedVerif;
+      detectedPossibleCredential.value = Boolean(analysis.possibleCredential);
       urbanDescricao.value = '';
       pendingVehicleVerification.value = '';
       showSwitchToTrafficModal.value = false;
@@ -2051,32 +2102,38 @@ const handleSaveIncident = async () => {
     locationSource.value === 'fallback'
       ? true
       : await checkIfCoordsInBrazil(gpsAnchorLocation.latitude, gpsAnchorLocation.longitude);
-  const hasValidBrazilUf = isValidBrazilUF(finalEstado);
+  const hasValidBrazilUf = !finalEstado || isValidBrazilUF(finalEstado);
 
-  if (!isLocationInBrazil.value || !selectedInBrazil || !anchorInBrazil || !hasValidBrazilUf) {
+  if (!selectedInBrazil || !anchorInBrazil || (!hasValidBrazilUf && !isCoordinateInBrazilBounds(selectedLocation.latitude, selectedLocation.longitude))) {
     isLocationInBrazil.value = false;
     isSaving.value = false;
     saveError.value = OUTSIDE_BRAZIL_ERROR_MSG;
     return;
   }
+  isLocationInBrazil.value = true;
 
   const classificacao = computeIncidentClassification();
   const verificacao = normalizeVerificacao(detectedVerificacao.value);
   const finalDescricao = selectedNatureza.value === 'urbana'
     ? (urbanDescricao.value || '').trim().slice(0, 300)
     : '';
+  const isPossibleCredential = selectedNatureza.value !== 'urbana' && Boolean(detectedPossibleCredential.value);
 
   const timestampIso = new Date().toISOString();
 
   try {
+    // Redimensiona a imagem (já com os boxes de placas/rostos aplicados na resolução original)
+    // somente agora na hora de salvar no servidor
+    const serverImageWebp = await resizeImageForServer(processedImageWebp.value);
+
     let possivelDuplicidade = false;
     let duplicidadeDeId = '';
     let rotuloDuplicidade = '';
     let motivoDuplicidade = '';
 
-    // Sistema Anti-Duplicidade (apenas para Infrações de Trânsito):
+    // Sistema Anti-Duplicidade (apenas para Infrações de Trânsito que não estão retidas por credencial):
     // Verifica se nos últimos 2 minutos num raio de 10m houve outro registro e pede ao Gemini para comparar os veículos
-    if (selectedNatureza.value !== 'urbana' && geminiClient && processedImageWebp.value) {
+    if (!isPossibleCredential && selectedNatureza.value !== 'urbana' && geminiClient && serverImageWebp) {
       try {
         const recentNearby = await findRecentNearbyTrafficIncidents(
           selectedLocation.latitude,
@@ -2092,7 +2149,7 @@ const handleSaveIncident = async () => {
           const comparison = await compareVehicleDuplicityWithGemini(
             geminiClient,
             existingImgBase64,
-            processedImageWebp.value
+            serverImageWebp
           );
 
           if (comparison.isPossibleDuplicate) {
@@ -2112,9 +2169,10 @@ const handleSaveIncident = async () => {
       data: timestampIso,
       latitude: selectedLocation.latitude,
       longitude: selectedLocation.longitude,
-      foto: processedImageWebp.value,
-      ativo: true,
-      motivo_denuncia: '',
+      foto: serverImageWebp,
+      ativo: !isPossibleCredential,
+      motivo_denuncia: isPossibleCredential ? 'possível credencial a vista' : '',
+      possivel_credencial: isPossibleCredential,
       cidade: finalCidade,
       estado: finalEstado,
       rua: finalRua,
@@ -2135,6 +2193,9 @@ const handleSaveIncident = async () => {
       latitude: selectedLocation.latitude,
       longitude: selectedLocation.longitude,
       geohash: saveResult.geohash,
+      ativo: saveResult.ativo ?? !isPossibleCredential,
+      motivo_denuncia: saveResult.motivo_denuncia ?? (isPossibleCredential ? 'possível credencial a vista' : ''),
+      possivel_credencial: Boolean(saveResult.possivel_credencial ?? isPossibleCredential),
       natureza: selectedNatureza.value,
       descricao: saveResult.descricao ?? finalDescricao,
       rua: (!hasManualAddressEdit.value && !finalRua && saveResult.rua) ? saveResult.rua : finalRua,
@@ -2144,7 +2205,7 @@ const handleSaveIncident = async () => {
       classificacao: saveResult.classificacao || classificacao,
       verificacao: saveResult.verificacao || verificacao,
       fotoUrl: saveResult.fotoUrl,
-      maskedImageUrl: saveResult.fotoUrl || processedImageWebp.value,
+      maskedImageUrl: saveResult.fotoUrl || serverImageWebp,
       possivel_duplicidade: Boolean(saveResult.possivel_duplicidade ?? possivelDuplicidade),
       duplicidade_de_id: saveResult.duplicidade_de_id || duplicidadeDeId,
       rotulo_duplicidade: saveResult.rotulo_duplicidade || rotuloDuplicidade,
@@ -2160,6 +2221,7 @@ const handleSaveIncident = async () => {
       newIncident.description = [newIncident.rua, newIncident.bairro, newIncident.cidade, newIncident.estado].filter(Boolean).join(' - ');
     }
 
+    savedForCredentialReview.value = isPossibleCredential;
     emit('incidentCreated', newIncident);
     step.value = 'success';
   } catch (err) {
@@ -3543,5 +3605,44 @@ const handleSaveIncident = async () => {
   color: #1e293b;
   font-size: 0.88rem;
   line-height: 1.5;
+}
+
+.credential-review-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  background: #fffbeb;
+  border: 1.5px solid #d97706;
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  margin-bottom: 1rem;
+  color: #78350f;
+}
+
+.credential-alert-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.credential-alert-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.credential-alert-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #78350f;
+}
+
+.credential-alert-desc {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: #451a03;
+  font-weight: 500;
 }
 </style>

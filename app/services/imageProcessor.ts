@@ -160,22 +160,39 @@ export async function extractPhotoMetadata(imageFile: File): Promise<PhotoMetada
               const entryOffset = pOffset + (i * 12);
               if (entryOffset + 12 > length) break;
               const tag = view.getUint16(entryOffset, isLittleEndian);
+              const fieldType = view.getUint16(entryOffset + 2, isLittleEndian);
               const valOffset = tiffStart + view.getUint32(entryOffset + 8, isLittleEndian);
 
+              const readRationalComponent = (off: number): number => {
+                if (fieldType === 10) {
+                  // SRATIONAL (signed 32-bit numerator/denominator)
+                  const num = view.getInt32(off, isLittleEndian);
+                  const den = view.getInt32(off + 4, isLittleEndian) || 1;
+                  return num / den;
+                }
+                const num = view.getUint32(off, isLittleEndian);
+                const den = view.getUint32(off + 4, isLittleEndian) || 1;
+                return num / den;
+              };
+
               if (tag === 0x0001) { // GPSLatitudeRef
-                latRef = String.fromCharCode(view.getUint8(entryOffset + 8));
+                const rawRef = readExifAscii(view, tiffStart, entryOffset, isLittleEndian, length) || String.fromCharCode(view.getUint8(entryOffset + 8));
+                latRef = rawRef.trim().toUpperCase().charAt(0) || 'N';
               } else if (tag === 0x0003) { // GPSLongitudeRef
-                lonRef = String.fromCharCode(view.getUint8(entryOffset + 8));
+                const rawRef = readExifAscii(view, tiffStart, entryOffset, isLittleEndian, length) || String.fromCharCode(view.getUint8(entryOffset + 8));
+                lonRef = rawRef.trim().toUpperCase().charAt(0) || 'E';
               } else if (tag === 0x0002 && valOffset + 24 <= length) { // GPSLatitude (3 racionais)
-                const d = view.getUint32(valOffset, isLittleEndian) / (view.getUint32(valOffset + 4, isLittleEndian) || 1);
-                const m = view.getUint32(valOffset + 8, isLittleEndian) / (view.getUint32(valOffset + 12, isLittleEndian) || 1);
-                const s = view.getUint32(valOffset + 16, isLittleEndian) / (view.getUint32(valOffset + 20, isLittleEndian) || 1);
-                latValues = d + (m / 60) + (s / 3600);
+                const d = readRationalComponent(valOffset);
+                const m = Math.abs(readRationalComponent(valOffset + 8));
+                const s = Math.abs(readRationalComponent(valOffset + 16));
+                const sign = d < 0 ? -1 : 1;
+                latValues = sign * (Math.abs(d) + (m / 60) + (s / 3600));
               } else if (tag === 0x0004 && valOffset + 24 <= length) { // GPSLongitude (3 racionais)
-                const d = view.getUint32(valOffset, isLittleEndian) / (view.getUint32(valOffset + 4, isLittleEndian) || 1);
-                const m = view.getUint32(valOffset + 8, isLittleEndian) / (view.getUint32(valOffset + 12, isLittleEndian) || 1);
-                const s = view.getUint32(valOffset + 16, isLittleEndian) / (view.getUint32(valOffset + 20, isLittleEndian) || 1);
-                lonValues = d + (m / 60) + (s / 3600);
+                const d = readRationalComponent(valOffset);
+                const m = Math.abs(readRationalComponent(valOffset + 8));
+                const s = Math.abs(readRationalComponent(valOffset + 16));
+                const sign = d < 0 ? -1 : 1;
+                lonValues = sign * (Math.abs(d) + (m / 60) + (s / 3600));
               } else if (tag === 0x0007 && valOffset + 24 <= length) { // GPSTimeStamp (3 racionais UTC)
                 const hh = view.getUint32(valOffset, isLittleEndian) / (view.getUint32(valOffset + 4, isLittleEndian) || 1);
                 const mm = view.getUint32(valOffset + 8, isLittleEndian) / (view.getUint32(valOffset + 12, isLittleEndian) || 1);
@@ -186,10 +203,14 @@ export async function extractPhotoMetadata(imageFile: File): Promise<PhotoMetada
               }
             }
 
-            if (latValues !== null && lonValues !== null && !isNaN(latValues) && !isNaN(lonValues)) {
-              if (latRef === 'S') latValues = -latValues;
-              if (lonRef === 'W') lonValues = -lonValues;
-              result.location = { latitude: latValues, longitude: lonValues };
+            if (latValues !== null && lonValues !== null && Number.isFinite(latValues) && Number.isFinite(lonValues)) {
+              if (latRef === 'S' && latValues > 0) latValues = -latValues;
+              if (lonRef === 'W' && lonValues > 0) lonValues = -lonValues;
+              const isZeroCoord = Math.abs(latValues) < 0.0001 && Math.abs(lonValues) < 0.0001;
+              const isValidRange = Math.abs(latValues) <= 90 && Math.abs(lonValues) <= 180;
+              if (!isZeroCoord && isValidRange) {
+                result.location = { latitude: latValues, longitude: lonValues };
+              }
             }
           }
 
@@ -237,9 +258,10 @@ export async function extractGpsData(imageFile: File): Promise<Geolocation | nul
 
 const MAX_SHORT_EDGE = 1080;
 const MAX_LONG_EDGE = 1920;
+const MAX_SAFE_CANVAS_EDGE = 4096;
 
 /**
- * Calcula as dimensões finais mantendo 100% da proporção original da foto,
+ * Calcula as dimensões finais para salvamento no servidor mantendo 100% da proporção original da foto,
  * respeitando o limite máximo de 1080x1920 (retrato) ou 1920x1080 (paisagem).
  */
 function calculateFullHdDimensions(
@@ -262,19 +284,20 @@ function calculateFullHdDimensions(
 }
 
 /**
- * Redimensiona a foto para até 1080x1920 (preservando a proporção original)
- * antes de enviar para análise da IA e geração do WebP final.
+ * Prepara a foto para envio ao Gemini mantendo a resolução original da imagem
+ * (normalizando apenas a orientação EXIF via Canvas para garantir 100% de alinhamento dos boxes).
  */
-export function prepareImageForGemini(file: File, _maxDim = 1920): Promise<string> {
+export function prepareImageForGemini(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        const { width, height } = calculateFullHdDimensions(
-          img.naturalWidth,
-          img.naturalHeight
-        );
+        const natW = img.naturalWidth || MAX_SHORT_EDGE;
+        const natH = img.naturalHeight || MAX_LONG_EDGE;
+        const safeScale = Math.min(1, MAX_SAFE_CANVAS_EDGE / Math.max(natW, natH));
+        const width = Math.max(1, Math.round(natW * safeScale));
+        const height = Math.max(1, Math.round(natH * safeScale));
 
         const canvas = document.createElement('canvas');
         canvas.width = width;
@@ -287,8 +310,8 @@ export function prepareImageForGemini(file: File, _maxDim = 1920): Promise<strin
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
-        const optimized = canvas.toDataURL('image/webp', 1.0);
-        resolve(optimized);
+        const fullResWebp = canvas.toDataURL('image/webp', 0.95);
+        resolve(fullResWebp);
       };
       img.onerror = () => resolve(e.target?.result as string);
       img.src = e.target?.result as string;
@@ -300,8 +323,8 @@ export function prepareImageForGemini(file: File, _maxDim = 1920): Promise<strin
 
 /**
  * Aplica desfoque pesado e irreversível (blur intenso + destruição de caracteres em múltiplos estágios)
- * nas caixas delimitadoras de placas e rostos e exporta a imagem em WebP com qualidade 100% (1.0)
- * e resolução máxima de 1080x1920 preservando a proporção original.
+ * nas caixas delimitadoras de placas e rostos diretamente na resolução original da imagem analisada pelo Gemini,
+ * garantindo que os boxes fiquem exatamente no lugar certo antes de qualquer redimensionamento.
  */
 export function blurSensitiveContentAndCompress(
   imageUrl: string,
@@ -314,11 +337,10 @@ export function blurSensitiveContentAndCompress(
     image.src = imageUrl;
 
     image.onload = () => {
-      // 1. Redimensionar respeitando o limite máximo de 1080x1920 (ou 1920x1080) mantendo a proporção
-      const { width: targetW, height: targetH } = calculateFullHdDimensions(
-        image.naturalWidth,
-        image.naturalHeight
-      );
+      // 1. Manter a exata resolução da imagem analisada pelo Gemini ao posicionar e queimar os boxes
+      const targetW = Math.max(1, image.naturalWidth || MAX_SHORT_EDGE);
+      const targetH = Math.max(1, image.naturalHeight || MAX_LONG_EDGE);
+      const scaleFactor = Math.max(1, Math.max(targetW, targetH) / MAX_LONG_EDGE);
 
       const canvas = document.createElement('canvas');
       canvas.width = targetW;
@@ -330,7 +352,7 @@ export function blurSensitiveContentAndCompress(
 
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      // Desenhar a foto base redimensionada
+      // Desenhar a foto base na resolução original
       ctx.drawImage(image, 0, 0, targetW, targetH);
 
       // Juntar todas as caixas a serem anonimizadas
@@ -367,8 +389,8 @@ export function blurSensitiveContentAndCompress(
 
         // Desfoque pesado multi-estágio (compatível com Safari, Chrome, Firefox e WebViews móveis):
         // Estágio 1: Redução intermediária para suavizar amostras antes da compressão extrema
-        const midW = Math.max(4, Math.round(w / 4));
-        const midH = Math.max(3, Math.round(h / 4));
+        const midW = Math.max(4, Math.round(w / (4 * scaleFactor)));
+        const midH = Math.max(3, Math.round(h / (4 * scaleFactor)));
         const midCanvas = document.createElement('canvas');
         midCanvas.width = midW;
         midCanvas.height = midH;
@@ -376,8 +398,8 @@ export function blurSensitiveContentAndCompress(
 
         // Estágio 2: Redução extrema (máx 5x3 pixels) para tornar matematicamente impossível
         // distinguir os 7 caracteres de uma placa ou feições de um rosto, mesmo em fotos de perto
-        const miniW = Math.max(2, Math.min(5, Math.round(w / 28)));
-        const miniH = Math.max(2, Math.min(3, Math.round(h / 22)));
+        const miniW = Math.max(2, Math.min(5, Math.round(w / (28 * scaleFactor))));
+        const miniH = Math.max(2, Math.min(3, Math.round(h / (22 * scaleFactor))));
         const miniCanvas = document.createElement('canvas');
         miniCanvas.width = miniW;
         miniCanvas.height = miniH;
@@ -424,10 +446,15 @@ export function blurSensitiveContentAndCompress(
             miniCtx.putImageData(imgData, 0, 0);
           } catch {}
 
+          const cornerRadius = Math.round(6 * scaleFactor);
+          const innerPad = Math.round(12 * scaleFactor);
+          const blurPx = Math.round(28 * scaleFactor);
+          const bleed = Math.round(32 * scaleFactor);
+
           ctx.save();
           ctx.beginPath();
           if (typeof ctx.roundRect === 'function') {
-            ctx.roundRect(x, y, w, h, 6);
+            ctx.roundRect(x, y, w, h, cornerRadius);
           } else {
             ctx.rect(x, y, w, h);
           }
@@ -441,13 +468,12 @@ export function blurSensitiveContentAndCompress(
           try {
             ctx.filter = 'none';
           } catch {}
-          ctx.drawImage(miniCanvas, 0, 0, miniW, miniH, x - 12, y - 12, w + 24, h + 24);
+          ctx.drawImage(miniCanvas, 0, 0, miniW, miniH, x - innerPad, y - innerPad, w + innerPad * 2, h + innerPad * 2);
 
-          // Em seguida, aplica filtro blur pesado de 28px expandido além das bordas do clip
+          // Em seguida, aplica filtro blur pesado expandido além das bordas do clip
           try {
-            ctx.filter = 'blur(28px)';
+            ctx.filter = `blur(${blurPx}px)`;
           } catch {}
-          const bleed = 32;
           ctx.drawImage(miniCanvas, 0, 0, miniW, miniH, x - bleed, y - bleed, w + bleed * 2, h + bleed * 2);
           ctx.drawImage(miniCanvas, 0, 0, miniW, miniH, x - bleed, y - bleed, w + bleed * 2, h + bleed * 2);
 
@@ -463,10 +489,10 @@ export function blurSensitiveContentAndCompress(
           // Contorno estético sutil para visualização da área protegida
           ctx.save();
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = Math.max(1.5, 1.5 * scaleFactor);
           if (typeof ctx.roundRect === 'function') {
             ctx.beginPath();
-            ctx.roundRect(x, y, w, h, 6);
+            ctx.roundRect(x, y, w, h, cornerRadius);
             ctx.stroke();
           } else {
             ctx.strokeRect(x, y, w, h);
@@ -475,9 +501,55 @@ export function blurSensitiveContentAndCompress(
         }
       });
 
-      // 2. Exportar em WebP com qualidade 100% (1.0)
-      const webpBase64 = canvas.toDataURL('image/webp', 1.0);
+      // 2. Exportar em WebP na resolução original com os boxes já queimados na imagem
+      const webpBase64 = canvas.toDataURL('image/webp', 0.95);
       resolve(webpBase64);
+    };
+
+    image.onerror = (err) => reject(err);
+  });
+}
+
+/**
+ * Redimensiona a imagem já anonimizada (com os boxes já aplicados na posição exata)
+ * para o limite máximo de 1080x1920 (retrato) ou 1920x1080 (paisagem) em WebP
+ * somente no momento de salvar no servidor.
+ */
+export function resizeImageForServer(imageUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!imageUrl) {
+      return resolve(imageUrl);
+    }
+
+    const image = new Image();
+    image.crossOrigin = 'Anonymous';
+    image.src = imageUrl;
+
+    image.onload = () => {
+      const { width: targetW, height: targetH } = calculateFullHdDimensions(
+        image.naturalWidth,
+        image.naturalHeight
+      );
+
+      // Se a imagem já estiver dentro do limite Full HD, retorna em WebP sem necessidade de reescalar
+      if (targetW === image.naturalWidth && targetH === image.naturalHeight && imageUrl.startsWith('data:image/webp')) {
+        return resolve(imageUrl);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return resolve(imageUrl);
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(image, 0, 0, targetW, targetH);
+
+      const resizedWebp = canvas.toDataURL('image/webp', 1.0);
+      resolve(resizedWebp);
     };
 
     image.onerror = (err) => reject(err);
