@@ -1322,6 +1322,15 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.multei-seo-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1000000;
+  pointer-events: none;
+  user-select: none;
+  overflow: hidden;
+}
+
 .seo-title {
   position: absolute;
   width: 1px;
@@ -1349,6 +1358,8 @@ onMounted(async () => {
 }
 
 .fullscreen-map-container {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
 }
