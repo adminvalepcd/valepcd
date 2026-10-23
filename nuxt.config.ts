@@ -150,6 +150,11 @@ export default defineNuxtConfig({
             window.gtag('js', new Date());
             window.gtag('config', 'G-4QRMKWNJ8S', { send_page_view: false });
           `
+        },
+        {
+          src: 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6260779513509504',
+          async: true,
+          crossorigin: 'anonymous'
         }
         // O @googlemaps/markerclusterer NÃO é carregado aqui de propósito.
         // Ele só é usado na página /multei e é carregado sob demanda por
