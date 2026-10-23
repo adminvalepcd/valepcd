@@ -1,7 +1,31 @@
 <template>
   <div class="multei-fullscreen-page">
-    <!-- Título H1 para SEO (atrás do mapa, indexável pelos motores de busca) -->
-    <h1 class="seo-title">Multei - Denúncia anônima de uso irregular de vagas para PcD</h1>
+    <!-- Conteúdo textual semântico no fluxo do documento (atrás do mapa) para indexação SEO e análise de conteúdo do Google AdSense no acesso direto -->
+    <article class="multei-seo-backdrop">
+      <h1 class="seo-title">Multei - Denúncia anônima de uso irregular de vagas para PcD e Mobilidade Urbana</h1>
+      <section>
+        <h2>Mapeamento colaborativo de acessibilidade e fiscalização cidadã</h2>
+        <p>
+          O Multei é uma iniciativa do projeto Vale PCD dedicada ao mapeamento colaborativo de infrações de trânsito e
+          barreiras de mobilidade urbana que prejudicam a autonomia e a segurança de pessoas com deficiência (PcD) e pessoas
+          com mobilidade reduzida em todo o Brasil. Utilizando recursos de geolocalização e inteligência artificial para
+          proteção automática de privacidade (anonimização de placas veiculares e rostos), a plataforma permite registrar
+          ocorrências em tempo real.
+        </p>
+        <p>
+          Entre as principais ocorrências mapeadas estão o estacionamento irregular em vagas reservadas para pessoas com
+          deficiência sem credencial oficial (Art. 181, inciso XX do Código de Trânsito Brasileiro - CTB), o bloqueio de
+          calçadas, passeios públicos e faixas de travessia de pedestres (Art. 181, inciso VIII do CTB), a obstrução de
+          rampas de
+          acessibilidade e esquinas (Art. 181, inciso I do CTB), além de calçadas quebradas, buracos, ausência de piso tátil
+          e obstáculos que interrompem rotas acessíveis.
+        </p>
+        <p>
+          Os dados consolidados pelo Multei formam um painel de inteligência urbana para apoiar órgãos de
+          trânsito, prefeituras e políticas públicas de inclusão e desenho universal nas cidades brasileiras.
+        </p>
+      </section>
+    </article>
 
     <!-- Barra Superior Flutuante: Botão Voltar + Busca de Endereço + Status/GPS -->
     <div
@@ -190,12 +214,14 @@
     <!-- Modal Tela Cheia: O que posso denunciar? -->
     <Transition name="fade-modal">
       <div
-        v-if="isWhatToReportModalOpen"
+        v-show="isWhatToReportModalOpen"
         ref="whatToReportModalRef"
         class="what-to-report-fullscreen-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="what-to-report-title"
+        :inert="!isWhatToReportModalOpen || undefined"
+        :aria-hidden="!isWhatToReportModalOpen ? 'true' : undefined"
       >
         <div class="what-to-report-content">
           <div class="what-to-report-topbar">

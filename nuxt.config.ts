@@ -154,7 +154,8 @@ export default defineNuxtConfig({
         {
           src: 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6260779513509504',
           async: true,
-          crossorigin: 'anonymous'
+          crossorigin: 'anonymous',
+          'data-overlays': 'bottom'
         }
         // O @googlemaps/markerclusterer NÃO é carregado aqui de propósito.
         // Ele só é usado na página /multei e é carregado sob demanda por
