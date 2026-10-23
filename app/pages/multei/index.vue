@@ -1,33 +1,66 @@
 <template>
-  <div class="multei-fullscreen-page">
-    <!-- Conteúdo textual semântico no fluxo do documento (atrás do mapa) para indexação SEO e análise de conteúdo do Google AdSense no acesso direto -->
-    <article class="multei-seo-backdrop">
-      <h1 class="seo-title">Multei - Denúncia anônima de uso irregular de vagas para PcD e Mobilidade Urbana</h1>
-      <section>
-        <h2>Mapeamento colaborativo de acessibilidade e fiscalização cidadã</h2>
-        <p>
-          O Multei é uma iniciativa do projeto Vale PCD dedicada ao mapeamento colaborativo de infrações de trânsito e
-          barreiras de mobilidade urbana que prejudicam a autonomia e a segurança de pessoas com deficiência (PcD) e pessoas
-          com mobilidade reduzida em todo o Brasil. Utilizando recursos de geolocalização e inteligência artificial para
-          proteção automática de privacidade (anonimização de placas veiculares e rostos), a plataforma permite registrar
-          ocorrências em tempo real.
-        </p>
-        <p>
-          Entre as principais ocorrências mapeadas estão o estacionamento irregular em vagas reservadas para pessoas com
-          deficiência sem credencial oficial (Art. 181, inciso XX do Código de Trânsito Brasileiro - CTB), o bloqueio de
-          calçadas, passeios públicos e faixas de travessia de pedestres (Art. 181, inciso VIII do CTB), a obstrução de
-          rampas de
-          acessibilidade e esquinas (Art. 181, inciso I do CTB), além de calçadas quebradas, buracos, ausência de piso tátil
-          e obstáculos que interrompem rotas acessíveis.
-        </p>
-        <p>
-          Os dados consolidados pelo Multei formam um painel de inteligência urbana para apoiar órgãos de
-          trânsito, prefeituras e políticas públicas de inclusão e desenho universal nas cidades brasileiras.
-        </p>
-      </section>
-    </article>
+  <div class="multei-page-root">
+    <!-- Conteúdo semântico em fluxo normal do document.body (atrás da camada position:fixed do mapa)
+           para garantir que document.body tenha altura real (> 100vh) e estrutura semântica para o Google AdSense no acesso direto -->
+    <main id="main-content" class="multei-seo-backdrop" role="main">
+      <article class="multei-seo-article">
+        <header>
+          <h1 class="seo-main-heading">Multei - Denúncia anônima de uso irregular de vagas para PcD e Mobilidade Urbana
+          </h1>
+          <p>
+            Plataforma pública e colaborativa do projeto Vale PCD para mapeamento de infrações em vagas exclusivas para
+            pessoas com deficiência e barreiras de acessibilidade nas cidades brasileiras.
+          </p>
+        </header>
+  
+        <section>
+          <h2>Mapeamento colaborativo de acessibilidade e fiscalização cidadã</h2>
+          <p>
+            O Multei é uma iniciativa da ONG Vale PCD dedicada ao mapeamento colaborativo de infrações de trânsito e
+            barreiras de mobilidade urbana que prejudicam a autonomia e a segurança de pessoas com deficiência (PcD) e
+            pessoas
+            com mobilidade reduzida em todo o Brasil. Utilizando recursos de geolocalização e inteligência artificial para
+            proteção automática de privacidade (anonimização de placas veiculares e rostos), a plataforma permite
+            registrar
+            ocorrências em tempo real.
+          </p>
+          <p>
+            Entre as principais ocorrências mapeadas estão o estacionamento irregular em vagas reservadas para pessoas com
+            deficiência sem credencial oficial (Art. 181, inciso XX do Código de Trânsito Brasileiro - CTB), o bloqueio de
+            calçadas, passeios públicos e faixas de travessia de pedestres (Art. 181, inciso VIII do CTB), a obstrução de
+            rampas de acessibilidade e esquinas (Art. 181, inciso I do CTB), além de calçadas quebradas, buracos, ausência de
+            piso tátil e obstáculos que interrompem rotas acessíveis.
+            </p>
+            <p>
+              Os dados consolidados pelo Multei formam um painel de inteligência urbana para apoiar órgãos de
+              trânsito, prefeituras e políticas públicas de inclusão e desenho universal nas cidades brasileiras.
+            </p>
+            </section>
+<section>
+  <h2>Direitos de mobilidade urbana, Lei Brasileira de Inclusão e Código de Trânsito</h2>
+  <p>
+    A Lei Brasileira de Inclusão da Pessoa com Deficiência (Lei nº 13.146/2015)
+    assegura o direito ao transporte e à mobilidade da pessoa com deficiência ou com mobilidade reduzida, em igualdade
+    de oportunidades com as demais pessoas, por meio da identificação e da eliminação de todos os obstáculos e
+    barreiras ao seu acesso.
+  </p>
+  <p>
+    Desde a vigência da Lei Brasileira de Inclusão, estacionamentos privados de uso coletivo — como supermercados,
+    shopping centers, centros comerciais, hospitais e instituições de ensino — passaram a ser equiparados às vias
+    públicas para fins de fiscalização de trânsito. O uso indevido das vagas reservadas sem a credencial oficial
+    configura infração gravíssima sujeita a multa e remoção do veículo.
+  </p>
+  <p>
+    A participação cidadã no registro de barreiras arquitetônicas, urbanísticas e de trânsito contribui diretamente
+    para cidades mais seguras, calçadas caminháveis, travessias sinalizadas e respeito contínuo aos direitos humanos e
+    à acessibilidade universal.
+  </p>
+</section>
+      </article>
+    </main>
 
-    <!-- Barra Superior Flutuante: Botão Voltar + Busca de Endereço + Status/GPS -->
+    <div class="multei-fullscreen-page">
+      <!-- Barra Superior Flutuante: Botão Voltar + Busca de Endereço + Status/GPS -->
     <div
       class="top-header-bar"
       ref="searchContainerRef"
@@ -339,14 +372,10 @@
       @gps-enabled="handleUserLocationFound"
     />
 
-    <!-- Modal de Detalhes da Ocorrência Clicada -->
-    <MulteiIncidentModal
-      v-if="selectedIncident"
-      :incident="selectedIncident"
-      :apps-script-url="appsScriptUrl"
-      @close="selectedIncident = null"
-      @incident-reported="handleIncidentReported"
-    />
+      <!-- Modal de Detalhes da Ocorrência Clicada -->
+      <MulteiIncidentModal v-if="selectedIncident" :incident="selectedIncident" :apps-script-url="appsScriptUrl"
+        @close="selectedIncident = null" @incident-reported="handleIncidentReported" />
+    </div>
   </div>
 </template>
 
@@ -1256,6 +1285,25 @@ const cleanupBottomAdObserver = () => {
 onMounted(async () => {
   setupBottomAdObserver();
 
+  if (typeof window !== 'undefined') {
+    try {
+      window.dataLayer = window.dataLayer || [];
+      if (window.gtag) {
+        window.gtag('consent', 'update', {
+          ad_storage: 'granted',
+          ad_user_data: 'granted',
+          ad_personalization: 'granted',
+          analytics_storage: 'granted'
+        });
+      }
+      window.dataLayer.push({
+        event: 'consent_loaded',
+        consent_granted: true,
+        timestamp: new Date().toISOString()
+      });
+    } catch {}
+  }
+
   if (typeof document !== 'undefined') {
     document.addEventListener('mousedown', handleDocumentClick);
   }
@@ -1322,26 +1370,37 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.multei-seo-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: -1000000;
-  pointer-events: none;
-  user-select: none;
-  overflow: hidden;
+.multei-page-root {
+  position: relative;
+  width: 100%;
+  min-height: 150vh;
+  background: #0f172a;
 }
 
-.seo-title {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+.multei-seo-backdrop {
+  position: relative;
   z-index: 0;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 6rem;
+  min-height: 150vh;
+  color: #cbd5e1;
+  background: #0f172a;
+  pointer-events: none;
+  user-select: none;
+}
+
+.multei-seo-article {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.seo-main-heading {
+  font-size: 1.75rem;
+  line-height: 1.3;
+  margin-bottom: 0.75rem;
 }
 
 .multei-fullscreen-page {
@@ -1354,7 +1413,7 @@ onMounted(async () => {
   margin: 0;
   padding: 0;
   background: #0f172a;
-  z-index: 1;
+  z-index: 10;
 }
 
 .fullscreen-map-container {

@@ -140,7 +140,13 @@ export default defineNuxtConfig({
             window.dataLayer = window.dataLayer || [];
             window.gtag = window.gtag || function(){dataLayer.push(arguments);};
             
-            window.gtag('consent', 'granted', {
+            window.gtag('consent', 'default', {
+              'ad_storage': 'granted',
+              'ad_user_data': 'granted',
+              'ad_personalization': 'granted',
+              'analytics_storage': 'granted'
+            });
+            window.gtag('consent', 'update', {
               'ad_storage': 'granted',
               'ad_user_data': 'granted',
               'ad_personalization': 'granted',
