@@ -130,6 +130,7 @@
     <!-- Botões Flutuantes: Incluir Ocorrência + Dúvidas? -->
     <div
       class="bottom-action-container"
+      :style="bottomActionContainerStyle"
       :inert="isAnyModalOpen || undefined"
       :aria-hidden="isAnyModalOpen ? 'true' : undefined"
     >
@@ -1055,7 +1056,180 @@ const handleGeoPermissionChange = () => {
   }
 };
 
+// Ajuste dinâmico dos botões inferiores ("Incluir" e "Dúvidas?") quando o anúncio âncora do AdSense estiver aberto no rodapé
+const bottomAdOffset = ref(0);
+let adMutationObserver = null;
+let adCheckInterval = null;
+const adFollowUpTimers = [];
+
+const bottomActionContainerStyle = computed(() => {
+  if (bottomAdOffset.value <= 0) return undefined;
+  return {
+    bottom: `${bottomAdOffset.value + 12}px`
+  };
+});
+
+const calculateBottomAdOffset = () => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return 0;
+
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  if (!viewportHeight) return 0;
+
+  const candidates = document.querySelectorAll(
+    'ins.adsbygoogle, [data-anchor-status], [data-ad-status], div[id^="google_ads_iframe"], iframe[id^="aswift_"]'
+  );
+
+  let maxOffset = 0;
+
+  candidates.forEach((node) => {
+    const el = node.closest('ins.adsbygoogle, [data-anchor-status]') || node;
+    if (!(el instanceof HTMLElement)) return;
+
+    const anchorStatus = el.getAttribute('data-anchor-status');
+    const adStatus = el.getAttribute('data-ad-status');
+    if (anchorStatus === 'dismissed' || adStatus === 'unfilled') {
+      return;
+    }
+
+    const style = window.getComputedStyle(el);
+    if (
+      style.display === 'none' ||
+      style.visibility === 'hidden' ||
+      parseFloat(style.opacity || '1') === 0
+    ) {
+      return;
+    }
+
+    let isFixedOrSticky = style.position === 'fixed' || style.position === 'sticky';
+    let fixedContainer = el;
+    if (!isFixedOrSticky) {
+      let parent = el.parentElement;
+      while (parent && parent !== document.body && parent !== document.documentElement) {
+        const parentStyle = window.getComputedStyle(parent);
+        if (parentStyle.position === 'fixed' || parentStyle.position === 'sticky') {
+          isFixedOrSticky = true;
+          fixedContainer = parent;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+    }
+
+    if (!isFixedOrSticky) return;
+
+    if (
+      fixedContainer.getAttribute('data-anchor-status') === 'dismissed' ||
+      fixedContainer.getAttribute('data-ad-status') === 'unfilled'
+    ) {
+      return;
+    }
+
+    const rect = fixedContainer.getBoundingClientRect();
+
+    // Ignora elementos sem dimensão de banner ou anúncios fixos no topo da tela
+    if (rect.height < 40 || rect.width < 100) return;
+    if (rect.top < viewportHeight * 0.35) return;
+
+    const visibleBottomHeight = viewportHeight - rect.top;
+
+    // Quando o anúncio âncora está aberto, ele ocupa > 45px na base da tela.
+    // Quando minimizado/fechado, o container desliza para fora (visibleBottomHeight <= ~30px ou 0).
+    if (visibleBottomHeight > 45 && rect.bottom >= viewportHeight - 30) {
+      let highestTop = rect.top;
+
+      const inspectChildRect = (child) => {
+        if (!(child instanceof HTMLElement)) return;
+        const cStyle = window.getComputedStyle(child);
+        if (
+          cStyle.display === 'none' ||
+          cStyle.visibility === 'hidden' ||
+          parseFloat(cStyle.opacity || '1') === 0
+        ) {
+          return;
+        }
+        const cRect = child.getBoundingClientRect();
+        if (cRect.height > 8 && cRect.width > 8 && cRect.top < highestTop && cRect.top >= rect.top - 48) {
+          highestTop = cRect.top;
+        }
+        if (child.shadowRoot) {
+          child.shadowRoot.querySelectorAll('*').forEach(inspectChildRect);
+        }
+      };
+
+      fixedContainer.querySelectorAll('*').forEach(inspectChildRect);
+
+      // Se a aba de minimizar (seta superior esquerda do AdSense) estiver em iframe/shadow fechado,
+      // reserva 28px adicionais acima do container do anúncio para não sobrepor a seta.
+      const grippyClearance = highestTop < rect.top ? 0 : 28;
+      const occupiedFromBottom = Math.round(viewportHeight - highestTop + grippyClearance);
+
+      if (occupiedFromBottom > maxOffset) {
+        maxOffset = occupiedFromBottom;
+      }
+    }
+  });
+
+  return maxOffset;
+};
+
+const updateBottomAdOffset = () => {
+  const nextOffset = calculateBottomAdOffset();
+  if (bottomAdOffset.value !== nextOffset) {
+    bottomAdOffset.value = nextOffset;
+  }
+};
+
+const scheduleAdOffsetChecks = () => {
+  updateBottomAdOffset();
+  while (adFollowUpTimers.length) {
+    clearTimeout(adFollowUpTimers.pop());
+  }
+  [60, 180, 350, 600].forEach((delay) => {
+    adFollowUpTimers.push(setTimeout(updateBottomAdOffset, delay));
+  });
+};
+
+const setupBottomAdObserver = () => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+  scheduleAdOffsetChecks();
+  window.addEventListener('resize', scheduleAdOffsetChecks, { passive: true });
+
+  if (typeof MutationObserver !== 'undefined' && document.body) {
+    adMutationObserver = new MutationObserver(() => {
+      scheduleAdOffsetChecks();
+    });
+    adMutationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class', 'data-anchor-status', 'data-ad-status', 'data-anchor-shown']
+    });
+  }
+
+  adCheckInterval = setInterval(updateBottomAdOffset, 400);
+};
+
+const cleanupBottomAdObserver = () => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', scheduleAdOffsetChecks);
+  }
+  if (adMutationObserver) {
+    adMutationObserver.disconnect();
+    adMutationObserver = null;
+  }
+  if (adCheckInterval) {
+    clearInterval(adCheckInterval);
+    adCheckInterval = null;
+  }
+  while (adFollowUpTimers.length) {
+    clearTimeout(adFollowUpTimers.pop());
+  }
+};
+
 onMounted(async () => {
+  setupBottomAdObserver();
+
   if (typeof document !== 'undefined') {
     document.addEventListener('mousedown', handleDocumentClick);
   }
@@ -1105,6 +1279,7 @@ onMounted(async () => {
 });
 
   onBeforeUnmount(() => {
+    cleanupBottomAdObserver();
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
     if (boundsFetchDebounceTimer) clearTimeout(boundsFetchDebounceTimer);
     if (mapCenterCountryTimer) clearTimeout(mapCenterCountryTimer);
@@ -1616,6 +1791,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  transition: bottom 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .btn-floating-report {

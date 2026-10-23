@@ -629,6 +629,10 @@ function trackDownloadBandeira() {
 }
 
 @media (max-width: 768px) {
+  .actions-header {
+    padding: 0 1.5rem;
+  }
+
   .actions-grid {
     grid-template-columns: 1fr;
     gap: 2rem;
