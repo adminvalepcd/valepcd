@@ -1373,22 +1373,25 @@ onMounted(async () => {
 .multei-page-root {
   position: relative;
   width: 100%;
-  min-height: 150vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background: #0f172a;
 }
 
 .multei-seo-backdrop {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 0;
   width: 100%;
   max-width: 960px;
   margin: 0 auto;
   padding: 2.5rem 1.5rem 6rem;
-  min-height: 150vh;
   color: #cbd5e1;
   background: #0f172a;
   pointer-events: none;
   user-select: none;
+  overflow: hidden;
 }
 
 .multei-seo-article {
@@ -1404,16 +1407,14 @@ onMounted(async () => {
 }
 
 .multei-fullscreen-page {
-  position: fixed;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   margin: 0;
   padding: 0;
   background: #0f172a;
-  z-index: 10;
 }
 
 .fullscreen-map-container {
