@@ -2,7 +2,7 @@
   <div class="multei-page-root">
     <div
       class="multei-fullscreen-page"
-      style="position: relative; width: 100%; height: 100vh; height: 100dvh; overflow: hidden; background: #0f172a; display: flex; flex-direction: column; justify-content: space-between;"
+      :style="fullscreenPageStyle"
     >
       <!-- Zona Superior em fluxo normal: Botão Voltar + Busca de Endereço + Status/GPS -->
       <header
@@ -200,7 +200,8 @@
           :initial-center="initialCenter"
           :initial-zoom="initialCenter.zoom || 15"
           :show-user-location-dot="locationState === 'granted'"
-          height="100vh"
+          :bottom-padding="bottomAdOffset"
+          height="100%"
           @marker-click="handleMarkerClick"
           @bounds-change="handleBoundsChange"
           @user-location-found="handleUserLocationFound"
@@ -1130,8 +1131,9 @@ const handleGeoPermissionChange = () => {
   }
 };
 
-// Ajuste dinâmico dos botões inferiores ("Incluir" e "Dúvidas?") quando o anúncio âncora do AdSense estiver aberto no rodapé
+// Ajuste dinâmico dos botões inferiores ("Incluir" e "Dúvidas?") e altura visível considerando a barra de navegação mobile (botões de retornar) e o anúncio âncora do AdSense
 const bottomAdOffset = ref(0);
+const viewportHeightPx = ref(0);
 const isWaitingForInitialAd = ref(true);
 let adMutationObserver = null;
 let adCheckInterval = null;
@@ -1139,12 +1141,59 @@ let initialAdWaitTimer = null;
 let initialAdPollInterval = null;
 const adFollowUpTimers = [];
 
+const fullscreenPageStyle = computed(() => {
+  const dynamicHeight = viewportHeightPx.value > 0 ? `${viewportHeightPx.value}px` : '100dvh';
+  return {
+    position: 'relative',
+    width: '100%',
+    '--multei-app-height': dynamicHeight,
+    height: dynamicHeight,
+    minHeight: dynamicHeight,
+    maxHeight: dynamicHeight,
+    overflow: 'hidden',
+    background: '#0f172a',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between'
+  };
+});
+
 const bottomActionContainerStyle = computed(() => {
   if (bottomAdOffset.value <= 0) return undefined;
   return {
-    paddingBottom: `${bottomAdOffset.value + 12}px`
+    paddingBottom: `calc(${bottomAdOffset.value + 12}px + env(safe-area-inset-bottom, 0px))`
   };
 });
+
+const getMobileBottomBarClearance = () => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return 0;
+
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+  const isMobileViewport =
+    viewportWidth <= 768 ||
+    (typeof window.matchMedia === 'function' &&
+      window.matchMedia('(max-width: 768px), (pointer: coarse)').matches);
+
+  if (!isMobileViewport) return 0;
+
+  const vv = window.visualViewport;
+  const visualBottomGap = vv
+    ? Math.max(0, Math.round((window.innerHeight || 0) - (vv.height + (vv.offsetTop || 0))))
+    : 0;
+
+  // Reserva 56px para a barra inferior de navegação do sistema mobile (botões retornar/home/apps) + eventual diferença da visualViewport
+  return 56 + visualBottomGap;
+};
+
+const syncViewportHeight = () => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  const innerH = window.innerHeight || document.documentElement.clientHeight || 0;
+  const vvH = window.visualViewport?.height ? Math.round(window.visualViewport.height) : 0;
+  const nextHeight = vvH > 0 && innerH > 0 ? Math.min(innerH, vvH) : (vvH || innerH);
+  if (nextHeight > 0 && viewportHeightPx.value !== nextHeight) {
+    viewportHeightPx.value = nextHeight;
+  }
+};
 
 const hasAdSenseContainerInDom = () => {
   if (typeof document === 'undefined') return false;
@@ -1218,22 +1267,29 @@ const waitForAdSenseDuringLoadingScreen = () => {
 const calculateBottomAdOffset = () => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return 0;
 
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  syncViewportHeight();
+
+  const viewportHeight =
+    viewportHeightPx.value ||
+    window.visualViewport?.height ||
+    window.innerHeight ||
+    document.documentElement.clientHeight ||
+    0;
   if (!viewportHeight) return 0;
+
+  const mobileNavClearance = getMobileBottomBarClearance();
+  let maxOffset = mobileNavClearance;
 
   const candidates = document.querySelectorAll(
     'ins.adsbygoogle, [data-anchor-status], [data-ad-status], div[id^="google_ads_iframe"], iframe[id^="aswift_"]'
   );
 
-  let maxOffset = 0;
-
   candidates.forEach((node) => {
     const el = node.closest('ins.adsbygoogle, [data-anchor-status]') || node;
     if (!(el instanceof HTMLElement)) return;
 
-    const anchorStatus = el.getAttribute('data-anchor-status');
     const adStatus = el.getAttribute('data-ad-status');
-    if (anchorStatus === 'dismissed' || adStatus === 'unfilled') {
+    if (adStatus === 'unfilled') {
       return;
     }
 
@@ -1263,54 +1319,93 @@ const calculateBottomAdOffset = () => {
 
     if (!isFixedOrSticky) return;
 
-    if (
-      fixedContainer.getAttribute('data-anchor-status') === 'dismissed' ||
-      fixedContainer.getAttribute('data-ad-status') === 'unfilled'
-    ) {
+    if (fixedContainer.getAttribute('data-ad-status') === 'unfilled') {
       return;
     }
 
+    const anchorStatus =
+      fixedContainer.getAttribute('data-anchor-status') || el.getAttribute('data-anchor-status');
+
     const rect = fixedContainer.getBoundingClientRect();
+    let highestTop = rect.top;
+    let lowestBottom = rect.bottom;
+    let maxWidth = rect.width;
 
-    // Ignora elementos sem dimensão de banner ou anúncios fixos no topo da tela
-    if (rect.height < 40 || rect.width < 100) return;
-    if (rect.top < viewportHeight * 0.35) return;
-
-    const visibleBottomHeight = viewportHeight - rect.top;
-
-    // Quando o anúncio âncora está aberto, ele ocupa > 45px na base da tela.
-    // Quando minimizado/fechado, o container desliza para fora (visibleBottomHeight <= ~30px ou 0).
-    if (visibleBottomHeight > 45 && rect.bottom >= viewportHeight - 30) {
-      let highestTop = rect.top;
-
-      const inspectChildRect = (child) => {
-        if (!(child instanceof HTMLElement)) return;
-        const cStyle = window.getComputedStyle(child);
-        if (
-          cStyle.display === 'none' ||
-          cStyle.visibility === 'hidden' ||
-          parseFloat(cStyle.opacity || '1') === 0
-        ) {
-          return;
-        }
-        const cRect = child.getBoundingClientRect();
-        if (cRect.height > 8 && cRect.width > 8 && cRect.top < highestTop && cRect.top >= rect.top - 48) {
+    const inspectChildRect = (child) => {
+      if (!(child instanceof HTMLElement)) return;
+      const cStyle = window.getComputedStyle(child);
+      if (
+        cStyle.display === 'none' ||
+        cStyle.visibility === 'hidden' ||
+        parseFloat(cStyle.opacity || '1') === 0
+      ) {
+        return;
+      }
+      const cRect = child.getBoundingClientRect();
+      if (cRect.height > 8 && cRect.width > 8) {
+        if (cRect.top < highestTop && cRect.top >= rect.top - 56) {
           highestTop = cRect.top;
         }
-        if (child.shadowRoot) {
-          child.shadowRoot.querySelectorAll('*').forEach(inspectChildRect);
+        if (cRect.bottom > lowestBottom) {
+          lowestBottom = cRect.bottom;
         }
-      };
+        if (cRect.width > maxWidth) {
+          maxWidth = cRect.width;
+        }
+      }
+      if (child.shadowRoot) {
+        child.shadowRoot.querySelectorAll('*').forEach(inspectChildRect);
+      }
+    };
 
-      fixedContainer.querySelectorAll('*').forEach(inspectChildRect);
+    fixedContainer.querySelectorAll('*').forEach(inspectChildRect);
 
+    // Ignora elementos sem largura de banner ou anúncios fixos no topo da tela
+    if (maxWidth < 100) return;
+    if (rect.top < viewportHeight * 0.35 && highestTop < viewportHeight * 0.35) return;
+
+    // Quando o anúncio âncora inferior foi minimizado/recolhido pelo usuário, a aba de seta (^)
+    // continua visível na base (~28-32px acima da barra de navegação mobile).
+    if (anchorStatus === 'dismissed') {
+      const collapsedTabOffset = Math.max(
+        mobileNavClearance + 32,
+        highestTop < viewportHeight ? Math.round(viewportHeight - highestTop + 8) : 0
+      );
+      if (collapsedTabOffset > maxOffset) {
+        maxOffset = collapsedTabOffset;
+      }
+      return;
+    }
+
+    const effectiveHeight = lowestBottom - highestTop;
+    if (effectiveHeight < 28) return;
+
+    const visibleBottomHeight = viewportHeight - highestTop;
+
+    // Considera o anúncio âncora ativo na base (mesmo já elevado pelo margin-bottom mobile de 56px)
+    if (
+      visibleBottomHeight > 24 &&
+      lowestBottom >= viewportHeight - (mobileNavClearance + 55)
+    ) {
       // Se a aba de minimizar (seta superior esquerda do AdSense) estiver em iframe/shadow fechado,
       // reserva 28px adicionais acima do container do anúncio para não sobrepor a seta.
-      const grippyClearance = highestTop < rect.top ? 0 : 28;
+      const grippyClearance = highestTop < rect.top - 4 ? 8 : 28;
       const occupiedFromBottom = Math.round(viewportHeight - highestTop + grippyClearance);
 
-      if (occupiedFromBottom > maxOffset) {
-        maxOffset = occupiedFromBottom;
+      // Caso o navegador mobile ainda não tenha deslocado o container do anúncio acima dos botões de retornar,
+      // soma a parcela restante da barra de navegação mobile para garantir que os botões fiquem acima de ambos.
+      const unliftedMobileBarPortion =
+        mobileNavClearance > 0
+          ? Math.max(0, Math.round(rect.bottom - (viewportHeight - mobileNavClearance)))
+          : 0;
+
+      const totalOffset = Math.max(
+        occupiedFromBottom + unliftedMobileBarPortion,
+        mobileNavClearance + Math.round(effectiveHeight) + grippyClearance
+      );
+
+      if (totalOffset > maxOffset) {
+        maxOffset = totalOffset;
       }
     }
   });
@@ -1338,9 +1433,15 @@ const scheduleAdOffsetChecks = () => {
 const setupBottomAdObserver = () => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
+  syncViewportHeight();
   scheduleAdOffsetChecks();
   window.addEventListener('resize', scheduleAdOffsetChecks, { passive: true });
+  window.addEventListener('orientationchange', scheduleAdOffsetChecks, { passive: true });
   window.addEventListener('scroll', keepViewportAtTopWhenMapActive, { passive: true });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', scheduleAdOffsetChecks, { passive: true });
+    window.visualViewport.addEventListener('scroll', scheduleAdOffsetChecks, { passive: true });
+  }
 
   if (typeof MutationObserver !== 'undefined' && document.body) {
     adMutationObserver = new MutationObserver(() => {
@@ -1360,7 +1461,12 @@ const setupBottomAdObserver = () => {
 const cleanupBottomAdObserver = () => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('resize', scheduleAdOffsetChecks);
+    window.removeEventListener('orientationchange', scheduleAdOffsetChecks);
     window.removeEventListener('scroll', keepViewportAtTopWhenMapActive);
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', scheduleAdOffsetChecks);
+      window.visualViewport.removeEventListener('scroll', scheduleAdOffsetChecks);
+    }
   }
   if (adMutationObserver) {
     adMutationObserver.disconnect();
@@ -1523,7 +1629,11 @@ onMounted(async () => {
   width: 100%;
   height: 100vh;
   height: 100dvh;
-  min-height: 100vh;
+  height: var(--multei-app-height, 100dvh);
+  min-height: 100dvh;
+  min-height: var(--multei-app-height, 100dvh);
+  max-height: 100dvh;
+  max-height: var(--multei-app-height, 100dvh);
   overflow: hidden;
   margin: 0;
   padding: 0;
@@ -1545,8 +1655,8 @@ onMounted(async () => {
   border-radius: 0;
   border: none;
   box-shadow: none;
-  height: 100vh !important;
-  min-height: 100vh !important;
+  height: 100% !important;
+  min-height: 100% !important;
 }
 
 .top-header-bar {
@@ -2394,6 +2504,12 @@ onMounted(async () => {
   transform: translateY(12px);
 }
 
+@media (max-width: 768px) {
+  .bottom-action-zone {
+    padding: 8px 16px calc(68px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 @media (max-width: 640px) {
   .top-header-bar {
     padding: 10px 8px 6px;
@@ -2451,7 +2567,7 @@ onMounted(async () => {
     top: 96px;
   }
   .bottom-action-zone {
-    padding: 8px 16px 20px;
+    padding: 8px 16px calc(68px + env(safe-area-inset-bottom, 0px));
   }
   .bottom-action-container {
     width: 100%;

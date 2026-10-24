@@ -92,7 +92,7 @@ export default defineNuxtConfig({
       title: 'Vale PCD | Acessibilidade para Empresas e Comunidade',
       meta: [
         { charset: 'utf-8' },
-        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+        { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         { name: 'description', content: 'Conheça o Vale PCD: O maior projeto do Brasil sobre visibilidade e acessibilidade para pessoas com deficiência da comunidade LGBTQI+.' },
         { name: 'google-adsense-account', content: 'ca-pub-6260779513509504' },
         

@@ -88,6 +88,10 @@ const props = defineProps({
   showUserLocationDot: {
     type: Boolean,
     default: true
+  },
+  bottomPadding: {
+    type: Number,
+    default: 0
   }
 });
 
@@ -415,6 +419,14 @@ watch(() => props.showUserLocationDot, (visible) => {
   }
 });
 
+watch(() => props.bottomPadding, (newPad) => {
+  if (!map.value || typeof map.value.setOptions !== 'function') return;
+  const padBottom = Math.max(0, Number(newPad) || 0);
+  try {
+    map.value.setOptions({ padding: { bottom: padBottom } });
+  } catch {}
+});
+
 const createMyLocationControl = (mapInstance, googleMaps) => {
   const controlDiv = document.createElement('div');
   controlDiv.style.margin = '10px';
@@ -515,6 +527,7 @@ const initMap = () => {
       ? { lat: Number(rawLat), lng: Number(rawLng) }
       : { lat: -23.55052, lng: -46.633308 };
 
+    const initialBottomPad = Math.max(0, Number(props.bottomPadding) || 0);
     map.value = markRaw(new googleMaps.Map(mapContainer.value, {
       center,
       zoom: props.pinLocation ? 17 : props.initialZoom,
@@ -522,7 +535,8 @@ const initMap = () => {
       zoomControl: true,
       streetViewControl: false,
       mapTypeControl: false,
-      gestureHandling: 'greedy'
+      gestureHandling: 'greedy',
+      ...(initialBottomPad > 0 ? { padding: { bottom: initialBottomPad } } : {})
     }));
 
     createMyLocationControl(map.value, googleMaps);

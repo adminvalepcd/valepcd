@@ -483,3 +483,17 @@ body.ads-suppressed div[id^="aswift_"] {
   overflow: hidden !important;
   z-index: -9999 !important;
 }
+
+/* Ajuste mobile: eleva o banner âncora inferior do Google AdSense acima da barra de navegação do sistema (botões de retornar/home/apps no mobile) */
+@media (max-width: 768px) {
+  :root {
+    --mobile-bottom-nav-clearance: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+
+  html:not(.ads-suppressed) ins.adsbygoogle[data-anchor-status]:not([data-vignette-loaded]):not([style*="top: 0"]):not([style*="top:0"]),
+  html:not(.ads-suppressed) ins.adsbygoogle[style*="position: fixed"][style*="bottom: 0"]:not([data-vignette-loaded]),
+  html:not(.ads-suppressed) ins.adsbygoogle[style*="position:fixed"][style*="bottom:0"]:not([data-vignette-loaded]) {
+    margin-bottom: var(--mobile-bottom-nav-clearance, 56px) !important;
+    margin-top: calc(-1 * var(--mobile-bottom-nav-clearance, 56px)) !important;
+  }
+}
