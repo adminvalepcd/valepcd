@@ -20,12 +20,20 @@ export const syncAdSenseSuppressionForPath = (path: string) => {
   const bodyEl = document.body
 
   if (shouldSuppress) {
-    htmlEl?.classList.add('ads-suppressed')
-    bodyEl?.classList.add('ads-suppressed')
+    if (htmlEl && !htmlEl.classList.contains('ads-suppressed')) {
+      htmlEl.classList.add('ads-suppressed')
+    }
+    if (bodyEl && !bodyEl.classList.contains('ads-suppressed')) {
+      bodyEl.classList.add('ads-suppressed')
+    }
 
     if (bodyEl) {
-      bodyEl.style.paddingBottom = '0px'
-      bodyEl.style.paddingTop = '0px'
+      if (bodyEl.style.paddingBottom && bodyEl.style.paddingBottom !== '0px') {
+        bodyEl.style.paddingBottom = '0px'
+      }
+      if (bodyEl.style.paddingTop && bodyEl.style.paddingTop !== '0px') {
+        bodyEl.style.paddingTop = '0px'
+      }
     }
 
     const adElements = document.querySelectorAll(
@@ -39,8 +47,12 @@ export const syncAdSenseSuppressionForPath = (path: string) => {
       }
     })
   } else {
-    htmlEl?.classList.remove('ads-suppressed')
-    bodyEl?.classList.remove('ads-suppressed')
+    if (htmlEl && htmlEl.classList.contains('ads-suppressed')) {
+      htmlEl.classList.remove('ads-suppressed')
+    }
+    if (bodyEl && bodyEl.classList.contains('ads-suppressed')) {
+      bodyEl.classList.remove('ads-suppressed')
+    }
   }
 }
 

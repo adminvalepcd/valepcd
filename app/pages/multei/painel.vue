@@ -4034,12 +4034,23 @@ let panelAdSuppressionObserver: MutationObserver | null = null;
 
 const suppressPanelAds = () => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  document.documentElement?.classList.add('ads-suppressed');
-  document.body?.classList.add('ads-suppressed');
+  const htmlEl = document.documentElement;
+  const bodyEl = document.body;
 
-  if (document.body) {
-    document.body.style.paddingBottom = '0px';
-    document.body.style.paddingTop = '0px';
+  if (htmlEl && !htmlEl.classList.contains('ads-suppressed')) {
+    htmlEl.classList.add('ads-suppressed');
+  }
+  if (bodyEl && !bodyEl.classList.contains('ads-suppressed')) {
+    bodyEl.classList.add('ads-suppressed');
+  }
+
+  if (bodyEl) {
+    if (bodyEl.style.paddingBottom && bodyEl.style.paddingBottom !== '0px') {
+      bodyEl.style.paddingBottom = '0px';
+    }
+    if (bodyEl.style.paddingTop && bodyEl.style.paddingTop !== '0px') {
+      bodyEl.style.paddingTop = '0px';
+    }
   }
 
   const adNodes = document.querySelectorAll(
@@ -4062,14 +4073,15 @@ onMounted(() => {
   suppressPanelAds();
 
   if (typeof MutationObserver !== 'undefined' && document.body) {
-    panelAdSuppressionObserver = new MutationObserver(() => {
-      suppressPanelAds();
+    panelAdSuppressionObserver = new MutationObserver((mutations) => {
+      const hasAddedNodes = mutations.some((m) => m.addedNodes && m.addedNodes.length > 0);
+      if (hasAddedNodes) {
+        suppressPanelAds();
+      }
     });
     panelAdSuppressionObserver.observe(document.body, {
       childList: true,
-      subtree: false,
-      attributes: true,
-      attributeFilter: ['style', 'class']
+      subtree: false
     });
   }
 

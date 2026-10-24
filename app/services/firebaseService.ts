@@ -1577,6 +1577,10 @@ export async function notifyMulteiLiveDelta(
       bc.close();
     }
   } catch {}
+
+  try {
+    localStorage.setItem('multei_live_last_event_v1', JSON.stringify(dispatchedEvent));
+  } catch {}
 }
 
 const STATS_SESSION_STORAGE_KEY = 'multei_stats_session_v1';
@@ -1872,8 +1876,8 @@ export function subscribeToMulteiStatsDocument(
 
 /**
  * Conecta ao canal de eventos em tempo real gerenciado pelo backend do Nuxt (`/api/multei/live`)
- * via Server-Sent Events (SSE) + fallback de polling leve + BroadcastChannel entre abas,
- * aplicando incrementos (+1 / -1) na tela sem novas consultas ao Firebase.
+ * via BroadcastChannel + evento `storage` (instantâneo entre abas) + polling JSON leve não-bloqueante,
+ * aplicando incrementos (+1 / -1) na tela sem manter conexões HTTP/1.1 presas.
  */
 export function subscribeToMulteiLiveEvents(
   onDelta: (evt: MulteiLiveDeltaEvent) => void
@@ -1882,7 +1886,6 @@ export function subscribeToMulteiLiveEvents(
 
   const seenEventIds = new Set<number>();
   let lastSeenId = 0;
-  let eventSource: EventSource | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let broadcastChannel: BroadcastChannel | null = null;
   let isClosed = false;
@@ -1940,31 +1943,7 @@ export function subscribeToMulteiLiveEvents(
     });
   };
 
-  // 1. Conexão SSE com o backend do Nuxt
-  if ('EventSource' in window) {
-    try {
-      eventSource = new EventSource('/api/multei/live');
-
-      eventSource.addEventListener('connected', (e: MessageEvent) => {
-        try {
-          const parsed = JSON.parse(e.data);
-          if (typeof parsed?.latestId === 'number' && parsed.latestId > lastSeenId) {
-            lastSeenId = parsed.latestId;
-          }
-        } catch {}
-      });
-
-      eventSource.addEventListener('multei-delta', (e: MessageEvent) => {
-        try {
-          const parsed = JSON.parse(e.data);
-          processIncomingEvent(parsed);
-        } catch {}
-      });
-    } catch {}
-  }
-
-  // 2. Fallback de reconciliação leve no backend Nuxt (caso o container Serverless reconecte o stream SSE)
-  pollTimer = setInterval(async () => {
+  const pollOnce = async () => {
     if (isClosed) return;
     try {
       const url = `/api/multei/live?mode=poll&since=${encodeURIComponent(lastSeenId)}`;
@@ -1984,9 +1963,17 @@ export function subscribeToMulteiLiveEvents(
         lastSeenId = data.latestId;
       }
     } catch {}
-  }, 8_000);
+  };
 
-  // 3. Sincronização instantânea entre abas do mesmo navegador
+  // 1. Inicializa o cursor de eventos sem manter conexão HTTP aberta
+  void pollOnce();
+
+  // 2. Reconciliação leve a cada 5s via JSON curto (não bloqueia conexões HTTP/1.1 nem o servidor dev do Nuxt)
+  pollTimer = setInterval(() => {
+    void pollOnce();
+  }, 5_000);
+
+  // 3. Sincronização instantânea (0ms) entre abas do mesmo navegador via BroadcastChannel e localStorage
   if ('BroadcastChannel' in window) {
     try {
       broadcastChannel = new BroadcastChannel(LIVE_BROADCAST_CHANNEL_NAME);
@@ -1996,14 +1983,18 @@ export function subscribeToMulteiLiveEvents(
     } catch {}
   }
 
+  const handleStorageEvent = (e: StorageEvent) => {
+    if (e.key === 'multei_live_last_event_v1' && e.newValue) {
+      try {
+        processIncomingEvent(JSON.parse(e.newValue));
+      } catch {}
+    }
+  };
+  window.addEventListener('storage', handleStorageEvent);
+
   return () => {
     isClosed = true;
-    if (eventSource) {
-      try {
-        eventSource.close();
-      } catch {}
-      eventSource = null;
-    }
+    window.removeEventListener('storage', handleStorageEvent);
     if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
@@ -2667,6 +2658,12 @@ export function subscribeToMulteiPanelAuth(
     window.addEventListener('focus', handleVisibilityOrFocus);
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
 
+    let hasResolvedInitialAuth = false;
+    const notifyAuthChange = (profile: MulteiPanelUserProfile | null) => {
+      hasResolvedInitialAuth = true;
+      onChange(profile);
+    };
+
     // Restaura imediatamente a sessão válida (< 24h) ao navegar (Voltar/Avançar) enquanto o Firebase Auth inicializa
     const initialValidMeta = getRawValidPanelSessionMeta();
     if (initialValidMeta?.profile) {
@@ -2676,17 +2673,19 @@ export function subscribeToMulteiPanelAuth(
           void expireSessionNow();
         }, initialRemaining);
         checkInterval = setInterval(verifyActiveSession, 60_000);
-        onChange(initialValidMeta.profile);
+        notifyAuthChange(initialValidMeta.profile);
       }
     }
 
-    const unsubscribeFirebase = onAuthStateChanged(auth, async (user) => {
-      if (typeof (auth as any).authStateReady === 'function') {
-        try {
-          await (auth as any).authStateReady();
-        } catch {}
+    const authFallbackTimer = setTimeout(() => {
+      if (!hasResolvedInitialAuth) {
+        const validMeta = getRawValidPanelSessionMeta();
+        notifyAuthChange(validMeta?.profile || null);
       }
+    }, 2500);
 
+    const unsubscribeFirebase = onAuthStateChanged(auth, async (user) => {
+      clearTimeout(authFallbackTimer);
       clearTimers();
       if (!user) {
         // Se existe uma sessão válida de 24h recém-autenticada no localStorage, mantém até expirar ou logout explícito
@@ -2698,12 +2697,12 @@ export function subscribeToMulteiPanelAuth(
               void expireSessionNow();
             }, rem);
             checkInterval = setInterval(verifyActiveSession, 60_000);
-            onChange(validMeta.profile);
+            notifyAuthChange(validMeta.profile);
             return;
           }
         }
         clearPanelSessionMeta();
-        onChange(null);
+        notifyAuthChange(null);
         return;
       }
 
@@ -2724,17 +2723,22 @@ export function subscribeToMulteiPanelAuth(
 
       checkInterval = setInterval(verifyActiveSession, 60_000);
 
+      const cachedMeta = getRawValidPanelSessionMeta(user.uid);
+      if (cachedMeta?.profile && !hasResolvedInitialAuth) {
+        notifyAuthChange(cachedMeta.profile);
+      }
+
       try {
         const profile = await resolveMulteiPanelUserProfile(user);
         savePanelSessionMeta(user.uid, Date.now(), profile);
-        onChange(profile);
+        notifyAuthChange(profile);
       } catch {
-        const cachedMeta = getRawValidPanelSessionMeta(user.uid);
-        onChange(cachedMeta?.profile || null);
+        notifyAuthChange(cachedMeta?.profile || null);
       }
     });
 
     return () => {
+      clearTimeout(authFallbackTimer);
       clearTimers();
       window.removeEventListener('focus', handleVisibilityOrFocus);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
