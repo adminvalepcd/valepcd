@@ -186,6 +186,19 @@
         </button>
 
         <button
+          type="button"
+          role="tab"
+          :aria-selected="adminMainSection === 'resolucoes'"
+          class="admin-module-tab-btn"
+          :class="{ 'is-active': adminMainSection === 'resolucoes' }"
+          @click="switchAdminMainSection('resolucoes')"
+        >
+          <span aria-hidden="true">✅</span>
+          <span>Análise de Resolução</span>
+          <span class="module-tab-badge">{{ pendingResolutionItems.length }}</span>
+        </button>
+
+        <button
           v-if="isAdminRole"
           type="button"
           role="tab"
@@ -1361,6 +1374,473 @@
         </div>
       </div>
 
+      <!-- ABA: ANÁLISE DE RESOLUÇÃO (Disponível para Admin e Parcerias • Coleção "resolvidos") -->
+      <div v-else-if="adminMainSection === 'resolucoes'" class="resolutions-review-section">
+        <header class="panel-header">
+          <div>
+            <span class="panel-kicker">
+              {{
+                isAdminRole
+                  ? 'Moderação & Validação • Todas as Cidades'
+                  : userProfile.cidade
+                    ? `Parceria Municipal • ${userProfile.cidade}${userProfile.estado ? `/${userProfile.estado}` : ''}`
+                    : 'Validação de Resoluções Urbanas'
+              }}
+            </span>
+            <h1 id="admin-heading" class="panel-main-title">
+              Análise de Resolução{{ !isAdminRole && userProfile.cidade ? ` • ${userProfile.cidade}` : '' }}
+            </h1>
+            <p class="panel-main-subtitle">
+              Listagem da coleção <code>resolvidos</code>. Compare as fotos de <strong>Antes e Depois</strong> e marque a resolução como <strong>procedente</strong> (confirma a correção e mantém o pino verde no mapa) ou <strong>improcedente</strong> (rejeita a resolução e restaura a ocorrência em aberto).
+            </p>
+          </div>
+
+          <button
+            type="button"
+            class="btn-refresh-list"
+            :disabled="isLoadingResolutions"
+            @click="loadResolutions"
+          >
+            <span aria-hidden="true">🔄</span>
+            <span>{{ isLoadingResolutions ? 'Atualizando...' : 'Atualizar Lista' }}</span>
+          </button>
+        </header>
+
+        <!-- Barra de Filtros da Aba Análise de Resolução -->
+        <div class="occurrences-filter-bar" role="region" aria-label="Filtros de resoluções">
+          <div class="occurrences-filter-grid" :class="isAdminRole ? 'is-admin-grid' : 'is-partner-grid'">
+            <!-- Estado (UF) - Exclusivo Admin -->
+            <div v-if="isAdminRole" class="form-field filter-field">
+              <label for="filter-resolution-estado" class="field-label">Estado (UF)</label>
+              <select
+                id="filter-resolution-estado"
+                v-model="resolutionFilterEstado"
+                class="field-input filter-select"
+                @change="handleResolutionEstadoFilterChange"
+              >
+                <option value="">🌎 Todos os estados</option>
+                <option v-for="uf in BRAZIL_STATES" :key="uf" :value="uf">
+                  {{ uf }}
+                </option>
+              </select>
+            </div>
+
+            <!-- Cidade (IBGE) - Exclusivo Admin -->
+            <div v-if="isAdminRole" class="form-field filter-field">
+              <label for="filter-resolution-cidade" class="field-label">
+                Cidade {{ resolutionFilterEstado ? `(${resolutionFilterEstado})` : '' }}
+              </label>
+              <MulteiCitySearchField
+                v-model="resolutionFilterCidade"
+                :uf="resolutionFilterEstado"
+                input-id="filter-resolution-cidade"
+                :allow-clear="true"
+              />
+            </div>
+
+            <!-- Bairro (Disponível para Parceiros e Admin) -->
+            <div class="form-field filter-field">
+              <label for="filter-resolution-bairro" class="field-label">Bairro</label>
+              <div class="bairro-search-wrap">
+                <input
+                  id="filter-resolution-bairro"
+                  v-model="resolutionFilterBairro"
+                  type="text"
+                  list="resolution-bairros-datalist"
+                  placeholder="Todos os bairros"
+                  class="field-input filter-input-with-clear"
+                />
+                <button
+                  v-if="resolutionFilterBairro"
+                  type="button"
+                  class="btn-inline-clear"
+                  aria-label="Limpar filtro de bairro"
+                  @click="resolutionFilterBairro = ''"
+                >
+                  ✕
+                </button>
+                <datalist id="resolution-bairros-datalist">
+                  <option v-for="b in availableResolutionBairros" :key="b" :value="b" />
+                </datalist>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="hasActiveResolutionFilters || !isAdminRole" class="filter-bar-footer">
+            <span class="filter-active-summary">
+              Exibindo <strong>{{ pendingResolutionItems.length + reviewedResolutionItems.length }}</strong> de <strong>{{ scopedResolutions.length }}</strong> registros em <code>resolvidos</code>
+            </span>
+            <button
+              v-if="hasActiveResolutionFilters"
+              type="button"
+              class="btn-clear-all-filters"
+              @click="clearResolutionFilters"
+            >
+              ✕ Limpar filtros
+            </button>
+          </div>
+        </div>
+
+        <div class="master-detail-grid">
+          <!-- COLUNA ESQUERDA: Lista da coleção "resolvidos" -->
+          <aside class="master-column" aria-label="Lista de resoluções para análise">
+            <div class="filter-tabs" role="tablist" aria-label="Filtrar status de análise de resolução">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="resolutionActiveTab === 'pendentes'"
+                class="filter-tab-btn"
+                :class="{ 'is-active': resolutionActiveTab === 'pendentes' }"
+                @click="selectResolutionTab('pendentes')"
+              >
+                <span>Pendentes</span>
+                <span class="tab-counter">{{ pendingResolutionItems.length }}</span>
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="resolutionActiveTab === 'revisadas'"
+                class="filter-tab-btn"
+                :class="{ 'is-active': resolutionActiveTab === 'revisadas' }"
+                @click="selectResolutionTab('revisadas')"
+              >
+                <span>Revisadas</span>
+                <span class="tab-counter">{{ reviewedResolutionItems.length }}</span>
+              </button>
+            </div>
+
+            <div v-if="isLoadingResolutions" class="list-empty-state">
+              <div class="spinner-circle" aria-hidden="true"></div>
+              <p>Carregando registros da coleção resolvidos...</p>
+            </div>
+
+            <div v-else-if="filteredResolutionItems.length === 0" class="list-empty-state">
+              <span class="empty-icon" aria-hidden="true">
+                {{ hasActiveResolutionFilters ? '🔎' : resolutionActiveTab === 'pendentes' ? '✨' : '📋' }}
+              </span>
+              <p class="empty-title">
+                {{
+                  hasActiveResolutionFilters
+                    ? 'Nenhuma resolução encontrada para os filtros selecionados'
+                    : resolutionActiveTab === 'pendentes'
+                      ? 'Nenhuma resolução pendente de análise'
+                      : 'Nenhuma resolução revisada até o momento'
+                }}
+              </p>
+              <p class="empty-desc">
+                {{
+                  hasActiveResolutionFilters
+                    ? 'Altere ou limpe os filtros acima para visualizar outros registros da coleção resolvidos.'
+                    : resolutionActiveTab === 'pendentes'
+                      ? 'Todas as resoluções sinalizadas na coleção resolvidos já foram analisadas.'
+                      : 'As resoluções marcadas como procedentes ou improcedentes aparecerão aqui.'
+                }}
+              </p>
+            </div>
+
+            <ul v-else class="report-list">
+              <li
+                v-for="resItem in filteredResolutionItems"
+                :key="resItem.id"
+                class="report-list-item"
+              >
+                <button
+                  type="button"
+                  class="report-item-btn"
+                  :class="{ 'is-selected': selectedResolutionItem?.id === resItem.id }"
+                  @click="selectResolutionIncident(resItem)"
+                >
+                  <div class="report-item-top">
+                    <span
+                      class="natureza-pill"
+                      :class="
+                        resItem.revisada && resItem.resultado_revisao === 'procedente'
+                          ? 'pill-resolvido-green'
+                          : 'pill-urbana'
+                      "
+                    >
+                      {{
+                        resItem.revisada && resItem.resultado_revisao === 'procedente'
+                          ? '✅ Resolução Confirmada'
+                          : '🛠️ Resolução de Acesso Urbano'
+                      }}
+                    </span>
+                  </div>
+
+                  <div class="report-item-location">
+                    {{ formatIncidentLocation(resItem) }}
+                  </div>
+
+                  <p class="report-item-reason">
+                    "{{ resItem.descricao || 'Resolução enviada para análise' }}"
+                  </p>
+
+                  <div class="report-item-footer">
+                    <span class="report-item-date">
+                      {{ formatDateTime(resItem.data) }}
+                    </span>
+
+                    <span
+                      v-if="resItem.revisada"
+                      class="verdict-mini-badge"
+                      :class="
+                        resItem.resultado_revisao === 'procedente'
+                          ? 'verdict-improcedente'
+                          : 'verdict-procedente'
+                      "
+                    >
+                      {{
+                        resItem.resultado_revisao === 'procedente'
+                          ? '✅ Procedente'
+                          : '🚫 Improcedente'
+                      }}
+                    </span>
+                    <span v-else class="verdict-mini-badge verdict-pendente">
+                      ⏳ Aguardando Análise
+                    </span>
+                  </div>
+                </button>
+              </li>
+            </ul>
+          </aside>
+
+          <!-- COLUNA DIREITA: Comparativo Antes/Depois + Decisão Procedente ou Improcedente -->
+          <main class="detail-column" aria-label="Detalhes da resolução selecionada">
+            <div v-if="!selectedResolutionItem" class="detail-empty-state">
+              <span class="empty-icon" aria-hidden="true">👈</span>
+              <h2 class="empty-title">Selecione um registro ao lado</h2>
+              <p class="empty-desc">
+                Escolha um item da coleção <code>resolvidos</code> para comparar as fotos de Antes e Depois e marcar como <strong>Procedente</strong> ou <strong>Improcedente</strong>.
+              </p>
+            </div>
+
+            <div v-else class="detail-card">
+              <div class="detail-header">
+                <div class="detail-header-badges">
+                  <span
+                    class="natureza-pill"
+                    :class="
+                      selectedResolutionItem.revisada && selectedResolutionItem.resultado_revisao === 'procedente'
+                        ? 'pill-resolvido-green'
+                        : 'pill-urbana'
+                    "
+                  >
+                    🚧 Problema de Acesso Urbano • Coleção resolvidos
+                  </span>
+
+                  <span
+                    v-if="selectedResolutionItem.revisada"
+                    class="verdict-mini-badge"
+                    :class="
+                      selectedResolutionItem.resultado_revisao === 'procedente'
+                        ? 'verdict-improcedente'
+                        : 'verdict-procedente'
+                    "
+                  >
+                    {{
+                      selectedResolutionItem.resultado_revisao === 'procedente'
+                        ? '✅ Marcada como Procedente'
+                        : '🚫 Marcada como Improcedente'
+                    }}
+                  </span>
+                  <span v-else class="verdict-mini-badge verdict-pendente">
+                    ⏳ Pendente de Análise
+                  </span>
+                </div>
+
+                <span class="detail-id-code">
+                  ID: {{ selectedResolutionItem.id }}
+                  <template v-if="selectedResolutionItem.ocorrenciaId && selectedResolutionItem.ocorrenciaId !== selectedResolutionItem.id">
+                    • Ocorrência: {{ selectedResolutionItem.ocorrenciaId }}
+                  </template>
+                </span>
+              </div>
+
+              <!-- Comparativo ANTES e DEPOIS -->
+              <div class="panel-before-after-wrapper">
+                <div class="panel-ba-grid">
+                  <!-- Card ANTES (Ocorrência Original) -->
+                  <div class="panel-ba-card panel-ba-before">
+                    <div class="panel-ba-header panel-ba-header-before">
+                      <span>🚧 ANTES • Ocorrência Original</span>
+                    </div>
+                    <div class="panel-ba-photo-wrap">
+                      <img
+                        v-if="selectedResolutionItem.ocorrenciaFotoUrl"
+                        :src="selectedResolutionItem.ocorrenciaFotoUrl"
+                        alt="Foto de antes: problema de acesso urbano original"
+                        class="panel-ba-img"
+                        @click="openPanelLightbox(selectedResolutionItem.ocorrenciaFotoUrl)"
+                      />
+                      <div v-else class="photo-missing">
+                        <span>🖼️ Foto original não disponível</span>
+                      </div>
+                    </div>
+                    <div v-if="selectedResolutionItem.ocorrenciaData" class="panel-ba-date-box panel-ba-date-before">
+                      <span class="panel-ba-date-label">📅 Data da denúncia</span>
+                      <strong class="panel-ba-date-val">
+                        {{ formatDateTime(selectedResolutionItem.ocorrenciaData) }}
+                      </strong>
+                    </div>
+                    <p class="panel-ba-desc">
+                      <strong>Descrição inicial:</strong> {{ selectedResolutionItem.ocorrenciaDescricao || 'Não informada' }}
+                    </p>
+                  </div>
+
+                  <!-- Card DEPOIS (Foto enviada em "resolvidos") -->
+                  <div class="panel-ba-card panel-ba-after">
+                    <div class="panel-ba-header panel-ba-header-after">
+                      <span>📸 DEPOIS • Resolução Enviada</span>
+                    </div>
+                    <div class="panel-ba-photo-wrap">
+                      <img
+                        v-if="selectedResolutionItem.fotoUrl"
+                        :src="selectedResolutionItem.fotoUrl"
+                        alt="Foto de depois: comprovação da resolução enviada"
+                        class="panel-ba-img"
+                        @click="openPanelLightbox(selectedResolutionItem.fotoUrl)"
+                      />
+                      <div v-else class="photo-missing">
+                        <span>🖼️ Sem foto de resolução</span>
+                      </div>
+                    </div>
+                    <div class="panel-ba-date-box panel-ba-date-after">
+                      <span class="panel-ba-date-label">📅 Data da resolução enviada</span>
+                      <strong class="panel-ba-date-val">
+                        {{ formatDateTime(selectedResolutionItem.data) }}
+                      </strong>
+                    </div>
+                    <p class="panel-ba-desc">
+                      <strong>Descrição da resolução:</strong> {{ selectedResolutionItem.descricao || 'Não informada' }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Bloco de Decisão: Procedente vs Improcedente -->
+              <div class="detail-moderation-box">
+                <h2 class="box-section-title">Parecer da Análise de Resolução</h2>
+
+                <div
+                  v-if="selectedResolutionItem.revisada"
+                  class="reviewed-status-banner"
+                  :class="
+                    selectedResolutionItem.resultado_revisao === 'procedente'
+                      ? 'banner-improcedente'
+                      : 'banner-procedente'
+                  "
+                >
+                  <div class="banner-title">
+                    {{
+                      selectedResolutionItem.resultado_revisao === 'procedente'
+                        ? '✅ Resolução Procedente (Problema confirmado como resolvido • Pino verde ativo no mapa)'
+                        : '🚫 Resolução Improcedente (Resolução rejeitada • Ocorrência mantida como não resolvida)'
+                    }}
+                  </div>
+                  <div v-if="selectedResolutionItem.data_revisao" class="banner-meta">
+                    Analisada em {{ formatDateTime(selectedResolutionItem.data_revisao) }}
+                    <span v-if="selectedResolutionItem.revisado_por"> por {{ selectedResolutionItem.revisado_por }}</span>
+                  </div>
+                  <p v-if="selectedResolutionItem.observacao_admin" class="banner-obs">
+                    Nota: {{ selectedResolutionItem.observacao_admin }}
+                  </p>
+                </div>
+
+                <div class="admin-note-field">
+                  <label for="resolution-obs-input" class="field-label">
+                    Observação da análise (opcional)
+                  </label>
+                  <input
+                    id="resolution-obs-input"
+                    v-model="resolutionNote"
+                    type="text"
+                    maxlength="200"
+                    placeholder="Ex: Foto comprova rampa reparada e livre de obstáculos..."
+                    class="field-input"
+                    :disabled="isSubmittingResolutionDecision"
+                  />
+                </div>
+
+                <p v-if="resolutionDecisionError" class="login-error-alert" role="alert">
+                  {{ resolutionDecisionError }}
+                </p>
+
+                <p v-if="resolutionDecisionSuccess" class="user-success-alert" role="status">
+                  {{ resolutionDecisionSuccess }}
+                </p>
+
+                <div class="decision-actions">
+                  <button
+                    type="button"
+                    class="btn-decision btn-improcedente"
+                    :disabled="isSubmittingResolutionDecision"
+                    @click="handleResolutionReviewDecision('procedente')"
+                  >
+                    <span class="decision-btn-title">✅ Procedente (Confirmar Resolução)</span>
+                    <span class="decision-btn-desc">
+                      Confirma que o problema foi resolvido e exibe o pino verde com Antes e Depois no mapa
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    class="btn-decision btn-procedente"
+                    :disabled="isSubmittingResolutionDecision"
+                    @click="handleResolutionReviewDecision('improcedente')"
+                  >
+                    <span class="decision-btn-title">🚫 Improcedente (Rejeitar Resolução)</span>
+                    <span class="decision-btn-desc">
+                      Rejeita a sinalização de resolução e mantém a ocorrência aberta como não resolvida
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Dados de Localização -->
+              <div class="detail-metadata-box">
+                <h3 class="box-section-title">Dados e Localização do Registro</h3>
+                <div class="metadata-grid">
+                  <div class="meta-item">
+                    <span class="meta-label">Data da Resolução</span>
+                    <span class="meta-value">{{ formatDateTime(selectedResolutionItem.data) }}</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Cidade / UF</span>
+                    <span class="meta-value">
+                      {{ [selectedResolutionItem.cidade, selectedResolutionItem.estado].filter(Boolean).join(' / ') || 'Não informada' }}
+                    </span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Logradouro / Bairro</span>
+                    <span class="meta-value">
+                      {{ [selectedResolutionItem.rua, selectedResolutionItem.bairro].filter(Boolean).join(' - ') || 'Não informado' }}
+                    </span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Coordenadas GPS</span>
+                    <span class="meta-value meta-coords-row">
+                      <span>
+                        {{ Number(selectedResolutionItem.latitude).toFixed(6) }},
+                        {{ Number(selectedResolutionItem.longitude).toFixed(6) }}
+                      </span>
+                      <button
+                        v-if="selectedResolutionItem.latitude && selectedResolutionItem.longitude"
+                        type="button"
+                        class="btn-open-multei-map"
+                        @click="openMulteiLocationModalFor(selectedResolutionItem)"
+                      >
+                        🗺️ Abrir local no Multei
+                      </button>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+
       <!-- ABA 3 (EXCLUSIVA ADMIN): GESTÃO DE USUÁRIOS -->
       <div v-else-if="isAdminRole && adminMainSection === 'usuarios'" class="users-management-section">
         <header class="panel-header">
@@ -1868,6 +2348,8 @@ import {
   refreshCurrentMulteiPanelProfile,
   fetchReportedIncidentsForPanel,
   reviewReportedIncidentInFirebase,
+  fetchResolvedIncidentsForPanel,
+  reviewResolvedIncidentInFirebase,
   fetchIncidentsByVisibleArea,
   fetchPanelUsersFromFirebase,
   createPanelUserInFirebase,
@@ -1883,7 +2365,9 @@ import {
   type MulteiPanelUserProfile,
   type MulteiPanelManagedUser,
   type ReportedIncidentPanelItem,
-  type ReportReviewDecision
+  type ReportReviewDecision,
+  type ResolvedIncidentPanelItem,
+  type ResolutionReviewDecision
 } from '~/services/firebaseService';
 
 const themeCookie = useCookie('theme', { default: () => 'light' });
@@ -1926,7 +2410,7 @@ const clearLoginError = () => {
   }
 };
 
-const adminMainSection = ref<'ocorrencias' | 'denuncias' | 'usuarios'>('ocorrencias');
+const adminMainSection = ref<'ocorrencias' | 'denuncias' | 'resolucoes' | 'usuarios'>('ocorrencias');
 
 const allReports = ref<ReportedIncidentPanelItem[]>([]);
 const isLoadingReports = ref(false);
@@ -2079,6 +2563,125 @@ const isSubmittingPartnerResolution = ref(false);
 const partnerResolveError = ref('');
 const partnerResolveSuccess = ref('');
 
+// Estado da Aba "Análise de Resolução" (Coleção "resolvidos" • Admin e Parcerias)
+const allResolutions = ref<ResolvedIncidentPanelItem[]>([]);
+const isLoadingResolutions = ref(false);
+const resolutionActiveTab = ref<'pendentes' | 'revisadas'>('pendentes');
+const selectedResolutionItem = ref<ResolvedIncidentPanelItem | null>(null);
+const resolutionFilterEstado = ref('');
+const resolutionFilterCidade = ref('');
+const resolutionFilterBairro = ref('');
+const resolutionNote = ref('');
+const isSubmittingResolutionDecision = ref(false);
+const resolutionDecisionError = ref('');
+const resolutionDecisionSuccess = ref('');
+
+const handleResolutionEstadoFilterChange = () => {
+  if (resolutionFilterEstado.value) {
+    resolutionFilterCidade.value = getCapitalByState(resolutionFilterEstado.value);
+  } else {
+    resolutionFilterCidade.value = '';
+  }
+  resolutionFilterBairro.value = '';
+};
+
+const clearResolutionFilters = () => {
+  resolutionFilterEstado.value = '';
+  resolutionFilterCidade.value = '';
+  resolutionFilterBairro.value = '';
+};
+
+const hasActiveResolutionFilters = computed(() =>
+  Boolean(
+    (isAdminRole.value && (resolutionFilterEstado.value || resolutionFilterCidade.value.trim())) ||
+      resolutionFilterBairro.value.trim()
+  )
+);
+
+const scopedResolutions = computed(() => {
+  if (isAdminRole.value) {
+    return allResolutions.value;
+  }
+  const partnerCity = normalizeSearchText(userProfile.value?.cidade || '');
+  const partnerUf = (normalizeState(userProfile.value?.estado || '') || userProfile.value?.estado || '')
+    .trim()
+    .toUpperCase();
+
+  return allResolutions.value.filter((item) => {
+    if (partnerCity && normalizeSearchText(item.cidade) !== partnerCity) {
+      return false;
+    }
+    if (partnerUf) {
+      const itemUf = (normalizeState(item.estado || '') || item.estado || '').trim().toUpperCase();
+      if (itemUf && itemUf !== partnerUf) return false;
+    }
+    return true;
+  });
+});
+
+const availableResolutionBairros = computed(() => {
+  const targetUf = isAdminRole.value ? resolutionFilterEstado.value.trim().toUpperCase() : '';
+  const targetCity = isAdminRole.value ? normalizeSearchText(resolutionFilterCidade.value) : '';
+  const set = new Set<string>();
+
+  for (const item of scopedResolutions.value) {
+    const itemUf = (normalizeState(item.estado || '') || item.estado || '').trim().toUpperCase();
+    if (targetUf && itemUf !== targetUf) continue;
+    if (targetCity && normalizeSearchText(item.cidade) !== targetCity) continue;
+    const b = (item.bairro || '').trim();
+    if (b) set.add(b);
+  }
+
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+});
+
+const baseFilteredResolutions = computed(() => {
+  const targetUf = isAdminRole.value ? resolutionFilterEstado.value.trim().toUpperCase() : '';
+  const targetCity = isAdminRole.value ? normalizeSearchText(resolutionFilterCidade.value) : '';
+  const targetBairro = normalizeSearchText(resolutionFilterBairro.value);
+
+  return scopedResolutions.value.filter((item) => {
+    if (targetUf) {
+      const itemUf = (normalizeState(item.estado || '') || item.estado || '').trim().toUpperCase();
+      if (itemUf !== targetUf) return false;
+    }
+    if (targetCity) {
+      if (normalizeSearchText(item.cidade) !== targetCity) return false;
+    }
+    if (targetBairro) {
+      if (!normalizeSearchText(item.bairro).includes(targetBairro)) return false;
+    }
+    return true;
+  });
+});
+
+const pendingResolutionItems = computed(() =>
+  baseFilteredResolutions.value.filter((item) => !item.revisada)
+);
+
+const reviewedResolutionItems = computed(() =>
+  baseFilteredResolutions.value.filter((item) => item.revisada)
+);
+
+const filteredResolutionItems = computed(() =>
+  resolutionActiveTab.value === 'pendentes'
+    ? pendingResolutionItems.value
+    : reviewedResolutionItems.value
+);
+
+watch(filteredResolutionItems, (list) => {
+  if (!selectedResolutionItem.value) {
+    selectedResolutionItem.value = list[0] || null;
+    resolutionNote.value = selectedResolutionItem.value?.observacao_admin || '';
+    return;
+  }
+  const stillExists = list.some((i) => i.id === selectedResolutionItem.value?.id);
+  if (!stillExists) {
+    selectedResolutionItem.value = list[0] || null;
+    resolutionNote.value = selectedResolutionItem.value?.observacao_admin || '';
+  }
+});
+
 // Estado de Gestão de Usuários
 const panelUsers = ref<MulteiPanelManagedUser[]>([]);
 const isLoadingUsers = ref(false);
@@ -2125,6 +2728,7 @@ let unsubscribeAuth: (() => void) | null = null;
 let unsubscribeLiveEvents: (() => void) | null = null;
 let liveReportsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let livePartnerDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let liveResolutionsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 const openPanelLightbox = (url?: string) => {
   if (!url) return;
@@ -2432,6 +3036,7 @@ const handlePartnerSubmitResolution = async () => {
     selectedPartnerIncident.value = updatedIncident;
     partnerResolveSuccess.value = 'Problema declarado como corrigido! O pino no mapa agora é verde com check e exibe o Antes e Depois.';
     announceSr(partnerResolveSuccess.value);
+    void loadResolutions({ silent: true });
   } catch (err: any) {
     partnerResolveError.value = err?.message || 'Não foi possível salvar a resolução no Firebase.';
   } finally {
@@ -2444,18 +3049,31 @@ const panelMapIncidents = computed(() => {
   if (!current) return nearbyMapIncidents.value;
 
   const targetId = String(current.ocorrenciaId || current.id || '').trim();
-  const isResolved = Boolean(current.resolvido);
+  const isFromResolvidos = Boolean(current.ocorrenciaFotoUrl !== undefined);
+  const isResolved = Boolean(
+    current.resolvido ||
+      current.resultado_revisao === 'procedente' ||
+      current.status === 'procedente' ||
+      current.status === 'resolvido'
+  );
+  const basePhoto = isFromResolvidos
+    ? current.ocorrenciaFotoUrl || current.fotoUrl
+    : current.fotoUrl || current.maskedImageUrl;
+  const baseDesc = isFromResolvidos
+    ? current.ocorrenciaDescricao || current.descricao
+    : current.descricao;
+
   const currentAsIncident = {
     id: targetId,
-    timestamp: current.timestamp || current.data,
-    data: current.data || current.timestamp,
+    timestamp: current.ocorrenciaData || current.timestamp || current.data,
+    data: current.ocorrenciaData || current.data || current.timestamp,
     latitude: current.latitude,
     longitude: current.longitude,
-    foto: current.fotoUrl || current.maskedImageUrl,
-    fotoUrl: current.fotoUrl || current.maskedImageUrl,
-    maskedImageUrl: current.fotoUrl || current.maskedImageUrl,
+    foto: basePhoto,
+    fotoUrl: basePhoto,
+    maskedImageUrl: basePhoto,
     natureza: current.natureza,
-    descricao: current.descricao,
+    descricao: baseDesc,
     rua: current.rua,
     bairro: current.bairro,
     cidade: current.cidade,
@@ -2465,9 +3083,9 @@ const panelMapIncidents = computed(() => {
     ativo: current.ativo ?? true,
     resolvido: isResolved,
     status_resolucao: isResolved ? 'resolvido' : current.status_resolucao,
-    foto_resolucao: current.foto_resolucao || '',
-    descricao_resolucao: current.descricao_resolucao || '',
-    data_resolucao: current.data_resolucao || ''
+    foto_resolucao: isFromResolvidos ? current.fotoUrl || '' : current.foto_resolucao || '',
+    descricao_resolucao: isFromResolvidos ? current.descricao || '' : current.descricao_resolucao || '',
+    data_resolucao: isFromResolvidos ? current.data || '' : current.data_resolucao || ''
   };
 
   const others = nearbyMapIncidents.value.filter(
@@ -2597,8 +3215,10 @@ const announceSr = (msg: string) => {
   }, 50);
 };
 
-const switchAdminMainSection = async (section: 'ocorrencias' | 'denuncias' | 'usuarios') => {
-  if (!isAdminRole.value && section !== 'denuncias') {
+const switchAdminMainSection = async (
+  section: 'ocorrencias' | 'denuncias' | 'resolucoes' | 'usuarios'
+) => {
+  if (!isAdminRole.value && section !== 'denuncias' && section !== 'resolucoes') {
     adminMainSection.value = 'denuncias';
     return;
   }
@@ -2607,6 +3227,153 @@ const switchAdminMainSection = async (section: 'ocorrencias' | 'denuncias' | 'us
     await loadPanelUsers();
   } else if (section === 'denuncias' && partnerIncidents.value.length === 0) {
     await loadPartnerDenuncias();
+  } else if (section === 'resolucoes' && allResolutions.value.length === 0) {
+    await loadResolutions();
+  }
+};
+
+const loadResolutions = async (options?: { silent?: boolean } | Event) => {
+  if (!userProfile.value) return;
+  const isSilent = Boolean(
+    options &&
+      typeof options === 'object' &&
+      'silent' in options &&
+      options.silent &&
+      allResolutions.value.length > 0
+  );
+  if (!isSilent) {
+    isLoadingResolutions.value = true;
+    resolutionDecisionError.value = '';
+    resolutionDecisionSuccess.value = '';
+  }
+  try {
+    const items = await fetchResolvedIncidentsForPanel({
+      cidade: isAdminRole.value ? undefined : userProfile.value.cidade,
+      estado: isAdminRole.value ? undefined : userProfile.value.estado
+    });
+    allResolutions.value = items;
+
+    const currentList =
+      resolutionActiveTab.value === 'pendentes'
+        ? pendingResolutionItems.value
+        : reviewedResolutionItems.value;
+
+    if (selectedResolutionItem.value) {
+      const updatedSelected = items.find((i) => i.id === selectedResolutionItem.value?.id);
+      if (
+        updatedSelected &&
+        Boolean(updatedSelected.revisada) === (resolutionActiveTab.value === 'revisadas')
+      ) {
+        selectedResolutionItem.value = updatedSelected;
+        if (!isSilent) {
+          resolutionNote.value = updatedSelected.observacao_admin || '';
+        }
+        return;
+      }
+    }
+    selectedResolutionItem.value = currentList[0] || null;
+    resolutionNote.value = selectedResolutionItem.value?.observacao_admin || '';
+  } catch (err) {
+    console.warn('[painel] Erro ao carregar resoluções da coleção resolvidos:', err);
+  } finally {
+    if (!isSilent) {
+      isLoadingResolutions.value = false;
+    }
+  }
+};
+
+const selectResolutionTab = (tab: 'pendentes' | 'revisadas') => {
+  resolutionActiveTab.value = tab;
+  const list =
+    tab === 'pendentes' ? pendingResolutionItems.value : reviewedResolutionItems.value;
+  selectedResolutionItem.value = list[0] || null;
+  resolutionNote.value = selectedResolutionItem.value?.observacao_admin || '';
+  resolutionDecisionError.value = '';
+  resolutionDecisionSuccess.value = '';
+};
+
+const selectResolutionIncident = (item: ResolvedIncidentPanelItem) => {
+  selectedResolutionItem.value = item;
+  resolutionNote.value = item.observacao_admin || '';
+  resolutionDecisionError.value = '';
+  resolutionDecisionSuccess.value = '';
+};
+
+const handleResolutionReviewDecision = async (decision: ResolutionReviewDecision) => {
+  if (!selectedResolutionItem.value || isSubmittingResolutionDecision.value) return;
+  isSubmittingResolutionDecision.value = true;
+  resolutionDecisionError.value = '';
+  resolutionDecisionSuccess.value = '';
+
+  try {
+    const reviewerLabel = userProfile.value?.nomeCompleto
+      ? `${userProfile.value.nomeCompleto}${userProfile.value.cidade ? ` (${userProfile.value.cidade})` : ''}`
+      : userProfile.value?.email || '';
+
+    const updated = await reviewResolvedIncidentInFirebase({
+      item: selectedResolutionItem.value,
+      decision,
+      observacaoAdmin: resolutionNote.value,
+      reviewerEmail: reviewerLabel
+    });
+
+    const idx = allResolutions.value.findIndex((i) => i.id === updated.id);
+    if (idx !== -1) {
+      allResolutions.value[idx] = {
+        ...allResolutions.value[idx],
+        ...updated
+      };
+    }
+
+    // Sincroniza a lista de denúncias caso já tenha sido carregada nesta sessão
+    if (updated.ocorrenciaId && partnerIncidents.value.length > 0) {
+      const pIdx = partnerIncidents.value.findIndex((inc) => inc.id === updated.ocorrenciaId);
+      if (pIdx !== -1) {
+        if (decision === 'procedente') {
+          partnerIncidents.value[pIdx] = {
+            ...partnerIncidents.value[pIdx],
+            resolvido: true,
+            status_resolucao: 'resolvido',
+            resolvido_em_validacao: false,
+            foto_resolucao: updated.fotoUrl,
+            descricao_resolucao: updated.descricao,
+            data_resolucao: updated.data || updated.data_revisao,
+            resolvido_por: reviewerLabel
+          };
+        } else {
+          partnerIncidents.value[pIdx] = {
+            ...partnerIncidents.value[pIdx],
+            resolvido: false,
+            status_resolucao: 'improcedente',
+            resolvido_em_validacao: false,
+            foto_resolucao: '',
+            descricao_resolucao: '',
+            data_resolucao: ''
+          };
+        }
+      }
+    }
+
+    const msg =
+      decision === 'procedente'
+        ? 'Resolução marcada como procedente! O pino verde com Antes e Depois está ativo no mapa.'
+        : 'Resolução marcada como improcedente! A ocorrência voltou a ficar em aberto como não resolvida.';
+
+    resolutionDecisionSuccess.value = msg;
+    announceSr(msg);
+
+    if (resolutionActiveTab.value === 'pendentes') {
+      const nextPending = pendingResolutionItems.value[0] || null;
+      selectedResolutionItem.value = nextPending;
+      resolutionNote.value = nextPending?.observacao_admin || '';
+    } else {
+      selectedResolutionItem.value = allResolutions.value[idx] || updated;
+    }
+  } catch (err: any) {
+    resolutionDecisionError.value =
+      err?.message || 'Não foi possível salvar a análise de resolução no Firebase.';
+  } finally {
+    isSubmittingResolutionDecision.value = false;
   }
 };
 
@@ -2715,9 +3482,10 @@ const handleSaveUser = async () => {
           userProfile.value = refreshed;
           if (refreshed.role !== 'admin') {
             clearDenunciaFilters();
+            clearResolutionFilters();
             adminMainSection.value = 'denuncias';
           }
-          await loadPartnerDenuncias();
+          await Promise.all([loadPartnerDenuncias(), loadResolutions()]);
         }
       }
       userFeedbackSuccess.value = 'Dados do usuário atualizados com sucesso.';
@@ -2888,10 +3656,10 @@ const handleLogin = async () => {
     announceSr('Login realizado com sucesso.');
     if (profile.role === 'admin') {
       adminMainSection.value = 'ocorrencias';
-      await Promise.all([loadReports(), loadAdminStatsSummary()]);
+      await Promise.all([loadReports(), loadAdminStatsSummary(), loadResolutions({ silent: true })]);
     } else {
       adminMainSection.value = 'denuncias';
-      await loadPartnerDenuncias();
+      await Promise.all([loadPartnerDenuncias(), loadResolutions({ silent: true })]);
     }
   } catch (err: any) {
     const rawError = `${err?.code || ''} ${err?.message || ''}`.toLowerCase();
@@ -2939,11 +3707,13 @@ const handleLogout = async () => {
     await signOutMulteiPanel();
     userProfile.value = null;
     allReports.value = [];
+    allResolutions.value = [];
     panelUsers.value = [];
     partnerIncidents.value = [];
     hasLoadedPartnerIncidents.value = false;
     panelStatsTotalGeral.value = null;
     selectedItem.value = null;
+    selectedResolutionItem.value = null;
     selectedPartnerIncident.value = null;
     partnerNearMeCenter.value = null;
   } catch {}
@@ -3082,7 +3852,7 @@ interface LivePanelNotificationItem {
   title: string;
   subtitle: string;
   ocorrenciaId?: string;
-  targetSection: 'ocorrencias' | 'denuncias';
+  targetSection: 'ocorrencias' | 'denuncias' | 'resolucoes';
 }
 
 const livePanelNotification = ref<LivePanelNotificationItem | null>(null);
@@ -3128,6 +3898,25 @@ const focusLiveNotificationIncident = async () => {
     if (pendingItems.value[0]) {
       selectedItem.value = pendingItems.value[0];
       adminNote.value = pendingItems.value[0].observacao_admin || '';
+    }
+    return;
+  }
+
+  if (notif.targetSection === 'resolucoes') {
+    adminMainSection.value = 'resolucoes';
+    resolutionActiveTab.value = 'pendentes';
+    await loadResolutions({ silent: true });
+    if (notif.ocorrenciaId) {
+      const match = pendingResolutionItems.value.find(
+        (i) => i.ocorrenciaId === notif.ocorrenciaId || i.id === notif.ocorrenciaId
+      );
+      if (match) {
+        selectResolutionIncident(match);
+        return;
+      }
+    }
+    if (pendingResolutionItems.value[0]) {
+      selectResolutionIncident(pendingResolutionItems.value[0]);
     }
     return;
   }
@@ -3200,6 +3989,17 @@ const scheduleSilentPartnerRefresh = () => {
   }, 350);
 };
 
+const scheduleSilentResolutionsRefresh = () => {
+  if (!userProfile.value) return;
+  if (liveResolutionsDebounceTimer) {
+    clearTimeout(liveResolutionsDebounceTimer);
+  }
+  liveResolutionsDebounceTimer = setTimeout(() => {
+    liveResolutionsDebounceTimer = null;
+    void loadResolutions({ silent: true });
+  }, 350);
+};
+
 onMounted(() => {
   unsubscribeAuth = subscribeToMulteiPanelAuth(
     async (profile) => {
@@ -3213,18 +4013,20 @@ onMounted(() => {
       }
       if (profile?.role === 'admin') {
         adminMainSection.value = 'ocorrencias';
-        await Promise.all([loadReports(), loadAdminStatsSummary()]);
+        await Promise.all([loadReports(), loadAdminStatsSummary(), loadResolutions({ silent: true })]);
       } else if (profile) {
         adminMainSection.value = 'denuncias';
-        await loadPartnerDenuncias();
+        await Promise.all([loadPartnerDenuncias(), loadResolutions({ silent: true })]);
       } else {
         dismissLivePanelNotification();
         allReports.value = [];
+        allResolutions.value = [];
         panelUsers.value = [];
         partnerIncidents.value = [];
         hasLoadedPartnerIncidents.value = false;
         panelStatsTotalGeral.value = null;
         selectedItem.value = null;
+        selectedResolutionItem.value = null;
         selectedPartnerIncident.value = null;
         partnerNearMeCenter.value = null;
       }
@@ -3232,11 +4034,13 @@ onMounted(() => {
     () => {
       dismissLivePanelNotification();
       allReports.value = [];
+      allResolutions.value = [];
       panelUsers.value = [];
       partnerIncidents.value = [];
       hasLoadedPartnerIncidents.value = false;
       panelStatsTotalGeral.value = null;
       selectedItem.value = null;
+      selectedResolutionItem.value = null;
       selectedPartnerIncident.value = null;
       partnerNearMeCenter.value = null;
       loginError.value = 'Sua sessão de 24 horas expirou. Por favor, faça login novamente.';
@@ -3261,6 +4065,10 @@ onMounted(() => {
       return;
     }
 
+    if (evt.category === 'resolvidos' || evt.action === 'nova_resolucao') {
+      scheduleSilentResolutionsRefresh();
+    }
+
     if (
       isAdmin &&
       !hasLoadedPartnerIncidents.value &&
@@ -3280,7 +4088,7 @@ onMounted(() => {
       scheduleSilentPartnerRefresh();
     }
 
-    // Notificação visual no painel para novas ocorrências na cidade do parceiro (ou para o Admin)
+    // Notificação visual no painel para novas ocorrências ou resoluções na cidade do parceiro (ou para o Admin)
     if (
       evt.delta === 1 &&
       (evt.category === 'infracoesTransito' || evt.category === 'mobilidadeUrbana')
@@ -3305,6 +4113,24 @@ onMounted(() => {
         subtitle: [naturezaLabel, addressPart].filter(Boolean).join(' • '),
         ocorrenciaId: evt.ocorrenciaId,
         targetSection: 'denuncias'
+      });
+    } else if (evt.delta === 1 && evt.category === 'resolvidos' && evt.action === 'nova_resolucao') {
+      const cityLabel = [
+        evt.cidade || (!isAdmin ? userProfile.value.cidade : ''),
+        evt.estado || (!isAdmin ? userProfile.value.estado : '')
+      ]
+        .filter(Boolean)
+        .join('/');
+      const addressPart = [evt.rua, evt.bairro].filter(Boolean).join(' - ');
+
+      showLivePanelToast({
+        id: evt.id,
+        title: cityLabel
+          ? `Nova resolução enviada para análise em ${cityLabel}!`
+          : 'Nova resolução enviada para análise!',
+        subtitle: addressPart || 'Aba Análise de Resolução atualizada automaticamente.',
+        ocorrenciaId: evt.ocorrenciaId,
+        targetSection: 'resolucoes'
       });
     } else if (isAdmin && evt.delta === 1 && evt.category === 'reportadas' && evt.action === 'novo_report') {
       const cityLabel = [evt.cidade, evt.estado].filter(Boolean).join('/');
@@ -3336,6 +4162,10 @@ onBeforeUnmount(() => {
   if (livePartnerDebounceTimer) {
     clearTimeout(livePartnerDebounceTimer);
     livePartnerDebounceTimer = null;
+  }
+  if (liveResolutionsDebounceTimer) {
+    clearTimeout(liveResolutionsDebounceTimer);
+    liveResolutionsDebounceTimer = null;
   }
   if (liveToastTimer) {
     clearTimeout(liveToastTimer);

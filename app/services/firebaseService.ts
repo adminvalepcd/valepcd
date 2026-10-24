@@ -3954,4 +3954,353 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
   };
 }
 
+export type ResolutionReviewDecision = 'procedente' | 'improcedente';
+
+export interface ResolvedIncidentPanelItem {
+  id: string;
+  ocorrenciaId: string;
+  data: string;
+  ocorrenciaData?: string;
+  fotoUrl: string;
+  descricao: string;
+  ocorrenciaFotoUrl: string;
+  ocorrenciaDescricao: string;
+  status: string;
+  natureza: string;
+  latitude: number;
+  longitude: number;
+  rua: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  revisada: boolean;
+  resultado_revisao?: ResolutionReviewDecision | '';
+  data_revisao?: string;
+  revisado_por?: string;
+  observacao_admin?: string;
+  resolvido_por?: string;
+}
+
+/**
+ * Lista os registros da coleção `resolvidos` para análise de resolução no painel (Admin e Parcerias).
+ * Caso faltem dados da ocorrência original (foto do antes, descrição inicial ou endereço), hidrata a partir de `ocorrencias`.
+ */
+export async function fetchResolvedIncidentsForPanel(options?: {
+  cidade?: string;
+  estado?: string;
+}): Promise<ResolvedIncidentPanelItem[]> {
+  const { db } = getFirebaseServices();
+  const snap = await getDocs(collection(db, RESOLVIDOS_COLLECTION));
+
+  const items: ResolvedIncidentPanelItem[] = [];
+
+  snap.forEach((docSnap) => {
+    const d = docSnap.data() || {};
+    const id = String(docSnap.id || d.id || '').trim();
+    const ocorrenciaId = String(d.ocorrenciaId || id).trim();
+    const statusRaw = String(d.status || 'pendente').trim().toLowerCase();
+
+    let revisada = Boolean(d.revisada === true);
+    let resultadoRevisao: ResolutionReviewDecision | '' = '';
+
+    if (d.resultado_revisao === 'procedente' || d.resultado_revisao === 'improcedente') {
+      resultadoRevisao = d.resultado_revisao;
+      revisada = true;
+    } else if (statusRaw === 'procedente' || statusRaw === 'resolvido') {
+      resultadoRevisao = 'procedente';
+      revisada = true;
+    } else if (statusRaw === 'improcedente') {
+      resultadoRevisao = 'improcedente';
+      revisada = true;
+    }
+
+    items.push({
+      id,
+      ocorrenciaId,
+      data: String(d.data || new Date().toISOString()),
+      ocorrenciaData: d.ocorrenciaData ? String(d.ocorrenciaData) : undefined,
+      fotoUrl: String(d.fotoUrl || d.foto_resolucao || d.foto || '').trim(),
+      descricao: String(d.descricao || d.descricao_resolucao || '').trim(),
+      ocorrenciaFotoUrl: String(d.ocorrenciaFotoUrl || '').trim(),
+      ocorrenciaDescricao: String(d.ocorrenciaDescricao || '').trim(),
+      status: statusRaw,
+      natureza: String(d.natureza || 'urbana').trim(),
+      latitude: Number(d.latitude ?? d.lat ?? 0),
+      longitude: Number(d.longitude ?? d.lng ?? d.lon ?? 0),
+      rua: String(d.rua || '').trim(),
+      bairro: String(d.bairro || '').trim(),
+      cidade: String(d.cidade || '').trim(),
+      estado: String(d.estado || '').trim(),
+      revisada,
+      resultado_revisao: resultadoRevisao,
+      data_revisao: d.data_revisao ? String(d.data_revisao) : undefined,
+      revisado_por: d.revisado_por ? String(d.revisado_por) : undefined,
+      observacao_admin: d.observacao_admin ? String(d.observacao_admin) : undefined,
+      resolvido_por: d.resolvido_por ? String(d.resolvido_por) : undefined
+    });
+  });
+
+  // Hidrata dados da ocorrência original em `ocorrencias` se necessário
+  await Promise.all(
+    items.map(async (item) => {
+      if (!item.ocorrenciaId) return;
+      const needsHydration =
+        !item.ocorrenciaFotoUrl ||
+        !item.ocorrenciaDescricao ||
+        !item.ocorrenciaData ||
+        !item.cidade ||
+        !item.latitude;
+      if (!needsHydration) return;
+
+      try {
+        const ocSnap = await getDoc(doc(db, OCORRENCIAS_COLLECTION, item.ocorrenciaId));
+        if (ocSnap.exists()) {
+          const oc = ocSnap.data() || {};
+          if (!item.ocorrenciaFotoUrl) {
+            item.ocorrenciaFotoUrl = String(oc.fotoUrl || oc.foto || oc.image || '').trim();
+          }
+          if (!item.ocorrenciaDescricao && oc.descricao) {
+            item.ocorrenciaDescricao = String(oc.descricao).trim();
+          }
+          if (!item.ocorrenciaData && oc.data) {
+            item.ocorrenciaData = String(oc.data);
+          }
+          if (!item.rua && oc.rua) item.rua = String(oc.rua).trim();
+          if (!item.bairro && oc.bairro) item.bairro = String(oc.bairro).trim();
+          if (!item.cidade && oc.cidade) item.cidade = String(oc.cidade).trim();
+          if (!item.estado && oc.estado) item.estado = String(oc.estado).trim();
+          if (!item.latitude && (oc.latitude ?? oc.lat)) {
+            item.latitude = Number(oc.latitude ?? oc.lat ?? 0);
+          }
+          if (!item.longitude && (oc.longitude ?? oc.lng ?? oc.lon)) {
+            item.longitude = Number(oc.longitude ?? oc.lng ?? oc.lon ?? 0);
+          }
+        }
+      } catch {}
+    })
+  );
+
+  const normalizeText = (val?: string) =>
+    String(val || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+
+  const filterCity = normalizeText(options?.cidade);
+  const filterUf = String(options?.estado || '').trim().toUpperCase();
+
+  const filtered = items.filter((item) => {
+    if (filterCity && normalizeText(item.cidade) !== filterCity) {
+      return false;
+    }
+    if (filterUf) {
+      const itemUf = String(item.estado || '').trim().toUpperCase();
+      if (itemUf && itemUf !== filterUf) return false;
+    }
+    return true;
+  });
+
+  filtered.sort((a, b) => {
+    const timeA = new Date(a.data).getTime() || 0;
+    const timeB = new Date(b.data).getTime() || 0;
+    return timeB - timeA;
+  });
+
+  return filtered;
+}
+
+/**
+ * Avalia um item da coleção `resolvidos` como `procedente` (confirma a resolução e ativa o pino verde no mapa)
+ * ou `improcedente` (rejeita a resolução, restaura a ocorrência para não resolvida e ajusta a contagem de resolvidos).
+ */
+export async function reviewResolvedIncidentInFirebase(params: {
+  item: ResolvedIncidentPanelItem;
+  decision: ResolutionReviewDecision;
+  observacaoAdmin?: string;
+  reviewerEmail?: string;
+}): Promise<ResolvedIncidentPanelItem> {
+  const { item, decision, observacaoAdmin = '', reviewerEmail = '' } = params;
+  const docId = (item.id || item.ocorrenciaId || '').trim();
+  const ocorrenciaId = (item.ocorrenciaId || item.id || '').trim();
+
+  if (!docId) {
+    throw new Error('ID do registro de resolução inválido.');
+  }
+
+  const { db } = getFirebaseServices();
+  const nowIso = new Date().toISOString();
+  const isProcedente = decision === 'procedente';
+  const nextStatus = isProcedente ? 'procedente' : 'improcedente';
+
+  // Verifica se já estava contabilizado como resolvido antes desta revisão
+  const wasCountedAsResolved =
+    item.resultado_revisao !== 'improcedente' && item.status !== 'improcedente';
+
+  // 1. Atualiza o documento na coleção `resolvidos`
+  const resolvidoRef = doc(db, RESOLVIDOS_COLLECTION, docId);
+  await setDoc(
+    resolvidoRef,
+    {
+      id: docId,
+      ocorrenciaId,
+      status: nextStatus,
+      revisada: true,
+      resultado_revisao: decision,
+      data_revisao: nowIso,
+      revisado_por: reviewerEmail,
+      observacao_admin: observacaoAdmin.trim()
+    },
+    { merge: true }
+  );
+
+  // 2. Sincroniza o documento correspondente na coleção `ocorrencias`
+  if (ocorrenciaId) {
+    const ocorrenciaRef = doc(db, OCORRENCIAS_COLLECTION, ocorrenciaId);
+    try {
+      if (isProcedente) {
+        await setDoc(
+          ocorrenciaRef,
+          {
+            resolvido: true,
+            status_resolucao: 'resolvido',
+            resolvido_em_validacao: false,
+            foto_resolucao: item.fotoUrl,
+            descricao_resolucao: item.descricao,
+            data_resolucao: item.data || nowIso,
+            resolvido_por: reviewerEmail || item.resolvido_por || 'Comunidade Multei',
+            revisada_resolucao: true,
+            resultado_revisao_resolucao: 'procedente',
+            data_revisao_resolucao: nowIso
+          },
+          { merge: true }
+        );
+      } else {
+        await setDoc(
+          ocorrenciaRef,
+          {
+            resolvido: false,
+            status_resolucao: 'improcedente',
+            resolvido_em_validacao: false,
+            foto_resolucao: '',
+            descricao_resolucao: '',
+            data_resolucao: '',
+            revisada_resolucao: true,
+            resultado_revisao_resolucao: 'improcedente',
+            data_revisao_resolucao: nowIso
+          },
+          { merge: true }
+        );
+      }
+    } catch (err) {
+      console.warn('[firebaseService] Aviso ao sincronizar ocorrencia na revisão de resolução:', err);
+    }
+  }
+
+  // 3. Atualiza caches locais e regionais para refletir imediatamente no mapa e na aba Denúncias
+  if (typeof window !== 'undefined' && ocorrenciaId) {
+    const applyResolutionPatch = (inc: ReportedIncident): ReportedIncident => {
+      if (inc.id !== ocorrenciaId) return inc;
+      if (isProcedente) {
+        return {
+          ...inc,
+          resolvido: true,
+          status_resolucao: 'resolvido',
+          resolvido_em_validacao: false,
+          foto_resolucao: item.fotoUrl,
+          descricao_resolucao: item.descricao,
+          data_resolucao: item.data || nowIso,
+          resolvido_por: reviewerEmail || item.resolvido_por || 'Comunidade Multei'
+        };
+      }
+      return {
+        ...inc,
+        resolvido: false,
+        status_resolucao: 'improcedente',
+        resolvido_em_validacao: false,
+        foto_resolucao: '',
+        descricao_resolucao: '',
+        data_resolucao: ''
+      };
+    };
+
+    try {
+      const cached = loadIncidentsFromLocalCache().map(applyResolutionPatch);
+      localStorage.setItem('multei_cached_incidents', JSON.stringify(cached));
+    } catch {}
+
+    try {
+      const entries = loadRegionCacheEntries().map((entry) => ({
+        ...entry,
+        incidents: (entry.incidents || []).map(applyResolutionPatch)
+      }));
+      saveRegionCacheEntries(entries);
+    } catch {}
+  }
+
+  // 4. Ajusta estatísticas (`estatisticas/resumo.resolvidos`) conforme transição de status
+  const resolutionMeta: MulteiLiveEventMeta = {
+    cidade: String(item.cidade || ''),
+    estado: String(item.estado || ''),
+    bairro: String(item.bairro || ''),
+    rua: String(item.rua || ''),
+    natureza: 'urbana',
+    ocorrenciaId,
+    action: 'revisao'
+  };
+
+  if (wasCountedAsResolved && !isProcedente) {
+    adjustCachedStats({
+      totalGeralDelta: 0,
+      infracoesTransitoDelta: 0,
+      mobilidadeUrbanaDelta: 0,
+      resolvidosDelta: -1
+    });
+    void notifyMulteiLiveDelta('resolvidos', -1, resolutionMeta);
+    try {
+      const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+      await setDoc(
+        statsRef,
+        {
+          resolvidos: increment(-1),
+          updatedAt: nowIso
+        },
+        { merge: true }
+      );
+    } catch {}
+  } else if (!wasCountedAsResolved && isProcedente) {
+    adjustCachedStats({
+      totalGeralDelta: 0,
+      infracoesTransitoDelta: 0,
+      mobilidadeUrbanaDelta: 0,
+      resolvidosDelta: 1
+    });
+    void notifyMulteiLiveDelta('resolvidos', 1, resolutionMeta);
+    try {
+      const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+      await setDoc(
+        statsRef,
+        {
+          resolvidos: increment(1),
+          updatedAt: nowIso
+        },
+        { merge: true }
+      );
+    } catch {}
+  }
+
+  void notifyMulteiLiveDelta('denunciasPainel', 1, resolutionMeta);
+
+  return {
+    ...item,
+    status: nextStatus,
+    revisada: true,
+    resultado_revisao: decision,
+    data_revisao: nowIso,
+    revisado_por: reviewerEmail,
+    observacao_admin: observacaoAdmin.trim()
+  };
+}
+
+
 
