@@ -5,6 +5,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocFromServer,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -1464,18 +1465,23 @@ export async function submitUrbanResolutionToFirebase(
     cidade: inc.cidade || '',
     estado: inc.estado || '',
     ocorrenciaFotoUrl: inc.fotoUrl || inc.maskedImageUrl || '',
-    ocorrenciaDescricao: inc.descricao || ''
+    ocorrenciaDescricao: inc.descricao || '',
+    contabilizado_estatisticas: true
   };
 
   await setDoc(newDocRef, docData);
 
   // Marca na coleção "ocorrencias" que esta ocorrência já foi sinalizada como resolvida e está sob validação
-  await updateDoc(ocorrenciaRef, {
-    resolvido_em_validacao: true,
-    status_resolucao: 'em_validacao',
-    resolvidoId: id,
-    data_sinalizacao_resolvido: dataIso
-  });
+  try {
+    await updateDoc(ocorrenciaRef, {
+      resolvido_em_validacao: true,
+      status_resolucao: 'em_validacao',
+      resolvidoId: id,
+      data_sinalizacao_resolvido: dataIso
+    });
+  } catch (ocErr) {
+    console.warn('[firebaseService] Aviso ao atualizar status_resolucao em ocorrencias:', ocErr);
+  }
 
   // Atualiza contador de resolvidos em `estatisticas/resumo` e emite +1 ao vivo no backend Nuxt
   adjustCachedStats({
@@ -1483,15 +1489,6 @@ export async function submitUrbanResolutionToFirebase(
     infracoesTransitoDelta: 0,
     mobilidadeUrbanaDelta: 0,
     resolvidosDelta: 1
-  });
-  void notifyMulteiLiveDelta('resolvidos', 1, {
-    cidade: String(docData.cidade || ''),
-    estado: String(docData.estado || ''),
-    bairro: String(docData.bairro || ''),
-    rua: String(docData.rua || ''),
-    natureza: 'urbana',
-    ocorrenciaId,
-    action: 'nova_resolucao'
   });
   try {
     const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
@@ -1506,6 +1503,15 @@ export async function submitUrbanResolutionToFirebase(
   } catch (statsErr) {
     console.warn('[firebaseService] Aviso ao incrementar contador de resolvidos:', statsErr);
   }
+  await notifyMulteiLiveDelta('resolvidos', 1, {
+    cidade: String(docData.cidade || ''),
+    estado: String(docData.estado || ''),
+    bairro: String(docData.bairro || ''),
+    rua: String(docData.rua || ''),
+    natureza: 'urbana',
+    ocorrenciaId,
+    action: 'nova_resolucao'
+  });
 
   // Atualiza também o cache local e regional para refletir o status imediatamente
   markIncidentResolvedInLocalCache(ocorrenciaId);
@@ -1672,6 +1678,7 @@ export async function recalculateAndSyncMulteiStats(forceRefresh = false): Promi
 
   let infracoesTransito = 0;
   let mobilidadeUrbana = 0;
+  const resolvedIds = new Set<string>();
 
   ocorrenciasSnap.forEach((docSnap) => {
     const d = docSnap.data() || {};
@@ -1692,9 +1699,35 @@ export async function recalculateAndSyncMulteiStats(forceRefresh = false): Promi
     } else {
       infracoesTransito++;
     }
+
+    const statusRes = String(d.status_resolucao || '').toLowerCase();
+    const isResolvidoOc = Boolean(
+      d.resolvido === true ||
+        String(d.resolvido).toLowerCase() === 'true' ||
+        statusRes === 'resolvido' ||
+        statusRes === 'em_validacao' ||
+        d.resolvido_em_validacao === true ||
+        String(d.resolvido_em_validacao).toLowerCase() === 'true'
+    );
+    if (isResolvidoOc && statusRes !== 'improcedente') {
+      resolvedIds.add(docSnap.id);
+    }
   });
 
-  const resolvidos = resolvidosSnap.size;
+  resolvidosSnap.forEach((docSnap) => {
+    const d = docSnap.data() || {};
+    const statusRaw = String(d.status || '').toLowerCase();
+    const resultadoRaw = String(d.resultado_revisao || '').toLowerCase();
+    if (statusRaw === 'improcedente' || resultadoRaw === 'improcedente') {
+      return;
+    }
+    const key = String(d.ocorrenciaId || docSnap.id || '').trim();
+    if (key) {
+      resolvedIds.add(key);
+    }
+  });
+
+  const resolvidos = resolvedIds.size;
   const totalGeral = infracoesTransito + mobilidadeUrbana;
   const updatedAt = new Date().toISOString();
 
@@ -1719,23 +1752,13 @@ export async function recalculateAndSyncMulteiStats(forceRefresh = false): Promi
 }
 
 /**
- * Realiza UMA ÚNICA busca no Firebase na sessão da aba e reutiliza `sessionStorage` + memória
- * ao navegar entre páginas (`/` <-> `/multei/sobre`), mantendo os valores vivos via SSE (`+1` / `-1`).
+ * Busca o documento `estatisticas/resumo` no Firebase (exibindo imediatamente o cache se houver)
+ * para garantir que o painel de estatísticas ao vivo sempre reflita o valor real de `resolvidos`.
  */
 export async function fetchMulteiStatsOnce(
   onCached?: (stats: MulteiStats) => void,
   options?: { forceRefresh?: boolean }
 ): Promise<MulteiStats> {
-  if (!options?.forceRefresh) {
-    const sessionEntry = loadSessionStatsEntry();
-    if (sessionEntry?.stats) {
-      if (onCached) {
-        onCached(sessionEntry.stats);
-      }
-      return sessionEntry.stats;
-    }
-  }
-
   const cachedEntry = loadCachedStatsEntry();
   if (cachedEntry?.stats && onCached) {
     onCached(cachedEntry.stats);
@@ -1749,11 +1772,16 @@ export async function fetchMulteiStatsOnce(
     try {
       const { db } = getFirebaseServices();
       const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
-      const snap = await getDoc(statsRef);
+      const snap = await getDocFromServer(statsRef).catch(() => getDoc(statsRef));
 
       if (snap.exists()) {
         const d = snap.data() || {};
-        if (typeof d.totalGeral === 'number') {
+        if (
+          typeof d.totalGeral === 'number' ||
+          typeof d.resolvidos === 'number' ||
+          typeof d.infracoesTransito === 'number' ||
+          typeof d.mobilidadeUrbana === 'number'
+        ) {
           const infracoesTransito = Math.max(0, Number(d.infracoesTransito || 0));
           const mobilidadeUrbana = Math.max(0, Number(d.mobilidadeUrbana || 0));
           const resolvidos = Math.max(0, Number(d.resolvidos || 0));
@@ -1788,6 +1816,57 @@ export async function fetchMulteiStatsOnce(
     return await fetchPromise;
   } finally {
     inFlightStatsPromise = null;
+  }
+}
+
+/**
+ * Assina em tempo real o documento único `estatisticas/resumo` no Firestore,
+ * garantindo sincronização imediata do painel de estatísticas ao vivo sempre que
+ * `resolvidos`, `infracoesTransito`, `mobilidadeUrbana` ou `totalGeral` forem alterados.
+ */
+export function subscribeToMulteiStatsDocument(
+  onUpdate: (stats: MulteiStats) => void
+): () => void {
+  if (typeof window === 'undefined') return () => {};
+  try {
+    const { db } = getFirebaseServices();
+    const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+    return onSnapshot(
+      statsRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const d = snap.data() || {};
+        if (
+          typeof d.totalGeral !== 'number' &&
+          typeof d.resolvidos !== 'number' &&
+          typeof d.infracoesTransito !== 'number' &&
+          typeof d.mobilidadeUrbana !== 'number'
+        ) {
+          return;
+        }
+        const infracoesTransito = Math.max(0, Number(d.infracoesTransito || 0));
+        const mobilidadeUrbana = Math.max(0, Number(d.mobilidadeUrbana || 0));
+        const resolvidos = Math.max(0, Number(d.resolvidos || 0));
+        const totalGeral = Math.max(
+          infracoesTransito + mobilidadeUrbana,
+          Number(d.totalGeral || 0)
+        );
+        const nextStats: MulteiStats = {
+          totalGeral,
+          infracoesTransito,
+          mobilidadeUrbana,
+          resolvidos,
+          updatedAt: d.updatedAt ? String(d.updatedAt) : undefined
+        };
+        saveCachedStatsEntry(nextStats);
+        onUpdate(nextStats);
+      },
+      (err) => {
+        console.warn('[firebaseService] Aviso no listener de estatisticas/resumo:', err);
+      }
+    );
+  } catch {
+    return () => {};
   }
 }
 
@@ -3644,32 +3723,43 @@ export async function fetchPartnerIncidentsFromFirebase(options: {
       }
 
       const fotoRes = String(d.foto_resolucao || d.fotoResolucaoUrl || d.foto_resolvido || '').trim();
+      const statusResRaw = String(d.status_resolucao || '').toLowerCase();
+      const resultadoRevRaw = String(
+        d.resultado_revisao_resolucao || d.resultado_revisao || ''
+      ).toLowerCase();
+      const isImprocedente =
+        statusResRaw === 'improcedente' || resultadoRevRaw === 'improcedente';
       const isRes = Boolean(
-        d.resolvido === true ||
-          String(d.resolvido).toLowerCase() === 'true' ||
-          String(d.status_resolucao || '').toLowerCase() === 'resolvido' ||
-          (fotoRes && String(d.status_resolucao || '').toLowerCase() !== 'em_validacao')
+        !isImprocedente &&
+          (d.resolvido === true ||
+            String(d.resolvido).toLowerCase() === 'true' ||
+            d.resolvido_em_validacao === true ||
+            String(d.resolvido_em_validacao).toLowerCase() === 'true' ||
+            statusResRaw === 'resolvido' ||
+            statusResRaw === 'em_validacao' ||
+            Boolean(fotoRes))
       );
       if (isRes) {
         realResolvidos++;
       }
     });
 
-    // Sincroniza `estatisticas/resumo` apenas se houver divergência real nos contadores (evita gravações desnecessárias)
+    // Sincroniza `estatisticas/resumo` apenas se houver divergência real nos contadores (evita gravações desnecessárias e nunca reduz `resolvidos` já contabilizados)
     const realTotal = realTransito + realUrbana;
     const prevCached = loadCachedStatsEntry()?.stats;
+    const effectiveResolvidos = Math.max(realResolvidos, Number(prevCached?.resolvidos ?? 0));
     const hasDiffFromCache =
       !prevCached ||
       prevCached.totalGeral !== realTotal ||
       prevCached.infracoesTransito !== realTransito ||
       prevCached.mobilidadeUrbana !== realUrbana ||
-      prevCached.resolvidos !== realResolvidos;
+      prevCached.resolvidos !== effectiveResolvidos;
 
     const syncedStats: MulteiStats = {
       totalGeral: realTotal,
       infracoesTransito: realTransito,
       mobilidadeUrbana: realUrbana,
-      resolvidos: realResolvidos,
+      resolvidos: effectiveResolvidos,
       updatedAt: hasDiffFromCache
         ? new Date().toISOString()
         : prevCached?.updatedAt || new Date().toISOString()
@@ -3682,13 +3772,26 @@ export async function fetchPartnerIncidentsFromFirebase(options: {
           const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
           const currentSnap = await getDoc(statsRef);
           const cur = currentSnap.exists() ? currentSnap.data() || {} : {};
+          const remoteResolvidos = Math.max(0, Number(cur.resolvidos ?? 0));
+          const mergedResolvidos = Math.max(effectiveResolvidos, remoteResolvidos);
+          if (mergedResolvidos !== syncedStats.resolvidos) {
+            syncedStats.resolvidos = mergedResolvidos;
+            saveCachedStatsEntry(syncedStats);
+          }
           const differsFromRemote =
             Number(cur.totalGeral) !== realTotal ||
             Number(cur.infracoesTransito) !== realTransito ||
             Number(cur.mobilidadeUrbana) !== realUrbana ||
-            Number(cur.resolvidos) !== realResolvidos;
+            Number(cur.resolvidos) !== mergedResolvidos;
           if (differsFromRemote) {
-            await setDoc(statsRef, syncedStats, { merge: true });
+            await setDoc(
+              statsRef,
+              {
+                ...syncedStats,
+                resolvidos: mergedResolvidos
+              },
+              { merge: true }
+            );
           }
         } catch {}
       })();
@@ -3784,8 +3887,8 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
   }
 
   const descricaoResolucao = (payload.descricao || '').trim().slice(0, 300);
-  if (descricaoResolucao.length < 10) {
-    throw new Error('Informe uma descrição da correção com pelo menos 10 caracteres.');
+  if (!descricaoResolucao) {
+    throw new Error('Informe a descrição da correção realizada.');
   }
 
   if (!payload.foto) {
@@ -3799,18 +3902,25 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
   let existingData: Record<string, any> = {};
 
   try {
-    const snap = await getDoc(ocorrenciaRef);
-    if (snap.exists()) {
-      existingData = snap.data() || {};
-      alreadyCountedInStats = Boolean(
-        existingData.resolvido === true ||
-          String(existingData.resolvido).toLowerCase() === 'true' ||
-          existingData.resolvido_em_validacao === true ||
-          String(existingData.resolvido_em_validacao).toLowerCase() === 'true' ||
-          existingData.status_resolucao === 'resolvido' ||
-          existingData.status_resolucao === 'em_validacao'
-      );
+    const [ocSnap, resSnap, statsSnap] = await Promise.all([
+      getDoc(ocorrenciaRef).catch(() => null),
+      getDoc(doc(db, RESOLVIDOS_COLLECTION, ocorrenciaId)).catch(() => null),
+      getDoc(doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID)).catch(() => null)
+    ]);
+    if (ocSnap && ocSnap.exists()) {
+      existingData = ocSnap.data() || {};
     }
+    const resData = resSnap && resSnap.exists() ? resSnap.data() || {} : {};
+    const currentStatsResolvidos =
+      statsSnap && statsSnap.exists() ? Number(statsSnap.data()?.resolvidos ?? 0) : 0;
+
+    const wasMarkedResolved = Boolean(
+      resData.contabilizado_estatisticas === true ||
+        existingData.resolvido === true ||
+        String(existingData.resolvido).toLowerCase() === 'true' ||
+        existingData.status_resolucao === 'resolvido'
+    );
+    alreadyCountedInStats = wasMarkedResolved && currentStatsResolvidos > 0;
   } catch {}
 
   const { bytes, contentType } = base64ToUint8Array(payload.foto);
@@ -3865,6 +3975,7 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
         fotoUrl: fotoResolucaoUrl,
         descricao: descricaoResolucao,
         status: 'resolvido',
+        contabilizado_estatisticas: true,
         natureza: 'urbana',
         latitude: Number(existingData.latitude ?? inc.latitude ?? 0),
         longitude: Number(existingData.longitude ?? inc.longitude ?? 0),
@@ -3880,7 +3991,7 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
     );
   } catch {}
 
-  // 3. Caso ainda não tivesse incrementado o contador de `resolvidos`, incrementa +1
+  // 3. Caso ainda não tivesse incrementado o contador de `resolvidos`, incrementa +1 em `estatisticas/resumo`
   const incMeta = payload.incident || {};
   const resolutionMeta: MulteiLiveEventMeta = {
     cidade: String(existingData.cidade || incMeta.cidade || ''),
@@ -3899,7 +4010,6 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
       mobilidadeUrbanaDelta: 0,
       resolvidosDelta: 1
     });
-    void notifyMulteiLiveDelta('resolvidos', 1, resolutionMeta);
     try {
       const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
       await setDoc(
@@ -3910,7 +4020,10 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
         },
         { merge: true }
       );
-    } catch {}
+    } catch (err) {
+      console.warn('[firebaseService] Falha ao incrementar resolvidos em estatisticas/resumo:', err);
+    }
+    await notifyMulteiLiveDelta('resolvidos', 1, resolutionMeta);
   } else {
     void notifyMulteiLiveDelta('denunciasPainel', 1, resolutionMeta);
   }
@@ -4133,12 +4246,39 @@ export async function reviewResolvedIncidentInFirebase(params: {
   const isProcedente = decision === 'procedente';
   const nextStatus = isProcedente ? 'procedente' : 'improcedente';
 
-  // Verifica se já estava contabilizado como resolvido antes desta revisão
-  const wasCountedAsResolved =
-    item.resultado_revisao !== 'improcedente' && item.status !== 'improcedente';
+  const resolvidoRef = doc(db, RESOLVIDOS_COLLECTION, docId);
+  const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
+
+  // Verifica no Firestore se o registro já havia sido efetivamente contabilizado em `estatisticas/resumo.resolvidos`
+  let wasCountedAsResolved = false;
+  let currentStatsResolvidos = 0;
+  try {
+    const [resSnap, statsSnap] = await Promise.all([
+      getDoc(resolvidoRef).catch(() => null),
+      getDoc(statsRef).catch(() => null)
+    ]);
+    const resData = resSnap && resSnap.exists() ? resSnap.data() || {} : {};
+    currentStatsResolvidos =
+      statsSnap && statsSnap.exists() ? Math.max(0, Number(statsSnap.data()?.resolvidos ?? 0)) : 0;
+
+    const prevStatus = String(resData.status || item.status || '').toLowerCase();
+    const prevResult = String(
+      resData.resultado_revisao || item.resultado_revisao || ''
+    ).toLowerCase();
+    const wasExplicitlyImprocedente =
+      prevStatus === 'improcedente' || prevResult === 'improcedente';
+
+    wasCountedAsResolved = Boolean(
+      !wasExplicitlyImprocedente &&
+        currentStatsResolvidos > 0 &&
+        (resData.contabilizado_estatisticas === true ||
+          prevStatus === 'procedente' ||
+          prevStatus === 'resolvido' ||
+          prevResult === 'procedente')
+    );
+  } catch {}
 
   // 1. Atualiza o documento na coleção `resolvidos`
-  const resolvidoRef = doc(db, RESOLVIDOS_COLLECTION, docId);
   await setDoc(
     resolvidoRef,
     {
@@ -4147,6 +4287,7 @@ export async function reviewResolvedIncidentInFirebase(params: {
       status: nextStatus,
       revisada: true,
       resultado_revisao: decision,
+      contabilizado_estatisticas: isProcedente,
       data_revisao: nowIso,
       revisado_por: reviewerEmail,
       observacao_admin: observacaoAdmin.trim()
@@ -4256,18 +4397,19 @@ export async function reviewResolvedIncidentInFirebase(params: {
       mobilidadeUrbanaDelta: 0,
       resolvidosDelta: -1
     });
-    void notifyMulteiLiveDelta('resolvidos', -1, resolutionMeta);
-    try {
-      const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
-      await setDoc(
-        statsRef,
-        {
-          resolvidos: increment(-1),
-          updatedAt: nowIso
-        },
-        { merge: true }
-      );
-    } catch {}
+    if (currentStatsResolvidos > 0) {
+      try {
+        await setDoc(
+          statsRef,
+          {
+            resolvidos: increment(-1),
+            updatedAt: nowIso
+          },
+          { merge: true }
+        );
+      } catch {}
+    }
+    await notifyMulteiLiveDelta('resolvidos', -1, resolutionMeta);
   } else if (!wasCountedAsResolved && isProcedente) {
     adjustCachedStats({
       totalGeralDelta: 0,
@@ -4275,9 +4417,7 @@ export async function reviewResolvedIncidentInFirebase(params: {
       mobilidadeUrbanaDelta: 0,
       resolvidosDelta: 1
     });
-    void notifyMulteiLiveDelta('resolvidos', 1, resolutionMeta);
     try {
-      const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
       await setDoc(
         statsRef,
         {
@@ -4287,6 +4427,7 @@ export async function reviewResolvedIncidentInFirebase(params: {
         { merge: true }
       );
     } catch {}
+    await notifyMulteiLiveDelta('resolvidos', 1, resolutionMeta);
   }
 
   void notifyMulteiLiveDelta('denunciasPainel', 1, resolutionMeta);

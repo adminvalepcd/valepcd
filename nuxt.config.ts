@@ -132,10 +132,7 @@ export default defineNuxtConfig({
       ],
       script: [
         {
-          src: 'https://www.googletagmanager.com/gtag/js?id=G-4QRMKWNJ8S',
-          async: true
-        },
-        {
+          tagPriority: 'critical',
           innerHTML: `
             window.dataLayer = window.dataLayer || [];
             window.gtag = window.gtag || function(){dataLayer.push(arguments);};
@@ -156,6 +153,10 @@ export default defineNuxtConfig({
             window.gtag('js', new Date());
             window.gtag('config', 'G-4QRMKWNJ8S', { send_page_view: false });
           `
+        },
+        {
+          src: 'https://www.googletagmanager.com/gtag/js?id=G-4QRMKWNJ8S',
+          async: true
         },
         {
           src: 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6260779513509504',

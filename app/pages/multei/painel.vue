@@ -1298,7 +1298,16 @@
                     <button
                       type="button"
                       class="btn-decision btn-improcedente btn-confirm-partner-resolve"
-                      :disabled="isSubmittingPartnerResolution || isProcessingPartnerPhoto"
+                      :disabled="
+                        !canSubmitPartnerResolution ||
+                        isSubmittingPartnerResolution ||
+                        isProcessingPartnerPhoto
+                      "
+                      :aria-disabled="
+                        !canSubmitPartnerResolution ||
+                        isSubmittingPartnerResolution ||
+                        isProcessingPartnerPhoto
+                      "
                       @click="handlePartnerSubmitResolution"
                     >
                       <span class="decision-btn-title">
@@ -2377,6 +2386,12 @@ const geminiClient = initializeGeminiClient(config.public?.geminiApiKey as strin
 
 useHead({
   title: 'Painel de Averiguação | Multei • Vale PcD',
+  htmlAttrs: {
+    class: 'ads-suppressed'
+  },
+  bodyAttrs: {
+    class: 'ads-suppressed'
+  },
   meta: [
     {
       name: 'robots',
@@ -2983,9 +2998,24 @@ const handlePartnerCameraPhotoTaken = async (file: File) => {
   }
 };
 
+const canSubmitPartnerResolution = computed(() => {
+  return (
+    Boolean(partnerResolvedPhotoWebp.value) &&
+    partnerResolveDescription.value.trim().length > 0
+  );
+});
+
 const handlePartnerSubmitResolution = async () => {
   const current = selectedPartnerIncident.value;
-  if (!current || !current.id || isSubmittingPartnerResolution.value) return;
+  if (
+    !current ||
+    !current.id ||
+    isSubmittingPartnerResolution.value ||
+    isProcessingPartnerPhoto.value ||
+    !canSubmitPartnerResolution.value
+  ) {
+    return;
+  }
 
   partnerResolveError.value = '';
   partnerResolveSuccess.value = '';
@@ -2994,8 +3024,8 @@ const handlePartnerSubmitResolution = async () => {
     partnerResolveError.value = 'Envie uma nova foto demonstrando que o problema de acesso urbano foi corrigido.';
     return;
   }
-  if (partnerResolveDescription.value.trim().length < 10) {
-    partnerResolveError.value = 'Preencha uma descrição da correção com pelo menos 10 caracteres.';
+  if (!partnerResolveDescription.value.trim()) {
+    partnerResolveError.value = 'Preencha a descrição da correção realizada.';
     return;
   }
 
@@ -4000,7 +4030,49 @@ const scheduleSilentResolutionsRefresh = () => {
   }, 350);
 };
 
+let panelAdSuppressionObserver: MutationObserver | null = null;
+
+const suppressPanelAds = () => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  document.documentElement?.classList.add('ads-suppressed');
+  document.body?.classList.add('ads-suppressed');
+
+  if (document.body) {
+    document.body.style.paddingBottom = '0px';
+    document.body.style.paddingTop = '0px';
+  }
+
+  const adNodes = document.querySelectorAll(
+    'ins.adsbygoogle, .adsbygoogle, .adsbygoogle-noablate, .google-auto-placed, [data-anchor-status], [data-ad-status], [data-vignette-loaded], div[id^="google_ads_iframe"], iframe[id^="aswift_"], div[id^="aswift_"]'
+  );
+  adNodes.forEach((node) => {
+    const container =
+      node.closest('ins.adsbygoogle, .adsbygoogle-noablate, .google-auto-placed, [data-anchor-status]') || node;
+    if (container instanceof HTMLElement) {
+      container.remove();
+    }
+  });
+};
+
+watch(adminMainSection, () => {
+  suppressPanelAds();
+});
+
 onMounted(() => {
+  suppressPanelAds();
+
+  if (typeof MutationObserver !== 'undefined' && document.body) {
+    panelAdSuppressionObserver = new MutationObserver(() => {
+      suppressPanelAds();
+    });
+    panelAdSuppressionObserver.observe(document.body, {
+      childList: true,
+      subtree: false,
+      attributes: true,
+      attributeFilter: ['style', 'class']
+    });
+  }
+
   unsubscribeAuth = subscribeToMulteiPanelAuth(
     async (profile) => {
       const wasAlreadyLoggedIn = Boolean(
@@ -4149,6 +4221,14 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (panelAdSuppressionObserver) {
+    panelAdSuppressionObserver.disconnect();
+    panelAdSuppressionObserver = null;
+  }
+  if (typeof document !== 'undefined') {
+    document.documentElement?.classList.remove('ads-suppressed');
+    document.body?.classList.remove('ads-suppressed');
+  }
   if (typeof unsubscribeAuth === 'function') {
     unsubscribeAuth();
   }
@@ -5216,7 +5296,8 @@ select.field-input {
 }
 
 .btn-decision:disabled {
-  opacity: 0.6;
+  opacity: 0.45;
+  filter: grayscale(0.4);
   cursor: not-allowed;
 }
 

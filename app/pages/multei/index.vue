@@ -1,28 +1,365 @@
 <template>
   <div class="multei-page-root">
-    <!-- Conteúdo semântico em fluxo normal do document.body (atrás da camada position:fixed do mapa)
-           para garantir que document.body tenha altura real (> 100vh) e estrutura semântica para o Google AdSense no acesso direto -->
+    <div
+      class="multei-fullscreen-page"
+      style="position: relative; width: 100%; height: 100vh; height: 100dvh; overflow: hidden; background: #0f172a; display: flex; flex-direction: column; justify-content: space-between;"
+    >
+      <!-- Zona Superior em fluxo normal: Botão Voltar + Busca de Endereço + Status/GPS -->
+      <header
+        class="top-header-bar"
+        ref="searchContainerRef"
+        :inert="isAnyModalOpen || undefined"
+        :aria-hidden="isAnyModalOpen ? 'true' : undefined"
+      >
+        <div class="top-left-controls">
+          <NuxtLink to="/" class="btn-back-home" title="Voltar para a página inicial do Vale PCD"
+            aria-label="Voltar para a Home do Vale PCD">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round" class="back-icon">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            <span class="back-label">Voltar</span>
+          </NuxtLink>
+
+          <!-- Filtro de Tipo de Ocorrência (filtra apenas o que é exibido em tela, sem nova busca) -->
+          <div class="incident-type-filter-wrapper">
+            <select
+              v-model="selectedIncidentType"
+              class="incident-type-select"
+              aria-label="Filtrar tipo de ocorrência exibida no mapa"
+              title="Filtrar ocorrências exibidas no mapa"
+            >
+              <option value="all">Todas ocorrências</option>
+              <option value="urbana">Mobilidade urbana</option>
+              <option value="transito">Infrações de trânsito</option>
+            </select>
+          </div>
+      
+          <div class="top-bar-pills glass-panel">
+            <span v-if="isLoadingSheet" class="badge-status">Sincronizando...</span>
+            <span v-else class="badge-status is-active"
+              :title="`Exibindo ${visibleIncidentsCount} de ${filteredIncidents.length} ocorrências filtradas (${incidents.length} carregadas na região)`">
+              {{ visibleIncidentsCount }} na região
+            </span>
+
+            <span
+              v-if="locationState === 'granted'"
+              class="badge-status is-gps"
+              title="Localização GPS ativa"
+            >
+              📍 GPS Ativo
+            </span>
+            <button
+              v-else
+              type="button"
+              class="badge-status is-clickable-gps is-gps-off"
+              :disabled="locationState === 'requesting'"
+              title="GPS desativado. Clique para ativar sua localização no navegador"
+              @click="handleGpsActivateClick"
+            >
+              📍 {{ locationState === 'requesting' ? 'GPS...' : 'Ativar GPS' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Barra de Busca de Endereços -->
+        <div class="address-search-wrapper">
+          <form class="address-search-box glass-panel" @submit.prevent="handleSearchSubmit" role="search">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round" class="search-icon" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+        
+            <input v-model="searchQuery" type="search" class="address-search-input"
+              placeholder="Buscar endereço, rua, bairro ou cidade..." aria-label="Buscar endereço no mapa" autocomplete="off"
+              @input="handleSearchInput" @focus="handleSearchFocus" @keydown.down.prevent="moveHighlight(1)"
+              @keydown.up.prevent="moveHighlight(-1)" @keydown.esc="closeSuggestions" />
+        
+            <span v-if="isSearchingAddress" class="search-spinner" aria-label="Buscando endereço"></span>
+        
+            <button v-if="searchQuery" type="button" class="btn-clear-search" @click="clearSearch" title="Limpar busca"
+              aria-label="Limpar busca">
+              ✕
+            </button>
+        
+            <button type="submit" class="btn-submit-search" :disabled="isSearchingAddress || searchQuery.trim().length < 2"
+              title="Buscar endereço">
+              Buscar
+            </button>
+          </form>
+        
+          <!-- Lista de Sugestões de Endereço -->
+          <Transition name="fade-slide">
+            <ul v-if="showSuggestions && (searchResults.length > 0 || searchNoResults)" class="address-suggestions-list"
+              role="listbox">
+              <li v-if="searchNoResults && searchResults.length === 0" class="suggestion-empty">
+                Nenhum endereço encontrado para "{{ searchQuery }}"
+              </li>
+              <li v-for="(item, index) in searchResults" :key="`${item.latitude}_${item.longitude}_${index}`"
+                class="suggestion-item" :class="{ 'is-highlighted': index === highlightedIndex }" role="option"
+                :aria-selected="index === highlightedIndex" @mousedown.prevent="selectSearchResult(item)"
+                @mouseenter="highlightedIndex = index">
+                <span class="suggestion-pin" aria-hidden="true">📍</span>
+                <div class="suggestion-texts">
+                  <span class="suggestion-label">{{ item.label }}</span>
+                  <span v-if="item.sublabel" class="suggestion-sublabel">{{ item.sublabel }}</span>
+                </div>
+              </li>
+            </ul>
+          </Transition>
+        </div>
+      </header>
+
+      <!-- Alerta sucinto flutuante quando o usuário move o mapa para outra região -->
+      <Transition name="fade-slide">
+        <button
+          v-if="hasMovedRegion && !isLoadingSheet"
+          type="button"
+          class="btn-floating-refresh"
+          :inert="isAnyModalOpen || undefined"
+          :aria-hidden="isAnyModalOpen ? 'true' : undefined"
+          @click="handleRegionButtonClick"
+          title="Você mudou a localização do mapa. Clique para carregar ocorrências desta região."
+        >
+          <span>🔄</span>
+          <span>Atualizar região</span>
+        </button>
+      </Transition>
+
+      <!-- Zona Central em fluxo normal: ocupa a tela durante o pré-render / "Carregando mapa..." para forçar a publicidade na área inferior -->
+      <section
+        v-if="isWaitingForInitialAd"
+        class="multei-center-loading-zone"
+        aria-live="polite"
+      >
+        <div class="multei-loading-card">
+          <MulteiLoadingSpinner />
+          <p class="multei-loading-title">Carregando mapa...</p>
+          <p class="multei-loading-subtitle">
+            Mapeamento colaborativo de acessibilidade e vagas PcD em tempo real
+          </p>
+        </div>
+      </section>
+      <div v-else class="multei-center-spacer" aria-hidden="true"></div>
+
+      <!-- Zona Inferior em fluxo normal: Botões Flutuantes (Incluir Ocorrência + Dúvidas?) -->
+      <footer
+        class="bottom-action-zone"
+        :style="bottomActionContainerStyle"
+        :inert="isAnyModalOpen || undefined"
+        :aria-hidden="isAnyModalOpen ? 'true' : undefined"
+      >
+        <div class="bottom-action-container">
+          <button
+            v-if="isCurrentLocationInBrazil"
+            type="button"
+            class="btn btn-primary btn-floating-report"
+            @click="handleOpenCreateModal"
+          >
+            <span class="btn-report-icon" aria-hidden="true">+</span>
+            <span>Incluir</span>
+          </button>
+
+          <div class="help-menu-wrapper" ref="helpMenuRef">
+            <Transition name="help-menu-pop">
+              <div v-if="isHelpMenuOpen" class="help-upward-menu" role="menu" aria-label="Opções de ajuda">
+                <NuxtLink to="/multei/sobre" class="help-menu-item" role="menuitem" @click="isHelpMenuOpen = false">
+                  <span class="help-menu-icon" aria-hidden="true">📊</span>
+                  <span>Sobre o Multei</span>
+                </NuxtLink>
+                <NuxtLink to="/multei/orientacoes" class="help-menu-item" role="menuitem" @click="isHelpMenuOpen = false">
+                  <span class="help-menu-icon" aria-hidden="true">ℹ️</span>
+                  <span>Orientações de Uso</span>
+                </NuxtLink>
+                <button type="button" class="help-menu-item" role="menuitem" @click="openWhatToReportModal">
+                  <span class="help-menu-icon" aria-hidden="true">📋</span>
+                  <span>O que denunciar?</span>
+                </button>
+              </div>
+            </Transition>
+
+            <button type="button" class="btn-floating-help" :class="{ 'is-open': isHelpMenuOpen }" :aria-expanded="isHelpMenuOpen"
+              aria-haspopup="true" title="Ver opções de ajuda e orientações sobre o Multei" @click="toggleHelpMenu">
+              <span>Dúvidas?</span>
+            </button>
+          </div>
+        </div>
+      </footer>
+
+      <!-- Mapa em Tela Cheia (montado após o ciclo inicial de carregamento/anúncio) -->
+      <div
+        v-if="!isWaitingForInitialAd"
+        class="fullscreen-map-container"
+        :inert="isAnyModalOpen || undefined"
+        :aria-hidden="isAnyModalOpen ? 'true' : undefined"
+      >
+        <MulteiMapDisplay
+          :incidents="filteredIncidents"
+          :initial-center="initialCenter"
+          :initial-zoom="initialCenter.zoom || 15"
+          :show-user-location-dot="locationState === 'granted'"
+          height="100vh"
+          @marker-click="handleMarkerClick"
+          @bounds-change="handleBoundsChange"
+          @user-location-found="handleUserLocationFound"
+        />
+      </div>
+
+      <!-- Modal Tela Cheia: O que posso denunciar? -->
+      <Transition name="fade-modal">
+        <div
+          v-show="isWhatToReportModalOpen"
+          ref="whatToReportModalRef"
+          class="what-to-report-fullscreen-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="what-to-report-title"
+          :inert="!isWhatToReportModalOpen || undefined"
+          :aria-hidden="!isWhatToReportModalOpen ? 'true' : undefined"
+        >
+          <div class="what-to-report-content">
+            <div class="what-to-report-topbar">
+              <span class="what-to-report-badge">Guia de Infrações</span>
+              <button type="button" class="what-to-report-close-btn" aria-label="Fechar janela"
+                @click="isWhatToReportModalOpen = false">
+                ✕ Fechar
+              </button>
+            </div>
+      
+            <header class="what-to-report-header">
+              <h2 id="what-to-report-title" class="what-to-report-title">O que posso denunciar?</h2>
+              <p class="what-to-report-intro">
+                Você pode usar este aplicativo para reportar veículos que desrespeitam o espaço e bloqueiam a mobilidade de
+                pessoas com deficiência. Veja o que é infração:
+              </p>
+            </header>
+      
+            <div class="what-to-report-accordion">
+              <details class="report-summary-card" open>
+                <summary class="report-summary-trigger">
+                  <span class="report-summary-number">1</span>
+                  <span class="report-summary-heading">1. Vaga exclusiva sem credencial</span>
+                  <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <div class="report-summary-body">
+                  <p><strong>O que é:</strong> Veículos estacionados nas vagas reservadas sem exibir a credencial oficial no
+                    painel.</p>
+                  <p><strong>Por que atrapalha:</strong> Tira o direito de quem realmente precisa de um espaço mais largo e
+                    próximo aos acessos.</p>
+                  <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso XX do Código de Trânsito
+                    Brasileiro (CTB)</p>
+                </div>
+              </details>
+      
+              <details class="report-summary-card">
+                <summary class="report-summary-trigger">
+                  <span class="report-summary-number">2</span>
+                  <span class="report-summary-heading">2. Bloqueio de calçadas e faixas de pedestres</span>
+                  <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <div class="report-summary-body">
+                  <p><strong>O que é:</strong> Carros ou motos parados sobre o passeio público ou em cima das faixas de
+                    travessia.</p>
+                  <p><strong>Por que atrapalha:</strong> Interrompe a rota acessível e obriga pessoas que utilizam caideira de
+                    rodas, pessoas cegas ou com mobilidade reduzida a desviarem pelo asfalto, correndo risco de atropelamento.
+                  </p>
+                  <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso VIII do CTB</p>
+                </div>
+              </details>
+      
+              <details class="report-summary-card">
+                <summary class="report-summary-trigger">
+                  <span class="report-summary-number">3</span>
+                  <span class="report-summary-heading">3. Obstrução de rampas e esquinas</span>
+                  <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <div class="report-summary-body">
+                  <p><strong>O que é:</strong> Veículos estacionados a menos de 5 metros do alinhamento da via (nas esquinas),
+                    onde ficam as rampas de acessibilidade.</p>
+                  <p><strong>Por que atrapalha:</strong> Impede a transição segura entre a calçada e a rua.</p>
+                  <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso I do CTB</p>
+                </div>
+              </details>
+      
+              <details class="report-summary-card">
+                <summary class="report-summary-trigger">
+                  <span class="report-summary-number">4</span>
+                  <span class="report-summary-heading">4. Invasão de ilhas e refúgios</span>
+                  <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <div class="report-summary-body">
+                  <p><strong>O que é:</strong> Veículos parados nas áreas de segurança estruturadas no meio de avenidas e vias
+                    largas.</p>
+                  <p><strong>Por que atrapalha:</strong> Elimina a área de descanso e proteção essencial para quem se locomove
+                    mais devagar e precisa fazer a travessia em duas etapas.</p>
+                  <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso VIII do CTB</p>
+                </div>
+              </details>
+              <details class="report-summary-card">
+                <summary class="report-summary-trigger">
+                  <span class="report-summary-number" aria-hidden="true">5</span>
+                  <span class="report-summary-heading">Multa em supermercado e shopping tem validade?</span>
+                  <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <div class="report-summary-body">
+                  <p><strong>Sim, tem total validade.</strong> Desde 2015, o Código de Trânsito Brasileiro (CTB) estabelece que
+                    estacionamentos de uso coletivo — como supermercados, shoppings, hospitais e faculdades — são considerados
+                    vias públicas para fins de fiscalização.</p>
+                  <p><strong>Como funciona a regra:</strong></p>
+                  <p class="report-legal-base"><strong>A infração principal:</strong> Estacionar nas vagas reservadas para
+                    pessoas com deficiência ou idosos sem a credencial (Art. 181, XX). A multa é gravíssima e o veículo pode ser
+                    guinchado.</p>
+                </div>
+              </details>
+            </div>
+      
+            <div class="what-to-report-footer">
+              <button type="button" class="btn btn-primary what-to-report-cta" @click="isWhatToReportModalOpen = false">
+                Entendi, voltar ao mapa
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+
+      <!-- Modal para Inclusão de Nova Ocorrência com IA Gemini -->
+      <MulteiCreateIncidentModal
+        v-if="isCreateModalOpen"
+        :current-location="currentMapCenter || initialCenter"
+        :apps-script-url="appsScriptUrl"
+        :is-gps-enabled="locationState === 'granted'"
+        @close="isCreateModalOpen = false"
+        @incident-created="handleIncidentCreated"
+        @gps-enabled="handleUserLocationFound"
+      />
+
+      <!-- Modal de Detalhes da Ocorrência Clicada -->
+      <MulteiIncidentModal v-if="selectedIncident" :incident="selectedIncident" :apps-script-url="appsScriptUrl"
+        @close="selectedIncident = null" @incident-reported="handleIncidentReported" />
+    </div>
+
+    <!-- Conteúdo semântico em fluxo normal abaixo da dobra (100vh) para garantir altura rolável (> 100vh)
+         e análise de conteúdo pelo Google AdSense sem nunca sobrepor o mapa -->
     <main id="main-content" class="multei-seo-backdrop" role="main">
       <article class="multei-seo-article">
         <header>
-          <h1 class="seo-main-heading">Multei - Denúncia anônima de uso irregular de vagas para PcD e Mobilidade Urbana
-          </h1>
+          <h1 class="seo-main-heading">Multei - Denúncia anônima de uso irregular de vagas para PcD e Mobilidade Urbana</h1>
           <p>
             Plataforma pública e colaborativa do projeto Vale PCD para mapeamento de infrações em vagas exclusivas para
             pessoas com deficiência e barreiras de acessibilidade nas cidades brasileiras.
           </p>
         </header>
-  
+
         <section>
           <h2>Mapeamento colaborativo de acessibilidade e fiscalização cidadã</h2>
           <p>
             O Multei é uma iniciativa da ONG Vale PCD dedicada ao mapeamento colaborativo de infrações de trânsito e
             barreiras de mobilidade urbana que prejudicam a autonomia e a segurança de pessoas com deficiência (PcD) e
-            pessoas
-            com mobilidade reduzida em todo o Brasil. Utilizando recursos de geolocalização e inteligência artificial para
-            proteção automática de privacidade (anonimização de placas veiculares e rostos), a plataforma permite
-            registrar
-            ocorrências em tempo real.
+            pessoas com mobilidade reduzida em todo o Brasil. Utilizando recursos de geolocalização e inteligência
+            artificial para proteção automática de privacidade (anonimização de placas veiculares e rostos), a plataforma
+            permite registrar ocorrências em tempo real.
           </p>
           <p>
             Entre as principais ocorrências mapeadas estão o estacionamento irregular em vagas reservadas para pessoas com
@@ -30,352 +367,34 @@
             calçadas, passeios públicos e faixas de travessia de pedestres (Art. 181, inciso VIII do CTB), a obstrução de
             rampas de acessibilidade e esquinas (Art. 181, inciso I do CTB), além de calçadas quebradas, buracos, ausência de
             piso tátil e obstáculos que interrompem rotas acessíveis.
-            </p>
-            <p>
-              Os dados consolidados pelo Multei formam um painel de inteligência urbana para apoiar órgãos de
-              trânsito, prefeituras e políticas públicas de inclusão e desenho universal nas cidades brasileiras.
-            </p>
-            </section>
-<section>
-  <h2>Direitos de mobilidade urbana, Lei Brasileira de Inclusão e Código de Trânsito</h2>
-  <p>
-    A Lei Brasileira de Inclusão da Pessoa com Deficiência (Lei nº 13.146/2015)
-    assegura o direito ao transporte e à mobilidade da pessoa com deficiência ou com mobilidade reduzida, em igualdade
-    de oportunidades com as demais pessoas, por meio da identificação e da eliminação de todos os obstáculos e
-    barreiras ao seu acesso.
-  </p>
-  <p>
-    Desde a vigência da Lei Brasileira de Inclusão, estacionamentos privados de uso coletivo — como supermercados,
-    shopping centers, centros comerciais, hospitais e instituições de ensino — passaram a ser equiparados às vias
-    públicas para fins de fiscalização de trânsito. O uso indevido das vagas reservadas sem a credencial oficial
-    configura infração gravíssima sujeita a multa e remoção do veículo.
-  </p>
-  <p>
-    A participação cidadã no registro de barreiras arquitetônicas, urbanísticas e de trânsito contribui diretamente
-    para cidades mais seguras, calçadas caminháveis, travessias sinalizadas e respeito contínuo aos direitos humanos e
-    à acessibilidade universal.
-  </p>
-</section>
+          </p>
+          <p>
+            Os dados consolidados pelo Multei formam um painel de inteligência urbana para apoiar órgãos de trânsito,
+            prefeituras e políticas públicas de inclusão e desenho universal nas cidades brasileiras.
+          </p>
+        </section>
+
+        <section>
+          <h2>Direitos de mobilidade urbana, Lei Brasileira de Inclusão e Código de Trânsito</h2>
+          <p>
+            A Lei Brasileira de Inclusão da Pessoa com Deficiência (Lei nº 13.146/2015) assegura o direito ao transporte e à
+            mobilidade da pessoa com deficiência ou com mobilidade reduzida, em igualdade de oportunidades com as demais
+            pessoas, por meio da identificação e da eliminação de todos os obstáculos e barreiras ao seu acesso.
+          </p>
+          <p>
+            Desde a vigência da Lei Brasileira de Inclusão, estacionamentos privados de uso coletivo — como supermercados,
+            shopping centers, centros comerciais, hospitais e instituições de ensino — passaram a ser equiparados às vias
+            públicas para fins de fiscalização de trânsito. O uso indevido das vagas reservadas sem a credencial oficial
+            configura infração gravíssima sujeita a multa e remoção do veículo.
+          </p>
+          <p>
+            A participação cidadã no registro de barreiras arquitetônicas, urbanísticas e de trânsito contribui diretamente
+            para cidades mais seguras, calçadas caminháveis, travessias sinalizadas e respeito contínuo aos direitos humanos
+            e à acessibilidade universal.
+          </p>
+        </section>
       </article>
     </main>
-
-    <div class="multei-fullscreen-page">
-      <!-- Barra Superior Flutuante: Botão Voltar + Busca de Endereço + Status/GPS -->
-    <div
-      class="top-header-bar"
-      ref="searchContainerRef"
-      :inert="isAnyModalOpen || undefined"
-      :aria-hidden="isAnyModalOpen ? 'true' : undefined"
-    >
-      <div class="top-left-controls">
-        <NuxtLink to="/" class="btn-back-home" title="Voltar para a página inicial do Vale PCD"
-          aria-label="Voltar para a Home do Vale PCD">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-            stroke-linecap="round" stroke-linejoin="round" class="back-icon">
-            <line x1="19" y1="12" x2="5" y2="12"></line>
-            <polyline points="12 19 5 12 12 5"></polyline>
-          </svg>
-          <span class="back-label">Voltar</span>
-        </NuxtLink>
-
-        <!-- Filtro de Tipo de Ocorrência (filtra apenas o que é exibido em tela, sem nova busca) -->
-        <div class="incident-type-filter-wrapper">
-          <select
-            v-model="selectedIncidentType"
-            class="incident-type-select"
-            aria-label="Filtrar tipo de ocorrência exibida no mapa"
-            title="Filtrar ocorrências exibidas no mapa"
-          >
-            <option value="all">Todas ocorrências</option>
-            <option value="urbana">Mobilidade urbana</option>
-            <option value="transito">Infrações de trânsito</option>
-          </select>
-        </div>
-    
-        <div class="top-bar-pills glass-panel">
-          <span v-if="isLoadingSheet" class="badge-status">Sincronizando...</span>
-          <span v-else class="badge-status is-active"
-            :title="`Exibindo ${visibleIncidentsCount} de ${filteredIncidents.length} ocorrências filtradas (${incidents.length} carregadas na região)`">
-            {{ visibleIncidentsCount }} na região
-          </span>
-
-          <span
-            v-if="locationState === 'granted'"
-            class="badge-status is-gps"
-            title="Localização GPS ativa"
-          >
-            📍 GPS Ativo
-          </span>
-          <button
-            v-else
-            type="button"
-            class="badge-status is-clickable-gps is-gps-off"
-            :disabled="locationState === 'requesting'"
-            title="GPS desativado. Clique para ativar sua localização no navegador"
-            @click="handleGpsActivateClick"
-          >
-            📍 {{ locationState === 'requesting' ? 'GPS...' : 'Ativar GPS' }}
-          </button>
-        </div>
-      </div>
-
-      <!-- Barra de Busca de Endereços -->
-      <div class="address-search-wrapper">
-        <form class="address-search-box glass-panel" @submit.prevent="handleSearchSubmit" role="search">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-            stroke-linecap="round" stroke-linejoin="round" class="search-icon" aria-hidden="true">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-      
-          <input v-model="searchQuery" type="search" class="address-search-input"
-            placeholder="Buscar endereço, rua, bairro ou cidade..." aria-label="Buscar endereço no mapa" autocomplete="off"
-            @input="handleSearchInput" @focus="handleSearchFocus" @keydown.down.prevent="moveHighlight(1)"
-            @keydown.up.prevent="moveHighlight(-1)" @keydown.esc="closeSuggestions" />
-      
-          <span v-if="isSearchingAddress" class="search-spinner" aria-label="Buscando endereço"></span>
-      
-          <button v-if="searchQuery" type="button" class="btn-clear-search" @click="clearSearch" title="Limpar busca"
-            aria-label="Limpar busca">
-            ✕
-          </button>
-      
-          <button type="submit" class="btn-submit-search" :disabled="isSearchingAddress || searchQuery.trim().length < 2"
-            title="Buscar endereço">
-            Buscar
-          </button>
-        </form>
-      
-        <!-- Lista de Sugestões de Endereço -->
-        <Transition name="fade-slide">
-          <ul v-if="showSuggestions && (searchResults.length > 0 || searchNoResults)" class="address-suggestions-list"
-            role="listbox">
-            <li v-if="searchNoResults && searchResults.length === 0" class="suggestion-empty">
-              Nenhum endereço encontrado para "{{ searchQuery }}"
-            </li>
-            <li v-for="(item, index) in searchResults" :key="`${item.latitude}_${item.longitude}_${index}`"
-              class="suggestion-item" :class="{ 'is-highlighted': index === highlightedIndex }" role="option"
-              :aria-selected="index === highlightedIndex" @mousedown.prevent="selectSearchResult(item)"
-              @mouseenter="highlightedIndex = index">
-              <span class="suggestion-pin" aria-hidden="true">📍</span>
-              <div class="suggestion-texts">
-                <span class="suggestion-label">{{ item.label }}</span>
-                <span v-if="item.sublabel" class="suggestion-sublabel">{{ item.sublabel }}</span>
-              </div>
-            </li>
-          </ul>
-        </Transition>
-      </div>
-      </div>
-
-    <!-- Alerta sucinto flutuante quando o usuário move o mapa para outra região -->
-    <Transition name="fade-slide">
-      <button
-        v-if="hasMovedRegion && !isLoadingSheet"
-        type="button"
-        class="btn-floating-refresh"
-        :inert="isAnyModalOpen || undefined"
-        :aria-hidden="isAnyModalOpen ? 'true' : undefined"
-        @click="handleRegionButtonClick"
-        title="Você mudou a localização do mapa. Clique para carregar ocorrências desta região."
-      >
-        <span>🔄</span>
-        <span>Atualizar região</span>
-      </button>
-    </Transition>
-
-    <!-- Botões Flutuantes: Incluir Ocorrência + Dúvidas? -->
-    <div
-      class="bottom-action-container"
-      :style="bottomActionContainerStyle"
-      :inert="isAnyModalOpen || undefined"
-      :aria-hidden="isAnyModalOpen ? 'true' : undefined"
-    >
-      <button
-        v-if="isCurrentLocationInBrazil"
-        type="button"
-        class="btn btn-primary btn-floating-report"
-        @click="handleOpenCreateModal"
-      >
-        <span class="btn-report-icon" aria-hidden="true">+</span>
-        <span>Incluir</span>
-      </button>
-
-      <div class="help-menu-wrapper" ref="helpMenuRef">
-        <Transition name="help-menu-pop">
-          <div v-if="isHelpMenuOpen" class="help-upward-menu" role="menu" aria-label="Opções de ajuda">
-            <NuxtLink to="/multei/sobre" class="help-menu-item" role="menuitem" @click="isHelpMenuOpen = false">
-              <span class="help-menu-icon" aria-hidden="true">📊</span>
-              <span>Sobre o Multei</span>
-            </NuxtLink>
-            <NuxtLink to="/multei/orientacoes" class="help-menu-item" role="menuitem" @click="isHelpMenuOpen = false">
-              <span class="help-menu-icon" aria-hidden="true">ℹ️</span>
-              <span>Orientações de Uso</span>
-            </NuxtLink>
-            <button type="button" class="help-menu-item" role="menuitem" @click="openWhatToReportModal">
-              <span class="help-menu-icon" aria-hidden="true">📋</span>
-              <span>O que denunciar?</span>
-            </button>
-          </div>
-</Transition>
-
-<button type="button" class="btn-floating-help" :class="{ 'is-open': isHelpMenuOpen }" :aria-expanded="isHelpMenuOpen"
-  aria-haspopup="true" title="Ver opções de ajuda e orientações sobre o Multei" @click="toggleHelpMenu">
-  <span>Dúvidas?</span>
-</button>
-</div>
-    </div>
-
-    <!-- Mapa em Tela Cheia -->
-    <div
-      class="fullscreen-map-container"
-      :inert="isAnyModalOpen || undefined"
-      :aria-hidden="isAnyModalOpen ? 'true' : undefined"
-    >
-      <MulteiMapDisplay
-        :incidents="filteredIncidents"
-        :initial-center="initialCenter"
-        :initial-zoom="initialCenter.zoom || 15"
-        :show-user-location-dot="locationState === 'granted'"
-        height="100vh"
-        @marker-click="handleMarkerClick"
-        @bounds-change="handleBoundsChange"
-        @user-location-found="handleUserLocationFound"
-      />
-    </div>
-
-    <!-- Modal Tela Cheia: O que posso denunciar? -->
-    <Transition name="fade-modal">
-      <div
-        v-show="isWhatToReportModalOpen"
-        ref="whatToReportModalRef"
-        class="what-to-report-fullscreen-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="what-to-report-title"
-        :inert="!isWhatToReportModalOpen || undefined"
-        :aria-hidden="!isWhatToReportModalOpen ? 'true' : undefined"
-      >
-        <div class="what-to-report-content">
-          <div class="what-to-report-topbar">
-            <span class="what-to-report-badge">Guia de Infrações</span>
-            <button type="button" class="what-to-report-close-btn" aria-label="Fechar janela"
-              @click="isWhatToReportModalOpen = false">
-              ✕ Fechar
-            </button>
-          </div>
-    
-          <header class="what-to-report-header">
-            <h2 id="what-to-report-title" class="what-to-report-title">O que posso denunciar?</h2>
-            <p class="what-to-report-intro">
-              Você pode usar este aplicativo para reportar veículos que desrespeitam o espaço e bloqueiam a mobilidade de
-              pessoas com deficiência. Veja o que é infração:
-            </p>
-          </header>
-    
-          <div class="what-to-report-accordion">
-            <details class="report-summary-card" open>
-              <summary class="report-summary-trigger">
-                <span class="report-summary-number">1</span>
-                <span class="report-summary-heading">1. Vaga exclusiva sem credencial</span>
-                <span class="report-summary-chevron" aria-hidden="true">▾</span>
-              </summary>
-              <div class="report-summary-body">
-                <p><strong>O que é:</strong> Veículos estacionados nas vagas reservadas sem exibir a credencial oficial no
-                  painel.</p>
-                <p><strong>Por que atrapalha:</strong> Tira o direito de quem realmente precisa de um espaço mais largo e
-                  próximo aos acessos.</p>
-                <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso XX do Código de Trânsito
-                  Brasileiro (CTB)</p>
-              </div>
-            </details>
-    
-            <details class="report-summary-card">
-              <summary class="report-summary-trigger">
-                <span class="report-summary-number">2</span>
-                <span class="report-summary-heading">2. Bloqueio de calçadas e faixas de pedestres</span>
-                <span class="report-summary-chevron" aria-hidden="true">▾</span>
-              </summary>
-              <div class="report-summary-body">
-                <p><strong>O que é:</strong> Carros ou motos parados sobre o passeio público ou em cima das faixas de
-                  travessia.</p>
-                <p><strong>Por que atrapalha:</strong> Interrompe a rota acessível e obriga pessoas que utilizam caideira de
-                  rodas, pessoas cegas ou com mobilidade reduzida a desviarem pelo asfalto, correndo risco de atropelamento.
-                </p>
-                <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso VIII do CTB</p>
-              </div>
-            </details>
-    
-            <details class="report-summary-card">
-              <summary class="report-summary-trigger">
-                <span class="report-summary-number">3</span>
-                <span class="report-summary-heading">3. Obstrução de rampas e esquinas</span>
-                <span class="report-summary-chevron" aria-hidden="true">▾</span>
-              </summary>
-              <div class="report-summary-body">
-                <p><strong>O que é:</strong> Veículos estacionados a menos de 5 metros do alinhamento da via (nas esquinas),
-                  onde ficam as rampas de acessibilidade.</p>
-                <p><strong>Por que atrapalha:</strong> Impede a transição segura entre a calçada e a rua.</p>
-                <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso I do CTB</p>
-              </div>
-            </details>
-    
-            <details class="report-summary-card">
-              <summary class="report-summary-trigger">
-                <span class="report-summary-number">4</span>
-                <span class="report-summary-heading">4. Invasão de ilhas e refúgios</span>
-                <span class="report-summary-chevron" aria-hidden="true">▾</span>
-              </summary>
-              <div class="report-summary-body">
-                <p><strong>O que é:</strong> Veículos parados nas áreas de segurança estruturadas no meio de avenidas e vias
-                  largas.</p>
-                <p><strong>Por que atrapalha:</strong> Elimina a área de descanso e proteção essencial para quem se locomove
-                  mais devagar e precisa fazer a travessia em duas etapas.</p>
-                <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso VIII do CTB</p>
-              </div>
-            </details>
-<details class="report-summary-card">
-  <summary class="report-summary-trigger">
-    <span class="report-summary-number" aria-hidden="true">5</span>
-    <span class="report-summary-heading">Multa em supermercado e shopping tem validade?</span>
-    <span class="report-summary-chevron" aria-hidden="true">▾</span>
-  </summary>
-  <div class="report-summary-body">
-    <p><strong>Sim, tem total validade.</strong> Desde 2015, o Código de Trânsito Brasileiro (CTB) estabelece que
-      estacionamentos de uso coletivo — como supermercados, shoppings, hospitais e faculdades — são considerados
-      vias públicas para fins de fiscalização.</p>
-    <p><strong>Como funciona a regra:</strong></p>
-    <p class="report-legal-base"><strong>A infração principal:</strong> Estacionar nas vagas reservadas para
-      pessoas com deficiência ou idosos sem a credencial (Art. 181, XX). A multa é gravíssima e o veículo pode ser
-      guinchado.</p>
-  </div>
-</details>
-          </div>
-    
-          <div class="what-to-report-footer">
-            <button type="button" class="btn btn-primary what-to-report-cta" @click="isWhatToReportModalOpen = false">
-              Entendi, voltar ao mapa
-            </button>
-          </div>
-        </div>
-      </div>
-    </Transition>
-
-    <!-- Modal para Inclusão de Nova Ocorrência com IA Gemini -->
-    <MulteiCreateIncidentModal
-      v-if="isCreateModalOpen"
-      :current-location="currentMapCenter || initialCenter"
-      :apps-script-url="appsScriptUrl"
-      :is-gps-enabled="locationState === 'granted'"
-      @close="isCreateModalOpen = false"
-      @incident-created="handleIncidentCreated"
-      @gps-enabled="handleUserLocationFound"
-    />
-
-      <!-- Modal de Detalhes da Ocorrência Clicada -->
-      <MulteiIncidentModal v-if="selectedIncident" :incident="selectedIncident" :apps-script-url="appsScriptUrl"
-        @close="selectedIncident = null" @incident-reported="handleIncidentReported" />
-    </div>
   </div>
 </template>
 
@@ -1113,16 +1132,88 @@ const handleGeoPermissionChange = () => {
 
 // Ajuste dinâmico dos botões inferiores ("Incluir" e "Dúvidas?") quando o anúncio âncora do AdSense estiver aberto no rodapé
 const bottomAdOffset = ref(0);
+const isWaitingForInitialAd = ref(true);
 let adMutationObserver = null;
 let adCheckInterval = null;
+let initialAdWaitTimer = null;
+let initialAdPollInterval = null;
 const adFollowUpTimers = [];
 
 const bottomActionContainerStyle = computed(() => {
   if (bottomAdOffset.value <= 0) return undefined;
   return {
-    bottom: `${bottomAdOffset.value + 12}px`
+    paddingBottom: `${bottomAdOffset.value + 12}px`
   };
 });
+
+const hasAdSenseContainerInDom = () => {
+  if (typeof document === 'undefined') return false;
+  return Boolean(
+    document.querySelector(
+      'ins.adsbygoogle[data-anchor-status], ins.adsbygoogle[data-ad-status], div[id^="google_ads_iframe"], iframe[id^="aswift_"]'
+    )
+  );
+};
+
+const keepViewportAtTopWhenMapActive = () => {
+  if (typeof window === 'undefined') return;
+  if (!isWaitingForInitialAd.value && !isAnyModalOpen.value && window.scrollY > 0) {
+    window.scrollTo(0, 0);
+  }
+};
+
+const waitForAdSenseDuringLoadingScreen = () => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    isWaitingForInitialAd.value = false;
+    return Promise.resolve();
+  }
+
+  // Se estiver dentro do iframe de preview do painel do Google AdSense, mantém o layout
+  // de pré-render ("Carregando mapa...") visível em fluxo normal para inspeção de áreas.
+  try {
+    if (window.self !== window.top) {
+      return Promise.resolve();
+    }
+  } catch {
+    return Promise.resolve();
+  }
+
+  // Se o anúncio âncora já existe no DOM (ex: veio da Home), libera o mapa imediatamente
+  if (hasAdSenseContainerInDom()) {
+    isWaitingForInitialAd.value = false;
+    scheduleAdOffsetChecks();
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    let finished = false;
+    const finishWait = () => {
+      if (finished) return;
+      finished = true;
+      if (initialAdWaitTimer) {
+        clearTimeout(initialAdWaitTimer);
+        initialAdWaitTimer = null;
+      }
+      if (initialAdPollInterval) {
+        clearInterval(initialAdPollInterval);
+        initialAdPollInterval = null;
+      }
+      isWaitingForInitialAd.value = false;
+      scheduleAdOffsetChecks();
+      resolve();
+    };
+
+    initialAdPollInterval = setInterval(() => {
+      if (hasAdSenseContainerInDom()) {
+        finishWait();
+      }
+    }, 80);
+
+    // Timeout máximo de segurança (1.2s) para nunca travar o carregamento do mapa
+    // caso o usuário utilize bloqueador de anúncios ou o AdSense não preencha
+    initialAdWaitTimer = setTimeout(finishWait, 1200);
+  });
+};
 
 const calculateBottomAdOffset = () => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return 0;
@@ -1249,6 +1340,7 @@ const setupBottomAdObserver = () => {
 
   scheduleAdOffsetChecks();
   window.addEventListener('resize', scheduleAdOffsetChecks, { passive: true });
+  window.addEventListener('scroll', keepViewportAtTopWhenMapActive, { passive: true });
 
   if (typeof MutationObserver !== 'undefined' && document.body) {
     adMutationObserver = new MutationObserver(() => {
@@ -1268,6 +1360,7 @@ const setupBottomAdObserver = () => {
 const cleanupBottomAdObserver = () => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('resize', scheduleAdOffsetChecks);
+    window.removeEventListener('scroll', keepViewportAtTopWhenMapActive);
   }
   if (adMutationObserver) {
     adMutationObserver.disconnect();
@@ -1277,6 +1370,14 @@ const cleanupBottomAdObserver = () => {
     clearInterval(adCheckInterval);
     adCheckInterval = null;
   }
+  if (initialAdWaitTimer) {
+    clearTimeout(initialAdWaitTimer);
+    initialAdWaitTimer = null;
+  }
+  if (initialAdPollInterval) {
+    clearInterval(initialAdPollInterval);
+    initialAdPollInterval = null;
+  }
   while (adFollowUpTimers.length) {
     clearTimeout(adFollowUpTimers.pop());
   }
@@ -1285,8 +1386,12 @@ const cleanupBottomAdObserver = () => {
 onMounted(async () => {
   setupBottomAdObserver();
 
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     try {
+      const expiry = new Date();
+      expiry.setDate(expiry.getDate() + 30);
+      document.cookie = `cookie-consent-granted=true; expires=${expiry.toUTCString()}; path=/; SameSite=Lax; Secure`;
+
       window.dataLayer = window.dataLayer || [];
       if (window.gtag) {
         window.gtag('consent', 'update', {
@@ -1296,10 +1401,17 @@ onMounted(async () => {
           analytics_storage: 'granted'
         });
       }
+      const nowIso = new Date().toISOString();
       window.dataLayer.push({
         event: 'consent_loaded',
         consent_granted: true,
-        timestamp: new Date().toISOString()
+        timestamp: nowIso
+      });
+      window.dataLayer.push({
+        event: 'cookie_consent_granted',
+        consent_granted: true,
+        consent_type: 'implicit',
+        timestamp: nowIso
       });
     } catch {}
   }
@@ -1312,6 +1424,11 @@ onMounted(async () => {
       localStorage.removeItem('multei_gps_disabled');
     } catch {}
   }
+
+  // Mantém a tela "Carregando mapa..." ocupando a viewport inicial enquanto o AdSense
+  // inicializa o anúncio âncora no canto inferior antes de montar o canvas do Google Maps
+  await waitForAdSenseDuringLoadingScreen();
+
   if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
     try {
       geoPermissionStatus = await navigator.permissions.query({ name: 'geolocation' });
@@ -1373,25 +1490,19 @@ onMounted(async () => {
 .multei-page-root {
   position: relative;
   width: 100%;
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
+  min-height: 180vh;
   background: #0f172a;
 }
 
 .multei-seo-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
+  position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 960px;
   margin: 0 auto;
-  padding: 2.5rem 1.5rem 6rem;
+  padding: 3rem 1.5rem 6rem;
   color: #cbd5e1;
   background: #0f172a;
-  pointer-events: none;
-  user-select: none;
-  overflow: hidden;
 }
 
 .multei-seo-article {
@@ -1410,15 +1521,21 @@ onMounted(async () => {
   position: relative;
   z-index: 10;
   width: 100%;
-  height: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
   overflow: hidden;
   margin: 0;
   padding: 0;
   background: #0f172a;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .fullscreen-map-container {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
   width: 100%;
   height: 100%;
@@ -1433,16 +1550,70 @@ onMounted(async () => {
 }
 
 .top-header-bar {
-  position: absolute;
-  top: 14px;
-  left: 16px;
-  right: 16px;
+  position: relative;
   z-index: 35;
+  width: 100%;
+  padding: 14px 16px 8px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
   pointer-events: none;
+}
+
+.multei-center-loading-zone {
+  position: relative;
+  z-index: 20;
+  flex: 1 1 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  box-sizing: border-box;
+  background: #f8fafc;
+  text-align: center;
+}
+
+.multei-loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: 420px;
+}
+
+.multei-loading-title {
+  margin-top: 1rem;
+  margin-bottom: 0.35rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.multei-loading-subtitle {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.multei-center-spacer {
+  flex: 1 1 auto;
+  width: 100%;
+  pointer-events: none;
+}
+
+.bottom-action-zone {
+  position: relative;
+  z-index: 30;
+  width: 100%;
+  padding: 8px 20px 24px;
+  box-sizing: border-box;
+  pointer-events: none;
+  transition: padding-bottom 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .top-left-controls {
@@ -1881,14 +2052,12 @@ onMounted(async () => {
 }
 
 .bottom-action-container {
-  position: absolute;
-  bottom: 24px;
-  left: 20px;
+  position: relative;
   z-index: 30;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.75rem;
-  transition: bottom 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: auto;
 }
 
 .btn-floating-report {
@@ -2073,6 +2242,7 @@ onMounted(async () => {
 
 .what-to-report-header {
   display: flex;
+  align-items: flex-start;
   flex-direction: column;
   gap: 0.65rem;
 }
@@ -2226,9 +2396,7 @@ onMounted(async () => {
 
 @media (max-width: 640px) {
   .top-header-bar {
-    top: 10px;
-    left: 8px;
-    right: 8px;
+    padding: 10px 8px 6px;
     gap: 0.4rem;
   }
   .top-left-controls {
@@ -2282,10 +2450,11 @@ onMounted(async () => {
   .btn-floating-refresh {
     top: 96px;
   }
+  .bottom-action-zone {
+    padding: 8px 16px 20px;
+  }
   .bottom-action-container {
-    bottom: 20px;
-    left: 16px;
-    right: 16px;
+    width: 100%;
     display: flex;
     justify-content: center;
     gap: 0.65rem;

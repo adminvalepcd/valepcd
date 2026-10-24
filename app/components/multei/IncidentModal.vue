@@ -767,7 +767,7 @@ const isResolutionPending = computed(() => {
 });
 
 const canSubmitResolve = computed(() => {
-  return Boolean(resolvedPhotoWebp.value) && resolveDescription.value.trim().length >= 10;
+  return Boolean(resolvedPhotoWebp.value) && resolveDescription.value.trim().length > 0;
 });
 
 const handlePhotoLoaded = () => {
@@ -933,7 +933,7 @@ const handleSubmitResolve = async () => {
     resolveError.value = 'Por favor, adicione uma foto mostrando que o problema foi resolvido.';
     return;
   }
-  if (resolveDescription.value.trim().length < 10) {
+  if (!resolveDescription.value.trim()) {
     resolveError.value = 'Por favor, preencha uma breve descrição.';
     return;
   }

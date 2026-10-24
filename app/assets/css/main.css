@@ -445,3 +445,41 @@ img {
   white-space: nowrap;
   border: 0;
 }
+
+/* Supressão total de publicidades (Google AdSense Auto Ads / Âncora / In-page / Vignette) em páginas restritas como /multei/painel */
+html.ads-suppressed body,
+body.ads-suppressed {
+  padding-bottom: 0px !important;
+  padding-top: 0px !important;
+}
+
+html.ads-suppressed ins.adsbygoogle,
+html.ads-suppressed .adsbygoogle,
+html.ads-suppressed .adsbygoogle-noablate,
+html.ads-suppressed .google-auto-placed,
+html.ads-suppressed [data-anchor-status],
+html.ads-suppressed [data-ad-status],
+html.ads-suppressed [data-vignette-loaded],
+html.ads-suppressed div[id^="google_ads_iframe"],
+html.ads-suppressed iframe[id^="aswift_"],
+html.ads-suppressed div[id^="aswift_"],
+body.ads-suppressed ins.adsbygoogle,
+body.ads-suppressed .adsbygoogle,
+body.ads-suppressed .adsbygoogle-noablate,
+body.ads-suppressed .google-auto-placed,
+body.ads-suppressed [data-anchor-status],
+body.ads-suppressed [data-ad-status],
+body.ads-suppressed [data-vignette-loaded],
+body.ads-suppressed div[id^="google_ads_iframe"],
+body.ads-suppressed iframe[id^="aswift_"],
+body.ads-suppressed div[id^="aswift_"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  max-height: 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  z-index: -9999 !important;
+}

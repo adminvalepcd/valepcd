@@ -249,7 +249,8 @@
 import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
   import {
     fetchMulteiStatsOnce,
-    subscribeToMulteiLiveEvents
+    subscribeToMulteiLiveEvents,
+    subscribeToMulteiStatsDocument
   } from '~/services/firebaseService';
 
 const themeCookie = useCookie('theme', { default: () => 'light' });
@@ -308,6 +309,8 @@ const animatedStats = reactive({
   });
 
   let unsubscribeLiveEvents = null;
+  let unsubscribeStatsDoc = null;
+  let hasHydratedRemoteStats = false;
 let animationFrameIds = {};
   let badgeTimers = {};
   let pulseTimers = {};
@@ -390,18 +393,47 @@ const animateValue = (key, targetValue) => {
   animationFrameIds[key] = requestAnimationFrame(step);
 };
 
-  const applyIncomingSnapshot = (incoming) => {
+  const applyIncomingSnapshot = (incoming, options = { notifyDiff: false, isRemote: false }) => {
+    const prev = { ...stats.value };
+    const shouldNotify = Boolean(options?.notifyDiff && hasHydratedRemoteStats);
+
     isLoadingStats.value = false;
+    if (options?.isRemote) {
+      hasHydratedRemoteStats = true;
+    }
+
+    const nextTotal = Number(incoming.totalGeral || 0);
+    const nextTransito = Number(incoming.infracoesTransito || 0);
+    const nextUrbana = Number(incoming.mobilidadeUrbana || 0);
+    const nextResolvidos = Number(incoming.resolvidos || 0);
+
     stats.value = {
-      totalGeral: Number(incoming.totalGeral || 0),
-      infracoesTransito: Number(incoming.infracoesTransito || 0),
-      mobilidadeUrbana: Number(incoming.mobilidadeUrbana || 0),
-      resolvidos: Number(incoming.resolvidos || 0)
+      totalGeral: nextTotal,
+      infracoesTransito: nextTransito,
+      mobilidadeUrbana: nextUrbana,
+      resolvidos: nextResolvidos
     };
     animateValue('totalGeral', stats.value.totalGeral);
     animateValue('infracoesTransito', stats.value.infracoesTransito);
     animateValue('mobilidadeUrbana', stats.value.mobilidadeUrbana);
     animateValue('resolvidos', stats.value.resolvidos);
+
+    if (shouldNotify) {
+      if (nextResolvidos > prev.resolvidos) {
+        triggerPlusOneVisual('resolvidos');
+        announceForScreenReader('resolvidos');
+      }
+      if (nextTransito > prev.infracoesTransito) {
+        triggerPlusOneVisual('infracoesTransito');
+        triggerPlusOneVisual('totalGeral');
+        announceForScreenReader('infracoesTransito');
+      }
+      if (nextUrbana > prev.mobilidadeUrbana) {
+        triggerPlusOneVisual('mobilidadeUrbana');
+        triggerPlusOneVisual('totalGeral');
+        announceForScreenReader('mobilidadeUrbana');
+      }
+    }
   };
 
 const formatNumber = (val) => {
@@ -410,20 +442,28 @@ const formatNumber = (val) => {
 };
 
 onMounted(() => {
-  // 1. Consulta única ao Firebase apenas ao abrir ou atualizar (F5) a página
+  // 1. Consulta inicial ao Firebase ao abrir ou atualizar (F5) a página
   fetchMulteiStatsOnce((cached) => {
-    applyIncomingSnapshot(cached);
+    if (!hasHydratedRemoteStats) {
+      applyIncomingSnapshot(cached, { notifyDiff: false, isRemote: false });
+    }
   })
     .then((fresh) => {
-      applyIncomingSnapshot(fresh);
+      applyIncomingSnapshot(fresh, { notifyDiff: false, isRemote: true });
     })
     .catch(() => {
       isLoadingStats.value = false;
     });
 
-  // 2. Escuta eventos em tempo real (+1 / -1) gerenciados pelo backend do Nuxt sem consultar o Firebase novamente
+  // 2. Escuta diretamente o documento `estatisticas/resumo` no Firestore para refletir qualquer incremento imediatamente
+  unsubscribeStatsDoc = subscribeToMulteiStatsDocument((remoteStats) => {
+    applyIncomingSnapshot(remoteStats, { notifyDiff: true, isRemote: true });
+  });
+
+  // 3. Escuta eventos em tempo real (+1 / -1) via SSE / BroadcastChannel / localStorage
   unsubscribeLiveEvents = subscribeToMulteiLiveEvents((evt) => {
     isLoadingStats.value = false;
+    hasHydratedRemoteStats = true;
     const { category, delta } = evt;
 
     if (category === 'infracoesTransito') {
@@ -469,6 +509,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (typeof unsubscribeLiveEvents === 'function') {
     unsubscribeLiveEvents();
+  }
+  if (typeof unsubscribeStatsDoc === 'function') {
+    unsubscribeStatsDoc();
   }
   Object.values(animationFrameIds).forEach((id) => {
     if (id) cancelAnimationFrame(id);
