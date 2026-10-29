@@ -355,10 +355,13 @@ export function blurSensitiveContentAndCompress(
       // Desenhar a foto base na resolução original
       ctx.drawImage(image, 0, 0, targetW, targetH);
 
-      // Juntar todas as caixas a serem anonimizadas
-      const targets = [...plates, ...faces];
+      // Juntar todas as caixas a serem anonimizadas identificando o tipo (placa vs rosto)
+      const targets = [
+        ...plates.map(box => ({ box, type: 'plate' as const })),
+        ...faces.map(box => ({ box, type: 'face' as const })),
+      ];
 
-      targets.forEach(rawBox => {
+      targets.forEach(({ box: rawBox, type }) => {
         let bx = typeof rawBox.x === 'number' ? rawBox.x : 0;
         let by = typeof rawBox.y === 'number' ? rawBox.y : 0;
         let bw = typeof rawBox.width === 'number' ? rawBox.width : 0;
@@ -372,9 +375,35 @@ export function blurSensitiveContentAndCompress(
           bh /= 1000;
         }
 
-        // Margem de segurança ampliada (36% largura, 44% altura) para garantir cobertura total da placa/rosto
-        const padW = bw * 0.36;
-        const padH = bh * 0.44;
+        // Salvaguarda geométrica para rostos: se o detector box_2d da IA retornar o corpo inteiro
+        // ou o tronco do pedestre (caixa muito mais alta que larga em pixels), recorta apenas a região da cabeça no topo
+        if (type === 'face' && targetW > 0 && targetH > 0) {
+          const pxW = bw * targetW;
+          const pxH = bh * targetH;
+          if (pxH > pxW * 2.0) {
+            // Caixa de corpo inteiro: cabeça fica no topo (~20% superiores) e centralizada horizontalmente
+            const headPxH = Math.min(pxH * 0.22, pxW * 0.65);
+            const headPxW = Math.min(pxW * 0.55, headPxH * 1.05);
+            const newBw = headPxW / targetW;
+            const newBh = headPxH / targetH;
+            bx = bx + (bw - newBw) / 2;
+            bw = newBw;
+            bh = newBh;
+          } else if (pxH > pxW * 1.35) {
+            // Caixa de meio corpo / busto: restringe à porção superior da cabeça/rosto
+            const headPxH = Math.min(pxH * 0.48, pxW * 1.1);
+            const headPxW = Math.min(pxW * 0.85, headPxH * 1.05);
+            const newBw = headPxW / targetW;
+            const newBh = headPxH / targetH;
+            bx = bx + (bw - newBw) / 2;
+            bw = newBw;
+            bh = newBh;
+          }
+        }
+
+        // Placas usam margem ampliada (36% largura, 44% altura); rostos usam margem justa (12%) para não cobrir o corpo
+        const padW = type === 'face' ? bw * 0.12 : bw * 0.36;
+        const padH = type === 'face' ? bh * 0.12 : bh * 0.44;
         const rawX = (bx - padW / 2) * targetW;
         const rawY = (by - padH / 2) * targetH;
         const rawW = (bw + padW) * targetW;

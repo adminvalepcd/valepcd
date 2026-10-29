@@ -83,7 +83,7 @@ export async function analyzeIncidentImage(
     };
   }
 
-  const trafficPrompt = `Audite a imagem (LGPD/Trânsito) focando na vaga em primeiro plano (vaga auditada) e na sua área zebrada de transferência lateral para avaliação da infração, e ocultando TODAS as placas e rostos da cena para LGPD. Retorne o JSON:
+  const trafficPrompt = `Audite a imagem (LGPD/Trânsito) focando na vaga em primeiro plano (vaga auditada) e na sua área zebrada de transferência lateral para avaliação da infração, e ocultando TODAS as placas e APENAS os rostos (cabeça/face, nunca o corpo) da cena para LGPD. Retorne o JSON:
 
 DIRETRIZES
 
@@ -110,7 +110,7 @@ DIRETRIZES
 
 5. Anonimização LGPD ("plates" e "faces"):
 - "plates": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem (independentemente de o veículo ser o principal na vaga auditada, adjacente ou ao fundo). Se não houver placas visíveis, retorne [].
-- "faces": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de rostos identificáveis na imagem. Se não houver, [].`;
+- "faces": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) delimitando ESTRITAMENTE a região do ROSTO/CABEÇA humana (ymin no topo da testa/cabeça e ymax no queixo; xmin e xmax de orelha a orelha). PROIBIDO incluir pescoço, ombros, tronco, roupas, pernas ou o corpo inteiro da pessoa/pedestre. Se a pessoa estiver de costas ou sem rosto visível, ignore. Se não houver rostos visíveis, retorne [].`;
 
   const urbanPrompt = `
 Audite a imagem (LGPD/Mobilidade e Acessibilidade Urbana) e retorne o JSON:
@@ -132,7 +132,7 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
 
 4. Proteção de Privacidade / LGPD ("plates" e "faces") — OBRIGATÓRIO:
 - "plates": IMPORTANTE: Localize com precisão as caixas delimitadoras (bounding boxes) de TODAS as placas de veículos visíveis na cena (dianteiras e traseiras de qualquer veículo estacionado, em movimento ou ao fundo), cobrindo toda a extensão da placa (incluindo moldura e caracteres), onde x e y são o canto superior esquerdo (xmin, ymin) e width e height são a largura e altura da caixa para aplicação do desfoque pesado de privacidade.
-- "faces": IMPORTANTE: Localize com precisão as caixas delimitadoras de TODOS os rostos humanos visíveis na cena (pedestres, trabalhadores, motoristas ou pessoas ao fundo), onde x e y são o canto superior esquerdo (xmin, ymin) e width e height são a largura e altura da caixa para aplicação do desfoque pesado de privacidade.`;
+- "faces": IMPORTANTE: Localize com precisão as caixas delimitadoras APENAS dos rostos humanos visíveis na cena (da testa ao queixo, de orelha a orelha — NUNCA inclua tronco, roupas, pernas ou o corpo inteiro), onde x e y são o canto superior esquerdo (xmin, ymin) e width e height são a largura e altura estritas do rosto para aplicação do desfoque de privacidade.`;
 
   const prompt = isUrbanMode ? urbanPrompt : trafficPrompt;
 
@@ -149,19 +149,31 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
     properties: {
       x: { type: Type.NUMBER, description: 'Coordenada horizontal do canto superior esquerdo xmin (0 a 1000 ou 0 a 1).' },
       y: { type: Type.NUMBER, description: 'Coordenada vertical do canto superior esquerdo ymin (0 a 1000 ou 0 a 1).' },
-      width: { type: Type.NUMBER, description: 'Largura total da caixa cobrindo toda a placa ou rosto (0 a 1000 ou 0 a 1).' },
-      height: { type: Type.NUMBER, description: 'Altura total da caixa cobrindo toda a placa ou rosto (0 a 1000 ou 0 a 1).' }
+      width: { type: Type.NUMBER, description: 'Largura total da caixa cobrindo apenas a placa ou apenas o rosto (0 a 1000 ou 0 a 1).' },
+      height: { type: Type.NUMBER, description: 'Altura total da caixa cobrindo apenas a placa ou apenas o rosto, da testa ao queixo, sem incluir o corpo (0 a 1000 ou 0 a 1).' }
     },
     propertyOrdering: ['x', 'y', 'width', 'height']
   };
 
-  const box2dItemSchema = {
+  const plateBox2dItemSchema = {
     type: Type.OBJECT,
     properties: {
       box_2d: {
         type: Type.ARRAY,
         items: { type: Type.NUMBER },
-        description: 'Coordenadas [ymin, xmin, ymax, xmax] de 0 a 1000.'
+        description: 'Coordenadas [ymin, xmin, ymax, xmax] de 0 a 1000 cobrindo a placa do veículo.'
+      }
+    },
+    propertyOrdering: ['box_2d']
+  };
+
+  const faceBox2dItemSchema = {
+    type: Type.OBJECT,
+    properties: {
+      box_2d: {
+        type: Type.ARRAY,
+        items: { type: Type.NUMBER },
+        description: 'Coordenadas [ymin, xmin, ymax, xmax] de 0 a 1000 delimitando ESTRITAMENTE o rosto humano (ymin=testa, ymax=queixo, xmin/xmax=orelhas). NUNCA inclua tronco, roupas ou corpo inteiro.'
       }
     },
     propertyOrdering: ['box_2d']
@@ -202,7 +214,7 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
           },
           faces: {
             type: Type.ARRAY,
-            description: 'Lista obrigatória de caixas delimitadoras de TODOS os rostos humanos visíveis na imagem para desfoque de privacidade.',
+            description: 'Lista obrigatória de caixas delimitadoras APENAS dos rostos humanos (da testa ao queixo, nunca o corpo inteiro) visíveis na imagem.',
             items: boundingBoxItemsSchema
           }
         },
@@ -243,12 +255,12 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
           plates: {
             type: Type.ARRAY,
             description: 'Lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem (independentemente de o veículo ser o principal, adjacente ou ao fundo). Se não houver, [].',
-            items: box2dItemSchema
+            items: plateBox2dItemSchema
           },
           faces: {
             type: Type.ARRAY,
-            description: 'Lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODOS os rostos identificáveis na imagem. Se não houver, [].',
-            items: box2dItemSchema
+            description: 'Lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) delimitando EXCLUSIVAMENTE o rosto/cabeça humana (da testa ao queixo, de orelha a orelha). PROIBIDO incluir tronco, roupas, pernas ou o corpo inteiro do pedestre. Se não houver, [].',
+            items: faceBox2dItemSchema
           }
         },
         propertyOrdering: [
