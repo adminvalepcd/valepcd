@@ -3,7 +3,8 @@ import type {
   BoundingBox,
   DuplicateComparisonResult,
   GeminiSensitiveContentResponse,
-  IncidentAnalysisResult
+  IncidentAnalysisResult,
+  SecondTrafficPhotoAnalysisResult
 } from '../types';
 
 
@@ -15,6 +16,82 @@ const CANDIDATE_MODELS = [
   'gemini-3.8-flash',
   'gemini-3.6-flash'
 ];
+
+export function normalizeVehiclePlate(raw?: unknown): string {
+  if (typeof raw !== 'string') return '';
+  const cleaned = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return cleaned.length >= 6 && cleaned.length <= 8 ? cleaned : '';
+}
+
+function sanitizeAndNormalizeBoxes(boxes: any[]): BoundingBox[] {
+  if (!Array.isArray(boxes)) return [];
+  const result: BoundingBox[] = [];
+
+  for (const item of boxes) {
+    if (!item) continue;
+    let x = 0;
+    let y = 0;
+    let width = 0;
+    let height = 0;
+
+    if (typeof item === 'object' && !Array.isArray(item)) {
+      if (Array.isArray(item.box_2d) && item.box_2d.length === 4) {
+        const [ymin, xmin, ymax, xmax] = item.box_2d;
+        x = xmin;
+        y = ymin;
+        width = xmax - xmin;
+        height = ymax - ymin;
+      } else if ('xmin' in item && 'ymin' in item && 'xmax' in item && 'ymax' in item) {
+        x = item.xmin;
+        y = item.ymin;
+        width = item.xmax - item.xmin;
+        height = item.ymax - item.ymin;
+      } else if ('x' in item && 'y' in item && 'width' in item && 'height' in item) {
+        x = item.x;
+        y = item.y;
+        width = item.width;
+        height = item.height;
+      } else if ('x' in item && 'y' in item && 'w' in item && 'h' in item) {
+        x = item.x;
+        y = item.y;
+        width = item.w;
+        height = item.h;
+      }
+    } else if (Array.isArray(item) && item.length === 4) {
+      const [ymin, xmin, ymax, xmax] = item;
+      x = xmin;
+      y = ymin;
+      width = xmax - xmin;
+      height = ymax - ymin;
+    }
+
+    if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
+      continue;
+    }
+
+    if (width <= 0 || height <= 0) {
+      continue;
+    }
+
+    // Se as coordenadas estiverem na escala 0-1000 (padrão de visão do Gemini)
+    if (x > 1 || y > 1 || width > 1 || height > 1) {
+      x = x / 1000;
+      y = y / 1000;
+      width = width / 1000;
+      height = height / 1000;
+    }
+
+    x = Math.max(0, Math.min(1, x));
+    y = Math.max(0, Math.min(1, y));
+    width = Math.max(0.005, Math.min(1 - x, width));
+    height = Math.max(0.005, Math.min(1 - y, height));
+
+    if (width > 0.005 && height > 0.005) {
+      result.push({ x, y, width, height });
+    }
+  }
+  return result;
+}
 
 export function initializeGeminiClient(apiKey?: string): GoogleGenAI | null {
   if (!apiKey) {
@@ -64,6 +141,7 @@ export async function analyzeIncidentImage(
     hasVehicle: false,
     isAppropriate: false,
     possibleCredential: false,
+    isRearView: false,
     isUrbanEnvironment: false,
     hasTrafficInfractionVehicle: false,
     urbanDescription: '',
@@ -71,6 +149,7 @@ export async function analyzeIncidentImage(
     plates: [],
     faces: [],
     verification: '',
+    vehiclePlate: '',
     apiError: false
   };
 
@@ -87,10 +166,11 @@ export async function analyzeIncidentImage(
 
 DIRETRIZES
 
-1. Moderação e Vaga Auditada em Primeiro Plano ("isAppropriate" e "hasVehicle"):
+1. Moderação e Vaga Auditada em Primeiro Plano ("isAppropriate", "hasVehicle" e "isRearView"):
 - "isAppropriate": true (imagem adequada). false APENAS para conteúdo impróprio (pornografia, violência, gore).
 - "hasVehicle": true SOMENTE se houver um veículo estacionado DENTRO/SOBRE o piso da vaga auditada em primeiro plano.
 - ATENÇÃO CRÍTICA CONTRA FALSOS POSITIVOS DE SEGUNDO PLANO: Se o piso/chão da vaga em primeiro plano estiver vazio/desocupado (mesmo que existam outros carros estacionados ao fundo, atrás da vaga, do outro lado da via ou em vagas vizinhas), defina OBRIGATORIAMENTE "hasVehicle": false. NUNCA considere veículos em segundo plano/fundo como veículo da vaga auditada.
+- "isRearView": true SOMENTE se a foto mostrar a TRASEIRA (parte de trás: porta-malas/tampa traseira, lanternas traseiras, vidro traseiro) do veículo principal da infração E esse veículo NÃO for motocicleta/moto (ou seja: apenas para carros, SUVs, picapes/caminhonetes, vans, caminhões ou ônibus). Se for uma moto/motocicleta, ou se a foto mostrar a dianteira/frente do veículo (para-brisa dianteiro, capô, faróis dianteiros), defina OBRIGATORIAMENTE "isRearView": false.
 
 2. Credencial no Para-brisa / Painel ("possibleCredential"):
 - Se "hasVehicle" for false, defina obrigatoriamente "possibleCredential": false.
@@ -108,7 +188,8 @@ DIRETRIZES
 - Se "isAppropriate" for true E ("hasVehicle" for true OU "verification" for "transferencia"), retorne "".
 - Caso contrário, descreva brevemente o motivo (ex: "A vaga em primeiro plano está vazia.").
 
-5. Anonimização LGPD ("plates" e "faces"):
+5. Anonimização LGPD ("plates" e "faces") e Leitura Temporária da Placa ("vehiclePlate"):
+- "vehiclePlate": texto alfanumérico (apenas letras e números em maiúsculas, sem espaços ou hífens, ex: "ABC1D23") da placa do veículo principal na vaga auditada, se estiver visível e legível na foto. Se a placa do veículo não estiver visível ou legível, retorne "".
 - "plates": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem (independentemente de o veículo ser o principal na vaga auditada, adjacente ou ao fundo). Se não houver placas visíveis, retorne [].
 - "faces": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) delimitando ESTRITAMENTE a região do ROSTO/CABEÇA humana (ymin no topo da testa/cabeça e ymax no queixo; xmin e xmax de orelha a orelha). PROIBIDO incluir pescoço, ombros, tronco, roupas, pernas ou o corpo inteiro da pessoa/pedestre. Se a pessoa estiver de costas ou sem rosto visível, ignore. Se não houver rostos visíveis, retorne [].`;
 
@@ -240,6 +321,10 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
             type: Type.BOOLEAN,
             description: 'True SOMENTE se houver um veículo estacionado sobre o piso da vaga auditada em primeiro plano. Se o piso da vaga em primeiro plano estiver vazio (mesmo com veículos ao fundo ou em vagas vizinhas), defina obrigatoriamente false.'
           },
+          isRearView: {
+            type: Type.BOOLEAN,
+            description: 'True SOMENTE se a foto mostrar a traseira (porta-malas, lanternas traseiras, vidro traseiro) do veículo principal E esse veículo NÃO for uma moto/motocicleta (apenas carros, SUVs, picapes, vans, caminhões ou ônibus). Se for moto ou visão dianteira, retorne false.'
+          },
           possibleCredential: {
             type: Type.BOOLEAN,
             description: 'Avalie ANTES de verification: True se hasVehicle for true em visão dianteira com QUALQUER cartão, papel, documento ou mancha clara/branca geométrica (faixa, tira, trapézio ou retângulo claro) na base do para-brisa ou sobre o painel (mesmo pequeno, desfocado ou sob reflexo).'
@@ -251,6 +336,10 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
           rejectionReason: {
             type: Type.STRING,
             description: 'Retorne "" se verification for "transferencia" ou se hasVehicle e isAppropriate forem true. Caso contrário, detalhe o motivo.'
+          },
+          vehiclePlate: {
+            type: Type.STRING,
+            description: 'Texto alfanumérico (apenas letras e números em maiúsculas, sem espaços ou hífens, ex: "ABC1D23") da placa do veículo na vaga auditada, se visível e legível. Se não estiver visível ou legível, retorne "".'
           },
           plates: {
             type: Type.ARRAY,
@@ -266,9 +355,11 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
         propertyOrdering: [
           'isAppropriate',
           'hasVehicle',
+          'isRearView',
           'possibleCredential',
           'verification',
           'rejectionReason',
+          'vehiclePlate',
           'plates',
           'faces'
         ]
@@ -295,81 +386,12 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
 
       const parsed = JSON.parse(jsonMatch[0]);
 
-      // Validação, sanitização e conversão inteligente de coordenadas (aceita 0..1, 0..1000, [ymin, xmin, ymax, xmax])
-      const sanitizeAndNormalizeBoxes = (boxes: any[]): BoundingBox[] => {
-        if (!Array.isArray(boxes)) return [];
-        const result: BoundingBox[] = [];
-
-        for (const item of boxes) {
-          if (!item) continue;
-          let x = 0;
-          let y = 0;
-          let width = 0;
-          let height = 0;
-
-          if (typeof item === 'object' && !Array.isArray(item)) {
-            if (Array.isArray(item.box_2d) && item.box_2d.length === 4) {
-              const [ymin, xmin, ymax, xmax] = item.box_2d;
-              x = xmin;
-              y = ymin;
-              width = xmax - xmin;
-              height = ymax - ymin;
-            } else if ('xmin' in item && 'ymin' in item && 'xmax' in item && 'ymax' in item) {
-              x = item.xmin;
-              y = item.ymin;
-              width = item.xmax - item.xmin;
-              height = item.ymax - item.ymin;
-            } else if ('x' in item && 'y' in item && 'width' in item && 'height' in item) {
-              x = item.x;
-              y = item.y;
-              width = item.width;
-              height = item.height;
-            } else if ('x' in item && 'y' in item && 'w' in item && 'h' in item) {
-              x = item.x;
-              y = item.y;
-              width = item.w;
-              height = item.h;
-            }
-          } else if (Array.isArray(item) && item.length === 4) {
-            const [ymin, xmin, ymax, xmax] = item;
-            x = xmin;
-            y = ymin;
-            width = xmax - xmin;
-            height = ymax - ymin;
-          }
-
-          if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
-            continue;
-          }
-
-          if (width <= 0 || height <= 0) {
-            continue;
-          }
-
-          // Se as coordenadas estiverem na escala 0-1000 (padrão de visão do Gemini)
-          if (x > 1 || y > 1 || width > 1 || height > 1) {
-            x = x / 1000;
-            y = y / 1000;
-            width = width / 1000;
-            height = height / 1000;
-          }
-
-          x = Math.max(0, Math.min(1, x));
-          y = Math.max(0, Math.min(1, y));
-          width = Math.max(0.005, Math.min(1 - x, width));
-          height = Math.max(0.005, Math.min(1 - y, height));
-
-          if (width > 0.005 && height > 0.005) {
-            result.push({ x, y, width, height });
-          }
-        }
-        return result;
-      };
-
       const plates = sanitizeAndNormalizeBoxes(parsed.plates);
       const faces = sanitizeAndNormalizeBoxes(parsed.faces);
       const verification = typeof parsed.verification === 'string' ? parsed.verification.trim() : '';
       const possibleCredential = Boolean(parsed.possibleCredential);
+      const isRearView = Boolean(parsed.isRearView);
+      const vehiclePlate = normalizeVehiclePlate(parsed.vehiclePlate);
 
       if (isUrbanMode) {
         const isAppropriate = Boolean(parsed.isAppropriate);
@@ -396,6 +418,7 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
           hasVehicle: hasTrafficInfractionVehicle,
           isAppropriate,
           possibleCredential: false,
+          isRearView: false,
           isUrbanEnvironment,
           hasTrafficInfractionVehicle,
           urbanDescription,
@@ -403,12 +426,13 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
           plates,
           faces,
           verification,
+          vehiclePlate: '',
           apiError: false
         };
       }
 
       console.log(
-        `[geminiService] Sucesso com ${model}. Placas encontradas: ${plates.length}, Rostos encontrados: ${faces.length}, Possível credencial: ${possibleCredential}, Verificação: "${verification}"`
+        `[geminiService] Sucesso com ${model}. Placas encontradas: ${plates.length}, Rostos encontrados: ${faces.length}, Possível credencial: ${possibleCredential}, Traseira: ${isRearView}, Verificação: "${verification}"`
       );
 
       const parsedRejectionReason = typeof parsed.rejectionReason === 'string' ? parsed.rejectionReason.trim() : '';
@@ -419,6 +443,7 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
         hasVehicle: Boolean(parsed.hasVehicle),
         isAppropriate: Boolean(parsed.isAppropriate),
         possibleCredential,
+        isRearView,
         rejectionReason:
           !parsed.isAppropriate
             ? parsedRejectionReason || 'A imagem enviada não atende às diretrizes de uso.'
@@ -428,11 +453,154 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
         plates,
         faces,
         verification,
+        vehiclePlate,
         apiError: false
       };
     } catch (err) {
       lastError = err;
       const errMsg = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  return {
+    ...defaultFailure,
+    rejectionReason: 'Instabilidade temporária no serviço de IA (Google Gemini). Por favor, tente novamente em alguns instantes.',
+    apiError: true
+  };
+}
+
+/**
+ * Análise exclusiva para a 2ª foto de uma denúncia de infração de trânsito:
+ * - Aplica somente as máscaras de privacidade LGPD (placas e rostos/cabeça)
+ * - Extrai momentaneamente a placa do veículo (vehiclePlate) para verificar que corresponde ao mesmo veículo da 1ª foto
+ */
+export async function analyzeSecondTrafficPhoto(
+  client: GoogleGenAI | null,
+  imageBase64: string
+): Promise<SecondTrafficPhotoAnalysisResult> {
+  const defaultFailure: SecondTrafficPhotoAnalysisResult = {
+    isAppropriate: false,
+    vehiclePlate: '',
+    plates: [],
+    faces: [],
+    rejectionReason: 'Não foi possível analisar a segunda foto enviada. Tente novamente.',
+    apiError: false
+  };
+
+  if (!client) {
+    return {
+      ...defaultFailure,
+      rejectionReason: 'Chave do serviço de IA não configurada. Verifique as configurações de ambiente.',
+      apiError: true
+    };
+  }
+
+  const secondPhotoPrompt = `Audite a segunda foto da denúncia de trânsito exclusivamente para colocar as máscaras de privacidade (LGPD) em placas e rostos e ler a placa do veículo para conferência com a 1ª foto. Retorne o JSON:
+
+DIRETRIZES:
+1. Moderação ("isAppropriate"):
+- "isAppropriate": true (imagem adequada). false APENAS para conteúdo impróprio (pornografia, violência, gore).
+2. Leitura da Placa para Conferência ("vehiclePlate"):
+- "vehiclePlate": texto alfanumérico (apenas letras e números em maiúsculas, sem espaços ou hífens, ex: "ABC1D23") da placa do veículo principal na foto, se estiver visível e legível. Se a placa não estiver visível ou legível, retorne "".
+3. Máscaras de Privacidade LGPD ("plates" e "faces"):
+- "plates": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem. Se não houver placas visíveis, retorne [].
+- "faces": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) delimitando ESTRITAMENTE a região do ROSTO/CABEÇA humana (ymin no topo da testa/cabeça e ymax no queixo; xmin e xmax de orelha a orelha). PROIBIDO incluir pescoço, ombros, tronco, roupas, pernas ou o corpo inteiro da pessoa/pedestre. Se não houver rostos visíveis, retorne [].`;
+
+  const { data, mimeType } = parseBase64Image(imageBase64);
+  const imagePart = {
+    inlineData: {
+      mimeType,
+      data
+    }
+  };
+
+  const plateBox2dItemSchema = {
+    type: Type.OBJECT,
+    properties: {
+      box_2d: {
+        type: Type.ARRAY,
+        items: { type: Type.NUMBER },
+        description: 'Coordenadas [ymin, xmin, ymax, xmax] de 0 a 1000 cobrindo a placa do veículo.'
+      }
+    },
+    propertyOrdering: ['box_2d']
+  };
+
+  const faceBox2dItemSchema = {
+    type: Type.OBJECT,
+    properties: {
+      box_2d: {
+        type: Type.ARRAY,
+        items: { type: Type.NUMBER },
+        description: 'Coordenadas [ymin, xmin, ymax, xmax] de 0 a 1000 delimitando ESTRITAMENTE o rosto humano (ymin=testa, ymax=queixo, xmin/xmax=orelhas). NUNCA inclua tronco, roupas ou corpo inteiro.'
+      }
+    },
+    propertyOrdering: ['box_2d']
+  };
+
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      isAppropriate: {
+        type: Type.BOOLEAN,
+        description: 'True (imagem adequada). False APENAS para conteúdo impróprio (pornografia, violência, gore).'
+      },
+      vehiclePlate: {
+        type: Type.STRING,
+        description: 'Texto alfanumérico (apenas letras e números em maiúsculas, sem espaços ou hífens, ex: "ABC1D23") da placa do veículo principal na imagem, se visível e legível. Caso contrário, "".'
+      },
+      plates: {
+        type: Type.ARRAY,
+        description: 'Lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem. Se não houver, [].',
+        items: plateBox2dItemSchema
+      },
+      faces: {
+        type: Type.ARRAY,
+        description: 'Lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) delimitando EXCLUSIVAMENTE o rosto/cabeça humana (da testa ao queixo, de orelha a orelha). PROIBIDO incluir tronco, roupas, pernas ou o corpo inteiro. Se não houver, [].',
+        items: faceBox2dItemSchema
+      }
+    },
+    propertyOrdering: ['isAppropriate', 'vehiclePlate', 'plates', 'faces']
+  };
+
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const response: GenerateContentResponse = await client.models.generateContent({
+        model,
+        contents: { parts: [imagePart, { text: secondPhotoPrompt }] },
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: schema
+        }
+      });
+
+      const rawText = response.text ? response.text.trim() : '';
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error(`Modelo ${model} retornou resposta vazia ou sem JSON na 2ª foto.`);
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      const isAppropriate = Boolean(parsed.isAppropriate);
+      const vehiclePlate = normalizeVehiclePlate(parsed.vehiclePlate);
+      const plates = sanitizeAndNormalizeBoxes(parsed.plates);
+      const faces = sanitizeAndNormalizeBoxes(parsed.faces);
+
+      console.log(
+        `[geminiService] Sucesso (2ª foto trânsito) com ${model}. Placas mascaradas: ${plates.length}, Rostos mascarados: ${faces.length}, Placa legível: ${Boolean(vehiclePlate)}`
+      );
+
+      return {
+        isAppropriate,
+        vehiclePlate,
+        plates,
+        faces,
+        rejectionReason: isAppropriate ? '' : 'A segunda foto enviada não atende às diretrizes de uso.',
+        apiError: false
+      };
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.warn(`[geminiService] Tentativa de análise da 2ª foto falhou no modelo ${model}: ${errMsg}`);
     }
   }
 

@@ -116,6 +116,8 @@ export interface ReportedIncidentPanelItem {
   longitude: number;
   geohash: string;
   fotoUrl: string;
+  fotoUrl2?: string;
+  fotosUrls?: string[];
   natureza: string;
   descricao: string;
   rua: string;
@@ -141,6 +143,7 @@ export interface ReportedIncidentPanelItem {
   duplicidade_de_id?: string;
   rotulo_duplicidade?: string;
   duplicidade_original_fotoUrl?: string;
+  duplicidade_original_fotoUrl2?: string;
 }
 
 export type MulteiLiveCategory =
@@ -198,6 +201,7 @@ export interface SaveFirebaseIncidentPayload {
   latitude: number;
   longitude: number;
   foto: string;
+  foto2?: string;
   ativo?: boolean;
   motivo_denuncia?: string;
   possivel_credencial?: boolean;
@@ -311,6 +315,14 @@ function mapDocToIncident(docId: string, data: Record<string, any>): ReportedInc
   const verificacaoVal = normalizeVerificacao(data.verificacao ?? data.verification);
   const descricaoVal = data.descricao ? String(data.descricao).trim() : '';
   const fotoUrl = data.fotoUrl || data.foto || data.image || '';
+  const fotoUrl2 = data.fotoUrl2
+    ? String(data.fotoUrl2).trim()
+    : Array.isArray(data.fotosUrls) && data.fotosUrls.length > 1
+      ? String(data.fotosUrls[1] || '').trim()
+      : '';
+  const fotosUrls = Array.isArray(data.fotosUrls) && data.fotosUrls.length > 0
+    ? data.fotosUrls.map((u: unknown) => String(u || '').trim()).filter(Boolean)
+    : [fotoUrl, fotoUrl2].filter(Boolean);
   const descParts = [ruaVal, bairroVal, cidadeVal, estadoVal].filter(Boolean);
 
   const fotoResolucaoVal = String(
@@ -348,6 +360,8 @@ function mapDocToIncident(docId: string, data: Record<string, any>): ReportedInc
     classificacao: classificacaoVal,
     verificacao: verificacaoVal,
     fotoUrl,
+    fotoUrl2,
+    fotosUrls,
     maskedImageUrl: fotoUrl,
     description: data.description || (descParts.length > 0 ? descParts.join(' - ') : 'Infração registrada'),
     ativo: true,
@@ -802,6 +816,8 @@ export async function saveIncidentToFirebase(
   success: boolean;
   id: string;
   fotoUrl: string;
+  fotoUrl2?: string;
+  fotosUrls?: string[];
   geohash: string;
   ativo?: boolean;
   motivo_denuncia?: string;
@@ -902,6 +918,30 @@ export async function saveIncidentToFirebase(
     }
   }
 
+  // 2b. Se houver 2ª foto (infrações de trânsito), faz upload em /ocorrencias/{id}_2.webp
+  let fotoUrl2 = '';
+  if (incident.foto2) {
+    const { bytes: bytes2, contentType: contentType2 } = base64ToUint8Array(incident.foto2);
+    const imageFileRef2 = storageRef(storage, `ocorrencias/${id}_2.webp`);
+    const uploadMeta2 = {
+      contentType: contentType2 || 'image/webp',
+      cacheControl: 'public, max-age=31536000, immutable'
+    };
+    try {
+      await uploadBytes(imageFileRef2, bytes2, uploadMeta2);
+    } catch {
+      await new Promise((r) => setTimeout(r, 600));
+      await uploadBytes(imageFileRef2, bytes2, uploadMeta2);
+    }
+    fotoUrl2 = await getDownloadURL(imageFileRef2);
+    await seedIncidentImageCache(fotoUrl2, bytes2, contentType2 || 'image/webp');
+    if (fotoUrl2) {
+      recentIncidentBase64Memory.set(fotoUrl2, incident.foto2);
+    }
+  }
+
+  const fotosUrls = [fotoUrl, fotoUrl2].filter(Boolean);
+
   // 3. Calcula o geohash das coordenadas
   const latitude = Number(incident.latitude);
   const longitude = Number(incident.longitude);
@@ -933,6 +973,8 @@ export async function saveIncidentToFirebase(
     longitude,
     geohash,
     fotoUrl,
+    fotoUrl2: fotoUrl2 || '',
+    fotosUrls,
     natureza: incident.natureza || 'infracao_veicular',
     descricao: resolvedDescricao,
     ativo: effectiveAtivo,
@@ -967,6 +1009,8 @@ export async function saveIncidentToFirebase(
           longitude,
           geohash,
           fotoUrl,
+          fotoUrl2: fotoUrl2 || '',
+          fotosUrls,
           natureza: docData.natureza,
           descricao: resolvedDescricao,
           rua: resolvedRua,
@@ -1029,6 +1073,8 @@ export async function saveIncidentToFirebase(
           longitude,
           geohash,
           fotoUrl,
+          fotoUrl2: fotoUrl2 || '',
+          fotosUrls,
           natureza: docData.natureza,
           descricao: resolvedDescricao,
           rua: resolvedRua,
@@ -1125,6 +1171,8 @@ export async function saveIncidentToFirebase(
       classificacao: resolvedClassificacao,
       verificacao: resolvedVerificacao,
       fotoUrl,
+      fotoUrl2: fotoUrl2 || '',
+      fotosUrls,
       maskedImageUrl: fotoUrl || incident.foto,
       description:
         [resolvedRua, resolvedBairro, resolvedCidade, resolvedEstado].filter(Boolean).join(' - ') ||
@@ -1142,6 +1190,8 @@ export async function saveIncidentToFirebase(
     success: true,
     id,
     fotoUrl,
+    fotoUrl2: fotoUrl2 || '',
+    fotosUrls,
     geohash,
     ativo: docData.ativo,
     motivo_denuncia: docData.motivo_denuncia,
@@ -1264,6 +1314,19 @@ export async function reportIncidentInFirebase(
 
   const shouldStayActiveOnMap = alreadyApprovedImprocedente;
 
+  const resolvedFotoUrl =
+    existingData.fotoUrl ||
+    existingReportData.fotoUrl ||
+    incidentData?.fotoUrl ||
+    incidentData?.maskedImageUrl ||
+    '';
+  const resolvedFotoUrl2 =
+    existingData.fotoUrl2 ||
+    existingReportData.fotoUrl2 ||
+    incidentData?.fotoUrl2 ||
+    '';
+  const resolvedFotosUrls = [resolvedFotoUrl, resolvedFotoUrl2].filter(Boolean);
+
   const reportDocData = {
     ...existingData,
     ...existingReportData,
@@ -1273,12 +1336,9 @@ export async function reportIncidentInFirebase(
     latitude,
     longitude,
     geohash,
-    fotoUrl:
-      existingData.fotoUrl ||
-      existingReportData.fotoUrl ||
-      incidentData?.fotoUrl ||
-      incidentData?.maskedImageUrl ||
-      '',
+    fotoUrl: resolvedFotoUrl,
+    fotoUrl2: resolvedFotoUrl2,
+    fotosUrls: resolvedFotosUrls,
     natureza: existingData.natureza || existingReportData.natureza || incidentData?.natureza || 'infracao_veicular',
     descricao: existingData.descricao ?? existingReportData.descricao ?? incidentData?.descricao ?? '',
     rua: existingData.rua ?? existingReportData.rua ?? incidentData?.rua ?? '',
@@ -3122,6 +3182,14 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
       : '';
 
     const existing = groupedByOcorrencia.get(ocorrenciaId);
+    const docFotoUrl = String(d.fotoUrl || d.foto || d.image || '');
+    const docFotoUrl2 = d.fotoUrl2
+      ? String(d.fotoUrl2).trim()
+      : Array.isArray(d.fotosUrls) && d.fotosUrls.length > 1
+        ? String(d.fotosUrls[1] || '').trim()
+        : '';
+    const docFotosUrls = [docFotoUrl, docFotoUrl2].filter(Boolean);
+
     if (!existing) {
       const totalReports = Math.max(Number(d.total_reports || 1), rawHistory.length);
       groupedByOcorrencia.set(ocorrenciaId, {
@@ -3133,7 +3201,9 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
         latitude: Number(d.latitude ?? d.lat ?? 0),
         longitude: Number(d.longitude ?? d.lng ?? d.lon ?? 0),
         geohash: String(d.geohash || ''),
-        fotoUrl: String(d.fotoUrl || d.foto || d.image || ''),
+        fotoUrl: docFotoUrl,
+        fotoUrl2: docFotoUrl2,
+        fotosUrls: docFotosUrls,
         natureza: String(d.natureza || 'infracao_veicular'),
         descricao: String(d.descricao || ''),
         rua: String(d.rua || ''),
@@ -3189,9 +3259,13 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
       if ((!existing.natureza || existing.natureza === 'infracao_veicular') && d.natureza === 'urbana') {
         existing.natureza = 'urbana';
       }
-      if (!existing.fotoUrl && (d.fotoUrl || d.foto || d.image)) {
-        existing.fotoUrl = String(d.fotoUrl || d.foto || d.image);
+      if (!existing.fotoUrl && docFotoUrl) {
+        existing.fotoUrl = docFotoUrl;
       }
+      if (!existing.fotoUrl2 && docFotoUrl2) {
+        existing.fotoUrl2 = docFotoUrl2;
+      }
+      existing.fotosUrls = [existing.fotoUrl, existing.fotoUrl2 || ''].filter(Boolean);
       if (!existing.rua && d.rua) existing.rua = String(d.rua);
       if (!existing.bairro && d.bairro) existing.bairro = String(d.bairro);
       if (!existing.cidade && d.cidade) existing.cidade = String(d.cidade);
@@ -3237,6 +3311,8 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
         d.ativo !== undefined && d.ativo !== ''
           ? d.ativo === true || String(d.ativo).toLowerCase() === 'true'
           : true;
+      const dupFoto1 = String(d.fotoUrl || d.foto || d.image || '');
+      const dupFoto2 = d.fotoUrl2 ? String(d.fotoUrl2).trim() : '';
 
       groupedByOcorrencia.set(ocorrenciaId, {
         id: ocorrenciaId,
@@ -3247,7 +3323,9 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
         latitude: Number(d.latitude ?? d.lat ?? 0),
         longitude: Number(d.longitude ?? d.lng ?? d.lon ?? 0),
         geohash: String(d.geohash || ''),
-        fotoUrl: String(d.fotoUrl || d.foto || d.image || ''),
+        fotoUrl: dupFoto1,
+        fotoUrl2: dupFoto2,
+        fotosUrls: [dupFoto1, dupFoto2].filter(Boolean),
         natureza: String(d.natureza || 'infracao_veicular'),
         descricao: String(d.descricao || ''),
         rua: String(d.rua || ''),
@@ -3293,6 +3371,8 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
         d.ativo !== undefined && d.ativo !== ''
           ? d.ativo === true || String(d.ativo).toLowerCase() === 'true'
           : false;
+      const credFoto1 = String(d.fotoUrl || d.foto || d.image || '');
+      const credFoto2 = d.fotoUrl2 ? String(d.fotoUrl2).trim() : '';
 
       groupedByOcorrencia.set(ocorrenciaId, {
         id: ocorrenciaId,
@@ -3303,7 +3383,9 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
         latitude: Number(d.latitude ?? d.lat ?? 0),
         longitude: Number(d.longitude ?? d.lng ?? d.lon ?? 0),
         geohash: String(d.geohash || ''),
-        fotoUrl: String(d.fotoUrl || d.foto || d.image || ''),
+        fotoUrl: credFoto1,
+        fotoUrl2: credFoto2,
+        fotosUrls: [credFoto1, credFoto2].filter(Boolean),
         natureza: String(d.natureza || 'infracao_veicular'),
         descricao: String(d.descricao || ''),
         rua: String(d.rua || ''),
@@ -3340,7 +3422,7 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
   // Busca a foto da ocorrência original (`duplicidade_de_id`) e hidrata `descricao` / dados da ocorrência original se ausentes
   await Promise.all(
     list.map(async (item) => {
-      if (((!item.descricao && item.natureza === 'urbana') || !item.fotoUrl) && item.ocorrenciaId) {
+      if (((!item.descricao && item.natureza === 'urbana') || !item.fotoUrl || !item.fotoUrl2) && item.ocorrenciaId) {
         try {
           const selfSnap = await getDoc(doc(db, OCORRENCIAS_COLLECTION, item.ocorrenciaId));
           if (selfSnap.exists()) {
@@ -3351,6 +3433,10 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
             if (!item.fotoUrl && (selfData.fotoUrl || selfData.foto || selfData.image)) {
               item.fotoUrl = String(selfData.fotoUrl || selfData.foto || selfData.image).trim();
             }
+            if (!item.fotoUrl2 && selfData.fotoUrl2) {
+              item.fotoUrl2 = String(selfData.fotoUrl2).trim();
+            }
+            item.fotosUrls = [item.fotoUrl, item.fotoUrl2 || ''].filter(Boolean);
             if ((!item.natureza || item.natureza === 'infracao_veicular') && selfData.natureza === 'urbana') {
               item.natureza = 'urbana';
             }
@@ -3364,8 +3450,12 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
         if (origSnap.exists()) {
           const origData = origSnap.data() || {};
           const origPhoto = String(origData.fotoUrl || origData.foto || origData.image || '').trim();
+          const origPhoto2 = origData.fotoUrl2 ? String(origData.fotoUrl2).trim() : '';
           if (origPhoto) {
             item.duplicidade_original_fotoUrl = origPhoto;
+          }
+          if (origPhoto2) {
+            item.duplicidade_original_fotoUrl2 = origPhoto2;
           }
         }
       } catch {}
@@ -3380,7 +3470,12 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
       if (extraDocIds.length === 0) return;
       try {
         const canonicalRef = doc(db, REPORTADAS_COLLECTION, item.id);
-        const { legacyDocIds, duplicidade_original_fotoUrl, ...cleanItemData } = item;
+        const {
+          legacyDocIds,
+          duplicidade_original_fotoUrl,
+          duplicidade_original_fotoUrl2,
+          ...cleanItemData
+        } = item;
         await setDoc(canonicalRef, cleanItemData, { merge: true });
         await Promise.all(
           extraDocIds.map((dupId) =>

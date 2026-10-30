@@ -516,15 +516,27 @@
                       </span>
                       <div class="photo-wrapper">
                         <img
-                          :src="selectedItem.duplicidade_original_fotoUrl"
+                          :src="currentAdminOrigDuplicityPhotoUrl"
                           :alt="`Foto da 1ª ocorrência ${selectedItem.duplicidade_de_id}`"
                           class="detail-photo-img"
-                          @click="openPanelLightbox(selectedItem.duplicidade_original_fotoUrl)"
+                          @click="openPanelLightbox(currentAdminOrigDuplicityPhotoUrl)"
                         />
+                        <button
+                          v-if="selectedItemOrigDuplicityPhotosList.length > 1"
+                          type="button"
+                          class="btn-switch-photo-corner"
+                          :aria-label="`Alternar foto (${adminOrigDuplicityPhotoIndex + 1} de ${selectedItemOrigDuplicityPhotosList.length})`"
+                          :title="`Alternar entre as fotos (${adminOrigDuplicityPhotoIndex + 1}/${selectedItemOrigDuplicityPhotosList.length})`"
+                          @click.stop="toggleAdminOrigDuplicityPhoto"
+                        >
+                          <span aria-hidden="true">📷</span>
+                          <span>Foto {{ adminOrigDuplicityPhotoIndex + 1 }}/{{ selectedItemOrigDuplicityPhotosList.length }}</span>
+                          <span aria-hidden="true">⇄</span>
+                        </button>
                         <button
                           type="button"
                           class="btn-expand-photo"
-                          @click="openPanelLightbox(selectedItem.duplicidade_original_fotoUrl)"
+                          @click="openPanelLightbox(currentAdminOrigDuplicityPhotoUrl)"
                         >
                           🔍 Ampliar 1ª Foto
                         </button>
@@ -535,17 +547,29 @@
                       <span class="duplicity-compare-label is-second-photo">
                         2ª Denúncia (Possível Duplicidade • ID: {{ selectedItem.ocorrenciaId }})
                       </span>
-                      <div v-if="selectedItem.fotoUrl" class="photo-wrapper">
+                      <div v-if="currentAdminSelectedPhotoUrl" class="photo-wrapper">
                         <img
-                          :src="selectedItem.fotoUrl"
+                          :src="currentAdminSelectedPhotoUrl"
                           :alt="`Foto da 2ª ocorrência ${selectedItem.ocorrenciaId}`"
                           class="detail-photo-img"
-                          @click="openPanelLightbox(selectedItem.fotoUrl)"
+                          @click="openPanelLightbox(currentAdminSelectedPhotoUrl)"
                         />
+                        <button
+                          v-if="selectedItemPhotosList.length > 1"
+                          type="button"
+                          class="btn-switch-photo-corner"
+                          :aria-label="`Alternar foto (${adminSelectedPhotoIndex + 1} de ${selectedItemPhotosList.length})`"
+                          :title="`Alternar entre as fotos (${adminSelectedPhotoIndex + 1}/${selectedItemPhotosList.length})`"
+                          @click.stop="toggleAdminSelectedPhoto"
+                        >
+                          <span aria-hidden="true">📷</span>
+                          <span>Foto {{ adminSelectedPhotoIndex + 1 }}/{{ selectedItemPhotosList.length }}</span>
+                          <span aria-hidden="true">⇄</span>
+                        </button>
                         <button
                           type="button"
                           class="btn-expand-photo"
-                          @click="openPanelLightbox(selectedItem.fotoUrl)"
+                          @click="openPanelLightbox(currentAdminSelectedPhotoUrl)"
                         >
                           🔍 Ampliar 2ª Foto
                         </button>
@@ -553,17 +577,29 @@
                     </div>
                   </div>
 
-                  <div v-else-if="selectedItem.fotoUrl" class="photo-wrapper">
+                  <div v-else-if="currentAdminSelectedPhotoUrl" class="photo-wrapper">
                     <img
-                      :src="selectedItem.fotoUrl"
+                      :src="currentAdminSelectedPhotoUrl"
                       :alt="`Foto da ocorrência ${selectedItem.ocorrenciaId}`"
                       class="detail-photo-img"
-                      @click="openPanelLightbox(selectedItem.fotoUrl)"
+                      @click="openPanelLightbox(currentAdminSelectedPhotoUrl)"
                     />
+                    <button
+                      v-if="selectedItemPhotosList.length > 1"
+                      type="button"
+                      class="btn-switch-photo-corner"
+                      :aria-label="`Alternar foto (${adminSelectedPhotoIndex + 1} de ${selectedItemPhotosList.length})`"
+                      :title="`Alternar entre as fotos (${adminSelectedPhotoIndex + 1}/${selectedItemPhotosList.length})`"
+                      @click.stop="toggleAdminSelectedPhoto"
+                    >
+                      <span aria-hidden="true">📷</span>
+                      <span>Foto {{ adminSelectedPhotoIndex + 1 }}/{{ selectedItemPhotosList.length }}</span>
+                      <span aria-hidden="true">⇄</span>
+                    </button>
                     <button
                       type="button"
                       class="btn-expand-photo"
-                      @click="openPanelLightbox(selectedItem.fotoUrl)"
+                      @click="openPanelLightbox(currentAdminSelectedPhotoUrl)"
                     >
                       🔍 Ampliar Foto
                     </button>
@@ -1178,19 +1214,31 @@
                 <!-- Coluna da Foto Original -->
                 <div class="detail-photo-box">
                   <div
-                    v-if="selectedPartnerIncident.fotoUrl || selectedPartnerIncident.maskedImageUrl"
+                    v-if="currentPartnerSelectedPhotoUrl"
                     class="photo-wrapper"
                   >
                     <img
-                      :src="selectedPartnerIncident.fotoUrl || selectedPartnerIncident.maskedImageUrl"
+                      :src="currentPartnerSelectedPhotoUrl"
                       :alt="`Foto da ocorrência ${selectedPartnerIncident.id}`"
                       class="detail-photo-img"
-                      @click="openPanelLightbox(selectedPartnerIncident.fotoUrl || selectedPartnerIncident.maskedImageUrl)"
+                      @click="openPanelLightbox(currentPartnerSelectedPhotoUrl)"
                     />
+                    <button
+                      v-if="selectedPartnerIncidentPhotosList.length > 1"
+                      type="button"
+                      class="btn-switch-photo-corner"
+                      :aria-label="`Alternar foto (${partnerSelectedPhotoIndex + 1} de ${selectedPartnerIncidentPhotosList.length})`"
+                      :title="`Alternar entre as fotos (${partnerSelectedPhotoIndex + 1}/${selectedPartnerIncidentPhotosList.length})`"
+                      @click.stop="togglePartnerSelectedPhoto"
+                    >
+                      <span aria-hidden="true">📷</span>
+                      <span>Foto {{ partnerSelectedPhotoIndex + 1 }}/{{ selectedPartnerIncidentPhotosList.length }}</span>
+                      <span aria-hidden="true">⇄</span>
+                    </button>
                     <button
                       type="button"
                       class="btn-expand-photo"
-                      @click="openPanelLightbox(selectedPartnerIncident.fotoUrl || selectedPartnerIncident.maskedImageUrl)"
+                      @click="openPanelLightbox(currentPartnerSelectedPhotoUrl)"
                     >
                       🔍 Ampliar Foto
                     </button>
@@ -2745,6 +2793,86 @@ let liveReportsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let livePartnerDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let liveResolutionsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+const adminSelectedPhotoIndex = ref(0);
+const adminOrigDuplicityPhotoIndex = ref(0);
+const partnerSelectedPhotoIndex = ref(0);
+
+watch(selectedItem, () => {
+  adminSelectedPhotoIndex.value = 0;
+  adminOrigDuplicityPhotoIndex.value = 0;
+});
+
+watch(selectedPartnerIncident, () => {
+  partnerSelectedPhotoIndex.value = 0;
+});
+
+const selectedItemPhotosList = computed(() => {
+  const item = selectedItem.value;
+  if (!item) return [];
+  if (Array.isArray(item.fotosUrls) && item.fotosUrls.length > 0) {
+    return item.fotosUrls.filter(Boolean);
+  }
+  return [item.fotoUrl, item.fotoUrl2].filter(Boolean) as string[];
+});
+
+const currentAdminSelectedPhotoUrl = computed(() => {
+  const list = selectedItemPhotosList.value;
+  if (list.length === 0) return selectedItem.value?.fotoUrl || '';
+  return list[adminSelectedPhotoIndex.value] || list[0];
+});
+
+const toggleAdminSelectedPhoto = () => {
+  const list = selectedItemPhotosList.value;
+  if (list.length <= 1) return;
+  adminSelectedPhotoIndex.value = (adminSelectedPhotoIndex.value + 1) % list.length;
+};
+
+const selectedItemOrigDuplicityPhotosList = computed(() => {
+  const item = selectedItem.value;
+  if (!item) return [];
+  return [
+    item.duplicidade_original_fotoUrl,
+    item.duplicidade_original_fotoUrl2
+  ].filter(Boolean) as string[];
+});
+
+const currentAdminOrigDuplicityPhotoUrl = computed(() => {
+  const list = selectedItemOrigDuplicityPhotosList.value;
+  if (list.length === 0) return selectedItem.value?.duplicidade_original_fotoUrl || '';
+  return list[adminOrigDuplicityPhotoIndex.value] || list[0];
+});
+
+const toggleAdminOrigDuplicityPhoto = () => {
+  const list = selectedItemOrigDuplicityPhotosList.value;
+  if (list.length <= 1) return;
+  adminOrigDuplicityPhotoIndex.value = (adminOrigDuplicityPhotoIndex.value + 1) % list.length;
+};
+
+const selectedPartnerIncidentPhotosList = computed(() => {
+  const inc = selectedPartnerIncident.value;
+  if (!inc) return [];
+  if (Array.isArray(inc.fotosUrls) && inc.fotosUrls.length > 0) {
+    return inc.fotosUrls.filter(Boolean);
+  }
+  const p1 = inc.fotoUrl || inc.maskedImageUrl || '';
+  const p2 = inc.fotoUrl2 || '';
+  return [p1, p2].filter(Boolean) as string[];
+});
+
+const currentPartnerSelectedPhotoUrl = computed(() => {
+  const list = selectedPartnerIncidentPhotosList.value;
+  if (list.length === 0) {
+    return selectedPartnerIncident.value?.fotoUrl || selectedPartnerIncident.value?.maskedImageUrl || '';
+  }
+  return list[partnerSelectedPhotoIndex.value] || list[0];
+});
+
+const togglePartnerSelectedPhoto = () => {
+  const list = selectedPartnerIncidentPhotosList.value;
+  if (list.length <= 1) return;
+  partnerSelectedPhotoIndex.value = (partnerSelectedPhotoIndex.value + 1) % list.length;
+};
+
 const openPanelLightbox = (url?: string) => {
   if (!url) return;
   lightboxPhotoUrl.value = url;
@@ -3101,6 +3229,8 @@ const panelMapIncidents = computed(() => {
     longitude: current.longitude,
     foto: basePhoto,
     fotoUrl: basePhoto,
+    fotoUrl2: current.fotoUrl2 || '',
+    fotosUrls: Array.isArray(current.fotosUrls) ? current.fotosUrls : undefined,
     maskedImageUrl: basePhoto,
     natureza: current.natureza,
     descricao: baseDesc,
@@ -5108,6 +5238,36 @@ select.field-input {
   overflow: hidden;
   border: 1.5px solid var(--pp-border);
   background: #000;
+}
+
+.btn-switch-photo-corner {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  padding: 0.38rem 0.78rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  z-index: 6;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-switch-photo-corner:hover {
+  background: var(--pp-brand, #86007D);
+  transform: translateY(-1px);
+}
+
+.btn-switch-photo-corner:active {
+  transform: scale(0.97);
 }
 
 .detail-photo-img {

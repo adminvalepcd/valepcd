@@ -201,6 +201,19 @@
                 <span class="verification-badge-text">{{ verificationBadge.label }}</span>
               </div>
 
+              <button
+                v-if="incidentPhotosList.length > 1"
+                type="button"
+                class="btn-switch-photo-corner"
+                :aria-label="`Alternar foto (${currentPhotoIndex + 1} de ${incidentPhotosList.length})`"
+                :title="`Alternar entre as fotos da denúncia (${currentPhotoIndex + 1}/${incidentPhotosList.length})`"
+                @click.stop="toggleIncidentPhoto"
+              >
+                <span aria-hidden="true">📷</span>
+                <span>Foto {{ currentPhotoIndex + 1 }}/{{ incidentPhotosList.length }}</span>
+                <span aria-hidden="true">⇄</span>
+              </button>
+
               <div
                 v-if="isCurrentDuplicate"
                 class="photo-duplicity-badge"
@@ -270,6 +283,18 @@
               alt="Foto em tamanho original" 
               class="photo-expanded-img" 
             />
+            <button
+              v-if="incidentPhotosList.length > 1 && !isIncidentResolved"
+              type="button"
+              class="btn-switch-photo-corner"
+              :aria-label="`Alternar foto (${currentPhotoIndex + 1} de ${incidentPhotosList.length})`"
+              :title="`Alternar entre as fotos da denúncia (${currentPhotoIndex + 1}/${incidentPhotosList.length})`"
+              @click.stop="toggleIncidentPhoto"
+            >
+              <span aria-hidden="true">📷</span>
+              <span>Foto {{ currentPhotoIndex + 1 }}/{{ incidentPhotosList.length }}</span>
+              <span aria-hidden="true">⇄</span>
+            </button>
             <div
               v-if="isResolutionPending && !isIncidentResolved"
               class="photo-resolution-watermark"
@@ -623,6 +648,19 @@ const nextPage = () => {
   }
 };
 
+const currentPhotoIndex = ref(0);
+
+const incidentPhotosList = computed(() => {
+  const inc = activeIncident.value;
+  if (!inc) return [];
+  if (Array.isArray(inc.fotosUrls) && inc.fotosUrls.length > 0) {
+    return inc.fotosUrls.filter(Boolean);
+  }
+  const primary = inc.fotoUrl || inc.maskedImageUrl || '';
+  const secondary = inc.fotoUrl2 || '';
+  return [primary, secondary].filter(Boolean);
+});
+
 const currentPhoto = ref(activeIncident.value?.fotoUrl || activeIncident.value?.maskedImageUrl || '');
 const resolvedAfterPhoto = ref(activeIncident.value?.foto_resolucao || '');
 const isLoadingPhoto = ref(Boolean(currentPhoto.value));
@@ -781,7 +819,9 @@ const handlePhotoError = () => {
 };
 
 const loadPhotoIfNeeded = async () => {
-  const nextPhoto = activeIncident.value?.fotoUrl || activeIncident.value?.maskedImageUrl || '';
+  const photos = incidentPhotosList.value;
+  const safeIndex = Math.min(Math.max(0, currentPhotoIndex.value), Math.max(0, photos.length - 1));
+  const nextPhoto = photos[safeIndex] || activeIncident.value?.fotoUrl || activeIncident.value?.maskedImageUrl || '';
   const nextResolvedPhoto = activeIncident.value?.foto_resolucao || '';
   hasPhotoLoadError.value = false;
 
@@ -811,6 +851,16 @@ const loadPhotoIfNeeded = async () => {
   // Se a imagem já estiver em cache no navegador (ou for blob:/base64), libera imediatamente
   if (photoImgRef.value?.complete && photoImgRef.value?.naturalWidth > 0) {
     isLoadingPhoto.value = false;
+  }
+};
+
+const toggleIncidentPhoto = async () => {
+  const list = incidentPhotosList.value;
+  if (list.length <= 1) return;
+  currentPhotoIndex.value = (currentPhotoIndex.value + 1) % list.length;
+  await loadPhotoIfNeeded();
+  if (isPhotoExpanded.value && currentPhoto.value) {
+    expandedPhotoUrl.value = currentPhoto.value;
   }
 };
 
@@ -1040,6 +1090,7 @@ onMounted(() => {
 
 watch(() => props.incident, () => {
   currentPageIndex.value = 0;
+  currentPhotoIndex.value = 0;
   isPhotoExpanded.value = false;
   localMarkedResolved.value = false;
   resolveAddress();
@@ -1047,6 +1098,7 @@ watch(() => props.incident, () => {
 });
 
 watch(currentPageIndex, () => {
+  currentPhotoIndex.value = 0;
   isPhotoExpanded.value = false;
   localMarkedResolved.value = false;
   resolveAddress();
@@ -1296,6 +1348,36 @@ watch(currentPageIndex, () => {
 
 .verification-photo-badge.is-urbana {
   background-color: #ca8a04;
+}
+
+.btn-switch-photo-corner {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  padding: 0.38rem 0.78rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  z-index: 7;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-switch-photo-corner:hover {
+  background: var(--primary, #86007D);
+  transform: translateY(-1px);
+}
+
+.btn-switch-photo-corner:active {
+  transform: scale(0.97);
 }
 
 .photo-duplicity-badge {

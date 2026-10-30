@@ -20,6 +20,7 @@ export interface IncidentAnalysisResult {
   hasVehicle: boolean;
   isAppropriate: boolean;
   possibleCredential?: boolean;
+  isRearView?: boolean;
   isUrbanEnvironment?: boolean;
   hasTrafficInfractionVehicle?: boolean;
   urbanDescription?: string;
@@ -27,6 +28,16 @@ export interface IncidentAnalysisResult {
   plates: BoundingBox[];
   faces: BoundingBox[];
   verification?: string;
+  vehiclePlate?: string;
+  apiError?: boolean;
+}
+
+export interface SecondTrafficPhotoAnalysisResult {
+  isAppropriate: boolean;
+  vehiclePlate: string;
+  plates: BoundingBox[];
+  faces: BoundingBox[];
+  rejectionReason: string;
   apiError?: boolean;
 }
 
@@ -41,6 +52,8 @@ export interface ReportedIncident {
   id?: string;
   maskedImageUrl: string;
   fotoUrl?: string;
+  fotoUrl2?: string;
+  fotosUrls?: string[];
   timestamp: number | string | Date;
   latitude: number;
   longitude: number;
@@ -69,4 +82,5 @@ export interface ReportedIncident {
   rotulo_duplicidade?: string;
   groupItems?: ReportedIncident[];
 }
+
 

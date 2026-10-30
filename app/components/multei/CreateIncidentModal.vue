@@ -164,7 +164,7 @@
       <MulteiCameraCapture
         v-if="isGpsEnabled && showCamera"
         @photo-taken="handlePhotoTaken"
-        @cancel="showCamera = false"
+        @cancel="handleCameraCancel"
       />
 
       <!-- Etapa 2: Análise da Imagem e Aplicação do Filtro de Privacidade -->
@@ -234,8 +234,12 @@
           <button v-if="isApiError && lastSelectedFile" class="btn btn-primary" @click="handleRetry">
             🔄 Tentar Novamente
           </button>
+          <button v-else-if="canReanalyzeRejectedPhoto && lastSelectedFile" class="btn btn-primary"
+            :disabled="cooldownSecondsLeft > 0" @click="handleReanalyzeRejectedPhoto">
+            🔄 Analisar novamente
+          </button>
           <button class="btn btn-secondary" @click="resetToUpload">
-            {{ isApiError && lastSelectedFile ? 'Escolher Outra Foto' : 'Tentar Outra Foto' }}
+            {{ (isApiError || canReanalyzeRejectedPhoto) && lastSelectedFile ? 'Escolher Outra Foto' : 'Tentar Outra Foto' }}
           </button>
         </div>
       </div>
@@ -243,7 +247,7 @@
       <!-- Etapa 3: Preview Anonimizado e Ajuste de Localização -->
       <div v-if="isGpsEnabled && step === 'preview'" class="step-preview">
         <div class="preview-container">
-          <img :src="processedImageWebp" alt="Pré-visualização com desfoque de privacidade" class="preview-img" />
+          <img :src="currentPreviewPhoto" alt="Pré-visualização com desfoque de privacidade" class="preview-img" />
           <div
             v-if="previewVerificationBadge"
             class="verification-photo-badge"
@@ -253,7 +257,71 @@
             <span class="verification-badge-icon" aria-hidden="true">{{ previewVerificationBadge.icon }}</span>
             <span class="verification-badge-text">{{ previewVerificationBadge.label }}</span>
           </div>
+          <button v-if="previewPhotosList.length > 1" type="button" class="btn-switch-photo-corner"
+            :aria-label="`Alternar foto (${activePreviewPhotoIndex + 1} de ${previewPhotosList.length})`"
+            :title="`Alternar entre as fotos da denúncia (${activePreviewPhotoIndex + 1}/${previewPhotosList.length})`"
+            @click="togglePreviewPhoto">
+            <span aria-hidden="true">📷</span>
+            <span>Foto {{ activePreviewPhotoIndex + 1 }}/{{ previewPhotosList.length }}</span>
+            <span aria-hidden="true">⇄</span>
+          </button>
           <span class="badge-blur">Filtro privacidade aplicado</span>
+        </div>
+
+        <!-- Seção de 2ª Foto (exclusiva para Infrações de Trânsito, até 2 fotos) -->
+        <div v-if="selectedNatureza !== 'urbana'" class="second-photo-section">
+          <input ref="secondGalleryInputRef" type="file" accept="image/jpeg,image/png,image/webp" class="hidden-file-input"
+            tabindex="-1" aria-hidden="true" @change="handleSecondFileSelected" />
+        
+          <div v-if="!secondProcessedImageWebp" class="second-photo-add-wrap">
+            <button v-if="!showSecondPhotoPicker" type="button" class="btn-add-second-photo" :disabled="cooldownSecondsLeft > 0"
+              @click="openSecondPhotoPicker">
+              <span aria-hidden="true">➕</span>
+              <span>Adicionar outra</span>
+            </button>
+        
+            <div v-else class="second-photo-picker-inline">
+              <button type="button" class="btn btn-primary btn-second-picker" :disabled="cooldownSecondsLeft > 0"
+                @click="triggerSecondCamera">
+                📸 Tirar 2ª Foto
+              </button>
+              <button type="button" class="btn btn-secondary btn-second-picker" :disabled="cooldownSecondsLeft > 0"
+                @click="triggerSecondGalleryPicker">
+                🖼️ Galeria
+              </button>
+              <button type="button" class="btn-cancel-second-picker" @click="showSecondPhotoPicker = false">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        
+          <div v-else class="second-photo-added-bar">
+            <span class="second-photo-added-badge">✅ 2/2 fotos adicionadas</span>
+            <button type="button" class="btn-remove-second-photo" @click="removeSecondPhoto">
+              Remover 2ª foto
+            </button>
+          </div>
+        
+          <!-- Alerta sugerindo foto da dianteira quando a 1ª foto é da traseira (exceto motos) -->
+          <div v-if="detectedIsRearView && !secondProcessedImageWebp" class="rear-view-suggestion-alert" role="status">
+            <span class="rear-view-alert-icon" aria-hidden="true">💡</span>
+            <p class="rear-view-alert-text">
+              Como a foto é da traseira, que tal incluir uma foto da frente do carro mostrando o painel sem a credencial? Isso
+              dá mais credibilidade para a denúncia.
+            </p>
+          </div>
+        
+          <!-- Erro ao tentar validar a 2ª foto (mantém a 1ª foto preservada) -->
+          <div v-if="secondPhotoError" class="second-photo-error-alert" role="alert">
+            <span class="second-photo-error-icon" aria-hidden="true">⚠️</span>
+            <div class="second-photo-error-body">
+              <p class="second-photo-error-text">{{ secondPhotoError }}</p>
+              <button v-if="canReanalyzeSecondPhoto && lastSecondSelectedFile" type="button" class="btn-reanalyze-second-photo"
+                :disabled="cooldownSecondsLeft > 0" @click="handleReanalyzeSecondPhoto">
+                🔄 Analisar novamente
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Alerta de Possível Credencial à Vista (exibido antes de salvar a ocorrência) -->
@@ -537,13 +605,16 @@ import LoadingSpinner from './LoadingSpinner.vue';
 import {
   initializeGeminiClient,
   analyzeIncidentImage,
+          analyzeSecondTrafficPhoto,
+          normalizeVehiclePlate,
   compareVehicleDuplicityWithGemini
 } from '../../services/geminiService';
 import {
   extractPhotoMetadata,
   blurSensitiveContentAndCompress,
   prepareImageForGemini,
-  resizeImageForServer
+          resizeImageForServer,
+          areImagesVisuallyIdentical
 } from '../../services/imageProcessor';
 import {
   saveIncidentToFirebase,
@@ -587,12 +658,14 @@ const isLocationInBrazil = ref(
 
 const modalCardRef = ref(null);
 const galleryInputRef = ref(null);
+    const secondGalleryInputRef = ref(null);
 const step = ref('category');
 const selectedNatureza = ref('infracao_veicular');
 const urbanDescricao = ref('');
 const showSwitchToTrafficModal = ref(false);
 const pendingVehicleVerification = ref('');
 const showCamera = ref(false);
+    const isCapturingSecondPhoto = ref(false);
 const isActivatingGpsForReport = ref(false);
 const gpsActivationError = ref('');
 
@@ -657,6 +730,7 @@ const declineSwitchToTraffic = () => {
   selectedNatureza.value = 'urbana';
   detectedVerificacao.value = '';
   detectedPossibleCredential.value = false;
+  detectedIsRearView.value = false;
   showSwitchToTrafficModal.value = false;
 };
 const isAnalyzing = ref(false);
@@ -668,6 +742,7 @@ const { focusInitialElement } = useModalAccessibility({
   onRequestClose: () => {
     if (showCamera.value) {
       showCamera.value = false;
+      isCapturingSecondPhoto.value = false;
       return 'subview';
     }
     if (showSwitchToTrafficModal.value) {
@@ -712,7 +787,18 @@ const currentCidade = ref('');
 const currentEstado = ref('');
 const detectedVerificacao = ref('');
 const detectedPossibleCredential = ref(false);
+    const detectedIsRearView = ref(false);
 const savedForCredentialReview = ref(false);
+    const firstPhotoHash = ref('');
+    const firstPhotoOptimizedBase64 = ref('');
+    const firstPhotoVehiclePlate = ref('');
+    const secondProcessedImageWebp = ref('');
+    const activePreviewPhotoIndex = ref(0);
+    const showSecondPhotoPicker = ref(false);
+    const secondPhotoError = ref('');
+    const canReanalyzeRejectedPhoto = ref(false);
+    const lastSecondSelectedFile = ref(null);
+    const canReanalyzeSecondPhoto = ref(false);
 const isResolvingAddress = ref(false);
 let geocodeDebounceTimer = null;
 let addressValidationTimer = null;
@@ -1118,9 +1204,43 @@ const isLocationValid = computed(() => {
   );
 });
 
-// --- Trava de Segurança 2: Cache de Análise Gemini (1x por dia por foto via SHA-256) ---
-const GEMINI_CACHE_PREFIX = 'multei_gemini_cache_v9_';
+  // --- Trava de Segurança 2: Cache de Análise Gemini (até 2x por foto/dia via SHA-256, exceto foto inapropriada) ---
+  const GEMINI_CACHE_PREFIX = 'multei_gemini_cache_v12_';
 const GEMINI_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
+    const MAX_GEMINI_ANALYSIS_ATTEMPTS = 2;
+    const sessionPlateMemoryCache = new Map();
+
+    const isInappropriatePhotoRejection = (analysis) => {
+      if (!analysis) return false;
+      if (analysis.isAppropriate === false) return true;
+      const reason = String(analysis.rejectionReason || '').trim().toLowerCase();
+      return (
+        reason === 'foto inapropriada' ||
+        reason.includes('foto inapropriada') ||
+        reason.includes('conteúdo impróprio') ||
+        reason.includes('conteudo improprio')
+      );
+    };
+
+    const isFirstPhotoAnalysisRejected = (analysis, natureza) => {
+      if (!analysis || analysis.apiError) return false;
+      if (isInappropriatePhotoRejection(analysis)) return true;
+      if (natureza === 'urbana') {
+        return analysis.isUrbanEnvironment === false;
+      }
+      const normalizedVerif = normalizeVerificacao(analysis.verification);
+      return !analysis.hasVehicle && normalizedVerif !== 'transferencia';
+    };
+
+    const isSecondPhotoAnalysisRejected = (secondAnalysis, expectedPlate) => {
+      if (!secondAnalysis || secondAnalysis.apiError) return false;
+      if (isInappropriatePhotoRejection(secondAnalysis)) return true;
+      if (secondAnalysis.hasReadablePlate === false) return true;
+      const plate = normalizeVehiclePlate(secondAnalysis.vehiclePlate);
+      if (!plate) return true;
+      if (expectedPlate && plate !== expectedPlate) return true;
+      return false;
+    };
 
 const computeFileSha256 = async (file) => {
   try {
@@ -1136,29 +1256,48 @@ const computeFileSha256 = async (file) => {
   return `${file.name}_${file.size}_${file.lastModified}`;
 };
 
-const getCachedGeminiAnalysis = (hash) => {
+  const getCachedGeminiAnalysisEntry = (hash) => {
   if (typeof window === 'undefined' || !hash) return null;
   try {
     const raw = localStorage.getItem(`${GEMINI_CACHE_PREFIX}${hash}`);
     if (!raw) return null;
     const cached = JSON.parse(raw);
-    if (Date.now() - cached.timestamp > GEMINI_CACHE_TTL_MS || !cached.data || !('verification' in cached.data)) {
+    if (
+      Date.now() - cached.timestamp > GEMINI_CACHE_TTL_MS ||
+      !cached.data ||
+      (!('verification' in cached.data) && !('isAppropriate' in cached.data))
+    ) {
       localStorage.removeItem(`${GEMINI_CACHE_PREFIX}${hash}`);
+      sessionPlateMemoryCache.delete(hash);
       return null;
     }
-    return cached.data;
+    const restored = { ...cached.data };
+    if (sessionPlateMemoryCache.has(hash)) {
+      restored.vehiclePlate = sessionPlateMemoryCache.get(hash);
+    }
+    const attempts = Math.max(1, Number(cached.attempts || 1));
+    return { data: restored, attempts };
   } catch (e) {
     console.warn('[CreateIncidentModal] Erro ao ler cache Gemini:', e);
     return null;
   }
 };
 
-const saveGeminiAnalysisCache = (hash, data) => {
+  const saveGeminiAnalysisCache = (hash, data, attempts = 1) => {
   if (typeof window === 'undefined' || !hash || !data) return;
   try {
+    if (typeof data.vehiclePlate === 'string') {
+      sessionPlateMemoryCache.set(hash, data.vehiclePlate);
+    }
+    const safeForStorage = {
+      ...data,
+      hasReadablePlate: Boolean(normalizeVehiclePlate(data.vehiclePlate))
+    };
+    delete safeForStorage.vehiclePlate;
     localStorage.setItem(`${GEMINI_CACHE_PREFIX}${hash}`, JSON.stringify({
       timestamp: Date.now(),
-      data
+      attempts: Math.max(1, Number(attempts || 1)),
+      data: safeForStorage
     }));
   } catch (e) {
     console.warn('[CreateIncidentModal] Erro ao salvar cache Gemini:', e);
@@ -1550,11 +1689,71 @@ onMounted(async () => {
   }
 });
 
+    const previewPhotosList = computed(() => {
+      return [processedImageWebp.value, secondProcessedImageWebp.value].filter(Boolean);
+    });
+
+    const currentPreviewPhoto = computed(() => {
+      const list = previewPhotosList.value;
+      if (list.length === 0) return processedImageWebp.value;
+      return list[activePreviewPhotoIndex.value] || list[0];
+    });
+
+    const togglePreviewPhoto = () => {
+      const list = previewPhotosList.value;
+      if (list.length <= 1) return;
+      activePreviewPhotoIndex.value = (activePreviewPhotoIndex.value + 1) % list.length;
+    };
+
+    const openSecondPhotoPicker = () => {
+      if (cooldownSecondsLeft.value > 0) return;
+      secondPhotoError.value = '';
+      if (!firstPhotoVehiclePlate.value) {
+        secondPhotoError.value =
+          'Não foi possível identificar a placa legível do veículo na 1ª foto. Para enviar 2 fotos, a placa precisa estar visível e legível nas duas fotos.';
+        return;
+      }
+      showSecondPhotoPicker.value = true;
+    };
+
+    const triggerSecondCamera = () => {
+      if (cooldownSecondsLeft.value > 0) return;
+      showSecondPhotoPicker.value = false;
+      secondPhotoError.value = '';
+      canReanalyzeSecondPhoto.value = false;
+      isCapturingSecondPhoto.value = true;
+      showCamera.value = true;
+    };
+
+    const triggerSecondGalleryPicker = () => {
+      if (cooldownSecondsLeft.value > 0) return;
+      showSecondPhotoPicker.value = false;
+      secondPhotoError.value = '';
+      canReanalyzeSecondPhoto.value = false;
+      secondGalleryInputRef.value?.click();
+    };
+
+    const removeSecondPhoto = () => {
+      secondProcessedImageWebp.value = '';
+      activePreviewPhotoIndex.value = 0;
+      secondPhotoError.value = '';
+      canReanalyzeSecondPhoto.value = false;
+      lastSecondSelectedFile.value = null;
+      showSecondPhotoPicker.value = false;
+    };
+
+    const handleCameraCancel = () => {
+      showCamera.value = false;
+      isCapturingSecondPhoto.value = false;
+    };
+
 onBeforeUnmount(() => {
   if (rawPreviewUrl.value) {
     URL.revokeObjectURL(rawPreviewUrl.value);
     rawPreviewUrl.value = '';
   }
+  firstPhotoVehiclePlate.value = '';
+  sessionPlateMemoryCache.clear();
   if (cooldownTimer) {
     clearInterval(cooldownTimer);
     cooldownTimer = null;
@@ -1594,6 +1793,7 @@ const resetToUpload = () => {
   }
   step.value = 'upload';
   isApiError.value = false;
+  canReanalyzeRejectedPhoto.value = false;
   errorMessage.value = '';
   saveError.value = '';
   addressEditError.value = '';
@@ -1603,8 +1803,19 @@ const resetToUpload = () => {
   usedUnverifiedStreetNumberAdjustment.value = false;
   isValidatingAddress.value = false;
   processedImageWebp.value = '';
+  secondProcessedImageWebp.value = '';
+  activePreviewPhotoIndex.value = 0;
+  showSecondPhotoPicker.value = false;
+  isCapturingSecondPhoto.value = false;
+  secondPhotoError.value = '';
+  canReanalyzeSecondPhoto.value = false;
+  lastSecondSelectedFile.value = null;
+  firstPhotoHash.value = '';
+  firstPhotoOptimizedBase64.value = '';
+  firstPhotoVehiclePlate.value = '';
   detectedVerificacao.value = '';
   detectedPossibleCredential.value = false;
+  detectedIsRearView.value = false;
   savedForCredentialReview.value = false;
   urbanDescricao.value = '';
   pendingVehicleVerification.value = '';
@@ -1633,6 +1844,23 @@ const handleRetry = async () => {
   }
 };
 
+  const handleReanalyzeRejectedPhoto = async () => {
+    if (lastSelectedFile.value && canReanalyzeRejectedPhoto.value) {
+      if (!rawPreviewUrl.value) {
+        rawPreviewUrl.value = URL.createObjectURL(lastSelectedFile.value);
+      }
+      await processSelectedImage(lastSelectedFile.value);
+    } else {
+      resetToUpload();
+    }
+  };
+
+  const handleReanalyzeSecondPhoto = async () => {
+    if (lastSecondSelectedFile.value && canReanalyzeSecondPhoto.value) {
+      await processSecondSelectedImage(lastSecondSelectedFile.value);
+    }
+  };
+
 const handleFileSelected = async (e) => {
   const target = e.target;
   const file = target.files?.[0];
@@ -1648,9 +1876,24 @@ const handleFileSelected = async (e) => {
   target.value = '';
 };
 
+    const handleSecondFileSelected = async (e) => {
+      const target = e.target;
+      const file = target.files?.[0];
+      if (file) {
+        await processSecondSelectedImage(file);
+      }
+      target.value = '';
+    };
+
 const handlePhotoTaken = async (file) => {
+  const capturingSecond = isCapturingSecondPhoto.value;
   showCamera.value = false;
+  isCapturingSecondPhoto.value = false;
   if (file) {
+    if (capturingSecond) {
+      await processSecondSelectedImage(file);
+      return;
+    }
     photoOrigin.value = 'camera';
     if (rawPreviewUrl.value) {
       URL.revokeObjectURL(rawPreviewUrl.value);
@@ -1675,7 +1918,18 @@ const processSelectedImage = async (file) => {
   step.value = 'analyzing';
   isAnalyzing.value = true;
   isApiError.value = false;
+  canReanalyzeRejectedPhoto.value = false;
   errorMessage.value = '';
+  secondProcessedImageWebp.value = '';
+  activePreviewPhotoIndex.value = 0;
+  showSecondPhotoPicker.value = false;
+  secondPhotoError.value = '';
+  canReanalyzeSecondPhoto.value = false;
+  lastSecondSelectedFile.value = null;
+  firstPhotoHash.value = '';
+  firstPhotoOptimizedBase64.value = '';
+  firstPhotoVehiclePlate.value = '';
+  detectedIsRearView.value = false;
   analyzingStatusText.value = 'Identificando localização...';
 
   try {
@@ -1738,6 +1992,7 @@ const processSelectedImage = async (file) => {
       if (!inBrazil || !anchorInBrazil) {
         isLocationInBrazil.value = false;
         isApiError.value = false;
+        canReanalyzeRejectedPhoto.value = false;
         step.value = 'error';
         errorMessage.value = OUTSIDE_BRAZIL_ERROR_MSG;
         return;
@@ -1763,44 +2018,69 @@ const processSelectedImage = async (file) => {
     analyzingStatusText.value = 'Otimizando imagem...';
     const optimizedBase64 = await prepareImageForGemini(file);
 
-    // 3. Cache diário (1x por dia por foto + natureza) para poupar cotas do Gemini
+    // 3. Cache diário (permite até 2 análises por foto/dia se recusada na 1ª tentativa, exceto foto inapropriada)
     let cacheKey = null;
     let analysis = null;
+    let attemptsUsed = 0;
+    let computedHash = '';
     try {
-      const imageHash = await computeFileSha256(file);
-      cacheKey = `${imageHash}_${selectedNatureza.value}`;
-      analysis = getCachedGeminiAnalysis(cacheKey);
-      if (analysis) {
-        analyzingStatusText.value = 'Foto já analisada hoje. Reutilizando análise do cache...';
+      computedHash = await computeFileSha256(file);
+      cacheKey = `${computedHash}_${selectedNatureza.value}`;
+      const cachedEntry = getCachedGeminiAnalysisEntry(cacheKey);
+      if (cachedEntry) {
+        const cachedData = cachedEntry.data;
+        const prevAttempts = cachedEntry.attempts;
+        const wasRejected = isFirstPhotoAnalysisRejected(cachedData, selectedNatureza.value);
+        const isInappropriate = isInappropriatePhotoRejection(cachedData);
+        const needsPlateRefreshAfterReload =
+          !wasRejected &&
+          selectedNatureza.value !== 'urbana' &&
+          cachedData.vehiclePlate === undefined;
+
+        const canAttemptAgain =
+          wasRejected &&
+          !isInappropriate &&
+          prevAttempts < MAX_GEMINI_ANALYSIS_ATTEMPTS;
+
+        if (!canAttemptAgain && !needsPlateRefreshAfterReload) {
+          analysis = cachedData;
+          attemptsUsed = prevAttempts;
+          analyzingStatusText.value = 'Foto já analisada. Reutilizando análise do cache...';
+        } else {
+          attemptsUsed = prevAttempts;
+        }
       }
     } catch (hashErr) {
       console.warn('[CreateIncidentModal] Erro ao consultar cache da imagem:', hashErr);
     }
 
-    // Se não estiver em cache, chama a IA do Google Gemini
+    // Se não estiver em cache (ou se for a 2ª tentativa permitida), chama a IA do Google Gemini
     if (!analysis) {
       analyzingStatusText.value = selectedNatureza.value === 'urbana'
         ? 'Analisando acessibilidade urbana e segurança com IA...'
         : 'Analisando veículo e segurança com IA...';
       analysis = await analyzeIncidentImage(geminiClient, optimizedBase64, selectedNatureza.value);
+      attemptsUsed = attemptsUsed + 1;
 
       // Salva no cache local de 24h caso a chamada tenha sido bem-sucedida
       if (cacheKey && analysis && !analysis.apiError) {
-        saveGeminiAnalysisCache(cacheKey, analysis);
+        saveGeminiAnalysisCache(cacheKey, analysis, attemptsUsed);
       }
     }
 
     if (analysis.apiError) {
       isApiError.value = true;
+      canReanalyzeRejectedPhoto.value = false;
       step.value = 'error';
       errorMessage.value = analysis.rejectionReason || 'Instabilidade temporária no serviço de IA (Google Gemini). Por favor, tente novamente.';
       return;
     }
 
     if (selectedNatureza.value === 'urbana') {
-      // Validação para Mobilidade Urbana: rejeita se for imprópria ("foto inapropriada") ou fora de ambiente urbano
-      if (!analysis.isAppropriate) {
+      // Validação para Mobilidade Urbana: rejeita sem 2ª tentativa se for imprópria ("foto inapropriada")
+      if (isInappropriatePhotoRejection(analysis)) {
         isApiError.value = false;
+        canReanalyzeRejectedPhoto.value = false;
         step.value = 'error';
         errorMessage.value = 'foto inapropriada';
         return;
@@ -1808,6 +2088,7 @@ const processSelectedImage = async (file) => {
 
       if (analysis.isUrbanEnvironment === false) {
         isApiError.value = false;
+        canReanalyzeRejectedPhoto.value = attemptsUsed < MAX_GEMINI_ANALYSIS_ATTEMPTS;
         step.value = 'error';
         errorMessage.value = analysis.rejectionReason || 'A foto enviada não parece mostrar uma calçada, via pública ou ambiente urbano.';
         return;
@@ -1817,12 +2098,23 @@ const processSelectedImage = async (file) => {
       pendingVehicleVerification.value = normalizeVerificacao(analysis.verification);
       detectedVerificacao.value = '';
       detectedPossibleCredential.value = false;
+      detectedIsRearView.value = false;
       showSwitchToTrafficModal.value = Boolean(analysis.hasTrafficInfractionVehicle);
     } else {
       const normalizedVerif = normalizeVerificacao(analysis.verification);
-      // Validação de presença de veículo na vaga auditada (ou obstrução da área de transferência) e adequação de conteúdo:
-      if ((!analysis.hasVehicle && normalizedVerif !== 'transferencia') || !analysis.isAppropriate) {
+      // Validação de adequação de conteúdo (foto inapropriada não permite 2ª tentativa):
+      if (isInappropriatePhotoRejection(analysis)) {
         isApiError.value = false;
+        canReanalyzeRejectedPhoto.value = false;
+        step.value = 'error';
+        errorMessage.value = analysis.rejectionReason || 'foto inapropriada';
+        return;
+      }
+
+      // Validação de presença de veículo na vaga auditada (ou obstrução da área de transferência):
+      if (!analysis.hasVehicle && normalizedVerif !== 'transferencia') {
+        isApiError.value = false;
+        canReanalyzeRejectedPhoto.value = attemptsUsed < MAX_GEMINI_ANALYSIS_ATTEMPTS;
         step.value = 'error';
         errorMessage.value = analysis.rejectionReason || 'A foto precisa conter um veículo automotor na vaga auditada e cumprir as regras comunitárias.';
         return;
@@ -1830,6 +2122,10 @@ const processSelectedImage = async (file) => {
 
       detectedVerificacao.value = normalizedVerif;
       detectedPossibleCredential.value = Boolean(analysis.possibleCredential);
+      detectedIsRearView.value = Boolean(analysis.isRearView);
+      firstPhotoHash.value = computedHash || '';
+      firstPhotoOptimizedBase64.value = optimizedBase64;
+      firstPhotoVehiclePlate.value = normalizeVehiclePlate(analysis.vehiclePlate);
       urbanDescricao.value = '';
       pendingVehicleVerification.value = '';
       showSwitchToTrafficModal.value = false;
@@ -1854,16 +2150,165 @@ const processSelectedImage = async (file) => {
     }
 
     processedImageWebp.value = finalWebp;
+    activePreviewPhotoIndex.value = 0;
     step.value = 'preview';
   } catch (err) {
     console.error('Erro no processamento da imagem:', err);
     isApiError.value = true;
+    canReanalyzeRejectedPhoto.value = false;
     step.value = 'error';
     errorMessage.value = err?.message || 'Falha ao processar e anonimizar a foto enviada.';
   } finally {
     isAnalyzing.value = false;
   }
 };
+
+    const processSecondSelectedImage = async (file) => {
+      lastSecondSelectedFile.value = file;
+      secondPhotoError.value = '';
+      canReanalyzeSecondPhoto.value = false;
+      showSecondPhotoPicker.value = false;
+
+      if (cooldownSecondsLeft.value > 0) {
+        secondPhotoError.value = `Limite atingido. Aguarde ${cooldownSecondsLeft.value} segundos antes de enviar novas fotos.`;
+        return;
+      }
+
+      if (!firstPhotoVehiclePlate.value) {
+        secondPhotoError.value =
+          'Não foi possível identificar a placa legível do veículo na 1ª foto. Para enviar 2 fotos, a placa precisa estar visível e legível nas duas fotos.';
+        return;
+      }
+
+      let secondHash = '';
+      try {
+        secondHash = await computeFileSha256(file);
+      } catch { }
+
+      if (secondHash && firstPhotoHash.value && secondHash === firstPhotoHash.value) {
+        secondPhotoError.value = 'A 2ª foto precisa ser diferente da 1ª foto.';
+        return;
+      }
+
+      registerUploadAttempt();
+
+      const previousRawPreviewUrl = rawPreviewUrl.value;
+      rawPreviewUrl.value = URL.createObjectURL(file);
+      step.value = 'analyzing';
+      isAnalyzing.value = true;
+      analyzingStatusText.value = 'Otimizando 2ª foto...';
+
+      try {
+        const secondOptimizedBase64 = await prepareImageForGemini(file);
+
+        if (firstPhotoOptimizedBase64.value) {
+          const visuallySame = await areImagesVisuallyIdentical(
+            firstPhotoOptimizedBase64.value,
+            secondOptimizedBase64
+          );
+          if (visuallySame) {
+            secondPhotoError.value = 'A 2ª foto é igual ou muito semelhante à 1ª foto. Envie uma foto diferente do veículo.';
+            step.value = 'preview';
+            return;
+          }
+        }
+
+        const secondCacheKey = secondHash ? `${secondHash}_second_traffic` : null;
+        let secondAnalysis = null;
+        let secondAttemptsUsed = 0;
+        if (secondCacheKey) {
+          const cachedSecondEntry = getCachedGeminiAnalysisEntry(secondCacheKey);
+          if (cachedSecondEntry) {
+            const cachedSecondData = cachedSecondEntry.data;
+            const prevSecondAttempts = cachedSecondEntry.attempts;
+            const wasSecondRejected = isSecondPhotoAnalysisRejected(cachedSecondData, firstPhotoVehiclePlate.value);
+            const isSecondInappropriate = isInappropriatePhotoRejection(cachedSecondData);
+            const needsSecondPlateRefreshAfterReload =
+              !wasSecondRejected &&
+              cachedSecondData.vehiclePlate === undefined;
+            const canSecondAttemptAgain =
+              wasSecondRejected &&
+              !isSecondInappropriate &&
+              prevSecondAttempts < MAX_GEMINI_ANALYSIS_ATTEMPTS;
+
+            if (!canSecondAttemptAgain && !needsSecondPlateRefreshAfterReload) {
+              secondAnalysis = cachedSecondData;
+              secondAttemptsUsed = prevSecondAttempts;
+            } else {
+              secondAttemptsUsed = prevSecondAttempts;
+            }
+          }
+        }
+
+        if (!secondAnalysis) {
+          analyzingStatusText.value = 'Verificando placa e aplicando máscaras na 2ª foto...';
+          secondAnalysis = await analyzeSecondTrafficPhoto(geminiClient, secondOptimizedBase64);
+          secondAttemptsUsed = secondAttemptsUsed + 1;
+          if (secondCacheKey && secondAnalysis && !secondAnalysis.apiError) {
+            saveGeminiAnalysisCache(secondCacheKey, secondAnalysis, secondAttemptsUsed);
+          }
+        }
+
+        if (secondAnalysis.apiError) {
+          canReanalyzeSecondPhoto.value = true;
+          secondPhotoError.value =
+            secondAnalysis.rejectionReason ||
+            'Instabilidade temporária no serviço de IA ao analisar a 2ª foto. Tente novamente.';
+          step.value = 'preview';
+          return;
+        }
+
+        if (isInappropriatePhotoRejection(secondAnalysis)) {
+          canReanalyzeSecondPhoto.value = false;
+          secondPhotoError.value =
+            secondAnalysis.rejectionReason ||
+            'foto inapropriada';
+          step.value = 'preview';
+          return;
+        }
+
+        const secondPlate = normalizeVehiclePlate(secondAnalysis.vehiclePlate);
+        if (!secondPlate) {
+          canReanalyzeSecondPhoto.value = secondAttemptsUsed < MAX_GEMINI_ANALYSIS_ATTEMPTS;
+          secondPhotoError.value =
+            'Não foi possível identificar a placa legível do veículo na 2ª foto. A placa precisa estar visível e legível nas duas fotos.';
+          step.value = 'preview';
+          return;
+        }
+
+        if (secondPlate !== firstPhotoVehiclePlate.value) {
+          canReanalyzeSecondPhoto.value = secondAttemptsUsed < MAX_GEMINI_ANALYSIS_ATTEMPTS;
+          secondPhotoError.value =
+            'A placa identificada na 2ª foto não corresponde à placa do veículo da 1ª foto.';
+          step.value = 'preview';
+          return;
+        }
+
+        analyzingStatusText.value = 'Aplicando desfoque pesado nas placas e rostos da 2ª foto...';
+        const finalSecondWebp = await blurSensitiveContentAndCompress(
+          secondOptimizedBase64,
+          secondAnalysis.plates,
+          secondAnalysis.faces
+        );
+
+        secondProcessedImageWebp.value = finalSecondWebp;
+        activePreviewPhotoIndex.value = 1;
+        secondPhotoError.value = '';
+        canReanalyzeSecondPhoto.value = false;
+        step.value = 'preview';
+      } catch (err) {
+        console.error('Erro no processamento da 2ª imagem:', err);
+        canReanalyzeSecondPhoto.value = true;
+        secondPhotoError.value = err?.message || 'Falha ao processar e anonimizar a 2ª foto enviada.';
+        step.value = 'preview';
+      } finally {
+        if (rawPreviewUrl.value && rawPreviewUrl.value !== previousRawPreviewUrl) {
+          URL.revokeObjectURL(rawPreviewUrl.value);
+        }
+        rawPreviewUrl.value = previousRawPreviewUrl;
+        isAnalyzing.value = false;
+      }
+    };
 
 const fileToBase64 = (file) => {
   return new Promise((resolve, reject) => {
@@ -2125,6 +2570,10 @@ const handleSaveIncident = async () => {
     // Redimensiona a imagem (já com os boxes de placas/rostos aplicados na resolução original)
     // somente agora na hora de salvar no servidor
     const serverImageWebp = await resizeImageForServer(processedImageWebp.value);
+    const serverImageWebp2 =
+      selectedNatureza.value !== 'urbana' && secondProcessedImageWebp.value
+        ? await resizeImageForServer(secondProcessedImageWebp.value)
+        : '';
 
     let possivelDuplicidade = false;
     let duplicidadeDeId = '';
@@ -2170,6 +2619,7 @@ const handleSaveIncident = async () => {
       latitude: selectedLocation.latitude,
       longitude: selectedLocation.longitude,
       foto: serverImageWebp,
+      foto2: serverImageWebp2 || undefined,
       ativo: !isPossibleCredential,
       motivo_denuncia: isPossibleCredential ? 'possível credencial a vista' : '',
       possivel_credencial: isPossibleCredential,
@@ -2186,6 +2636,9 @@ const handleSaveIncident = async () => {
       rotulo_duplicidade: rotuloDuplicidade,
       motivo_duplicidade: motivoDuplicidade
     });
+
+    firstPhotoVehiclePlate.value = '';
+    sessionPlateMemoryCache.clear();
 
     const newIncident = {
       id: saveResult.id,
@@ -2205,6 +2658,11 @@ const handleSaveIncident = async () => {
       classificacao: saveResult.classificacao || classificacao,
       verificacao: saveResult.verificacao || verificacao,
       fotoUrl: saveResult.fotoUrl,
+      fotoUrl2: saveResult.fotoUrl2 || '',
+      fotosUrls:
+        Array.isArray(saveResult.fotosUrls) && saveResult.fotosUrls.length > 0
+          ? saveResult.fotosUrls
+          : [saveResult.fotoUrl, saveResult.fotoUrl2].filter(Boolean),
       maskedImageUrl: saveResult.fotoUrl || serverImageWebp,
       possivel_duplicidade: Boolean(saveResult.possivel_duplicidade ?? possivelDuplicidade),
       duplicidade_de_id: saveResult.duplicidade_de_id || duplicidadeDeId,
@@ -2774,7 +3232,7 @@ const handleSaveIncident = async () => {
   width: 100%;
   border-radius: var(--radius-md, 16px);
   overflow: hidden;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.75rem;
   background: #000;
 }
 
@@ -2815,6 +3273,36 @@ const handleSaveIncident = async () => {
   letter-spacing: 0.01em;
 }
 
+.btn-switch-photo-corner {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  padding: 0.38rem 0.78rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  z-index: 6;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-switch-photo-corner:hover {
+  background: var(--primary, #86007D);
+  transform: translateY(-1px);
+}
+
+.btn-switch-photo-corner:active {
+  transform: scale(0.97);
+}
+
 .badge-blur {
   position: absolute;
   bottom: 12px;
@@ -2826,6 +3314,191 @@ const handleSaveIncident = async () => {
   border-radius: 9999px;
   font-size: 0.75rem;
   font-weight: 600;
+}
+
+.second-photo-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 1.15rem;
+}
+
+.second-photo-add-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.btn-add-second-photo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1.05rem;
+  border-radius: 9999px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--primary, #86007D);
+  background: rgba(134, 0, 125, 0.08);
+  border: 1.5px dashed rgba(134, 0, 125, 0.45);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.btn-add-second-photo:hover:not(:disabled) {
+  background: rgba(134, 0, 125, 0.15);
+  border-color: var(--primary, #86007D);
+  transform: translateY(-1px);
+}
+
+.btn-add-second-photo:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.second-photo-picker-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.btn-second-picker {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.84rem;
+  border-radius: 9999px;
+}
+
+.btn-cancel-second-picker {
+  background: transparent;
+  border: none;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.second-photo-added-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.second-photo-added-badge {
+  font-size: 0.83rem;
+  font-weight: 700;
+  color: #166534;
+}
+
+.btn-remove-second-photo {
+  background: transparent;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.28rem 0.65rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.btn-remove-second-photo:hover {
+  background: #fee2e2;
+}
+
+.rear-view-suggestion-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e3a8a;
+}
+
+.rear-view-alert-icon {
+  font-size: 1.15rem;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.rear-view-alert-text {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  font-weight: 600;
+  color: #1e40af;
+}
+
+.second-photo-error-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.second-photo-error-icon {
+  font-size: 1.1rem;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.second-photo-error-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.second-photo-error-text {
+  margin: 0;
+  font-size: 0.83rem;
+  line-height: 1.45;
+  font-weight: 600;
+  color: #991b1b;
+}
+
+.btn-reanalyze-second-photo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.38rem 0.85rem;
+  border-radius: 9999px;
+  border: 1px solid #dc2626;
+  background: #ffffff;
+  color: #b91c1c;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-reanalyze-second-photo:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.btn-reanalyze-second-photo:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .location-box {

@@ -584,3 +584,46 @@ export function resizeImageForServer(imageUrl: string): Promise<string> {
     image.onerror = (err) => reject(err);
   });
 }
+
+/**
+ * Compara duas imagens (Base64 / Object URL) reduzindo-as a uma grade 16x16 no Canvas
+ * para verificar se são a mesma foto (idênticas ou quase idênticas).
+ */
+export function areImagesVisuallyIdentical(imageUrlA: string, imageUrlB: string): Promise<boolean> {
+  if (!imageUrlA || !imageUrlB) return Promise.resolve(false);
+  if (imageUrlA === imageUrlB) return Promise.resolve(true);
+
+  const loadSample = (url: string): Promise<Uint8ClampedArray | null> =>
+    new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 16;
+          canvas.height = 16;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(null);
+          ctx.drawImage(img, 0, 0, 16, 16);
+          resolve(ctx.getImageData(0, 0, 16, 16).data);
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+
+  return Promise.all([loadSample(imageUrlA), loadSample(imageUrlB)]).then(([dataA, dataB]) => {
+    if (!dataA || !dataB || dataA.length !== dataB.length) return false;
+    let totalDiff = 0;
+    const channels = (dataA.length / 4) * 3;
+    for (let i = 0; i < dataA.length; i += 4) {
+      totalDiff += Math.abs(dataA[i] - dataB[i]);
+      totalDiff += Math.abs(dataA[i + 1] - dataB[i + 1]);
+      totalDiff += Math.abs(dataA[i + 2] - dataB[i + 2]);
+    }
+    const meanDiff = totalDiff / channels;
+    return meanDiff < 5.5;
+  });
+}
