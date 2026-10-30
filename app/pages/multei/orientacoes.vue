@@ -63,13 +63,34 @@
         <div class="photo-comparison-grid">
           <div class="comparison-item is-good">
             <div class="comparison-status">✅ Foto Ideal (Recomendada)</div>
-            <p>Enquadra o carro ocupando a vaga <strong>e</strong> o símbolo internacional de acesso (no asfalto ou na placa vertical ao fundo).</p>
+            <p>
+              Enquadra o carro ocupando a vaga <strong>e</strong> o símbolo internacional de acesso (no asfalto ou na placa vertical
+              ao fundo).
+              Nas <strong>infrações de trânsito</strong>, você também pode incluir uma <strong>2ª foto complementar</strong> (botão
+              <strong>"➕ Adicionar outra"</strong>), especialmente <strong>quando a 1ª foto for tirada da traseira do
+                veículo</strong> (exceto motos): tire a 2ª foto da <strong>frente mostrando o painel sem a credencial</strong> e com
+              a <strong>placa visível nas duas fotos (para conferência da IA)</strong> para dar mais credibilidade à denúncia.
+            </p>
           </div>
           <div class="comparison-item is-bad">
             <div class="comparison-status">⚠️ Foto Difícil para a IA</div>
             <p>Fotos muito fechadas apenas no para-choque/vidro, sem mostrar que o local é de fato uma vaga regulamentada para PcD.</p>
           </div>
         </div>
+<div class="second-photo-tip-card">
+  <div class="comparison-status">➕ Quando e como enviar a 2ª Foto (Infrações de Trânsito)?</div>
+  <p>
+    <strong>Quando deve ocorrer:</strong> Sempre que a 1ª foto mostrar apenas a <strong>traseira do carro</strong>
+    (exceto motos) ou quando você quiser complementar o registro com um segundo ângulo. Fotografar a dianteira mostrando
+    o para-brisa/painel sem a credencial PcD aumenta a credibilidade da ocorrência.
+  </p>
+  <p class="mt-2">
+    <strong>Regras para aprovação da 2ª foto:</strong> As duas fotos precisam ser de <strong>ângulos diferentes</strong>
+    e a <strong>placa do veículo deve estar visível e legível tanto na 1ª quanto na 2ª foto</strong> (a IA confere na
+    hora se é o mesmo veículo e, em seguida, aplica o desfoque de privacidade nas placas e nos rostos e <strong>não
+      salva esses dados</strong>).
+  </p>
+</div>
       </div>
 
       <!-- Passos de uso -->
@@ -403,6 +424,26 @@ useHead({
   color: var(--text-muted, #475569);
   line-height: 1.5;
   margin: 0;
+}
+
+.second-photo-tip-card {
+  margin-top: 1rem;
+  padding: 1.15rem 1.25rem;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid rgba(134, 0, 125, 0.16);
+  border-left: 5px solid var(--primary, #86007D);
+}
+
+.second-photo-tip-card p {
+  font-size: 0.92rem;
+  color: var(--text-muted, #475569);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.second-photo-tip-card p.mt-2 {
+  margin-top: 0.55rem;
 }
 
 /* Passos em Cards */
