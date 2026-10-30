@@ -249,7 +249,27 @@
         <div class="preview-container">
           <img :src="currentPreviewPhoto" alt="Pré-visualização com desfoque de privacidade" class="preview-img" />
           <div
-            v-if="previewVerificationBadge"
+            v-if="selectedNatureza !== 'urbana'"
+            class="verification-photo-select-wrap"
+            :class="{ 'is-empty': !detectedVerificacao }"
+            title="Tipo de infração — clique para alterar"
+            data-tooltip="clique para alterar o tipo de infração"
+          >
+            <select
+              v-model="detectedVerificacao"
+              class="verification-photo-select"
+              aria-label="Selecionar ou editar o tipo de infração de trânsito"
+              title="Tipo de infração — clique para alterar"
+            >
+              <option value="">Selecione tipo infração</option>
+              <option value="exclusiva">♿ Vaga exclusiva</option>
+              <option value="transferencia">♿️↔️ Área de transferência</option>
+              <option value="pedestre">🚷 Faixa de pedestres</option>
+            </select>
+            <span class="verification-select-chevron" aria-hidden="true">▾</span>
+          </div>
+          <div
+            v-else-if="previewVerificationBadge"
             class="verification-photo-badge"
             :class="`is-${previewVerificationBadge.type}`"
             :title="previewVerificationBadge.label"
@@ -2221,6 +2241,12 @@ const processSelectedImage = async (file) => {
           if (cachedSecondEntry) {
             const cachedSecondData = cachedSecondEntry.data;
             const prevSecondAttempts = cachedSecondEntry.attempts;
+            const cachedSecondPlate = normalizeVehiclePlate(cachedSecondData.vehiclePlate);
+            const isSecondPlateMismatch = Boolean(
+              cachedSecondPlate &&
+              firstPhotoVehiclePlate.value &&
+              cachedSecondPlate !== firstPhotoVehiclePlate.value
+            );
             const wasSecondRejected = isSecondPhotoAnalysisRejected(cachedSecondData, firstPhotoVehiclePlate.value);
             const isSecondInappropriate = isInappropriatePhotoRejection(cachedSecondData);
             const needsSecondPlateRefreshAfterReload =
@@ -2229,6 +2255,7 @@ const processSelectedImage = async (file) => {
             const canSecondAttemptAgain =
               wasSecondRejected &&
               !isSecondInappropriate &&
+              !isSecondPlateMismatch &&
               prevSecondAttempts < MAX_GEMINI_ANALYSIS_ATTEMPTS;
 
             if (!canSecondAttemptAgain && !needsSecondPlateRefreshAfterReload) {
@@ -2277,7 +2304,7 @@ const processSelectedImage = async (file) => {
         }
 
         if (secondPlate !== firstPhotoVehiclePlate.value) {
-          canReanalyzeSecondPhoto.value = secondAttemptsUsed < MAX_GEMINI_ANALYSIS_ATTEMPTS;
+          canReanalyzeSecondPhoto.value = false;
           secondPhotoError.value =
             'A placa identificada na 2ª foto não corresponde à placa do veículo da 1ª foto.';
           step.value = 'preview';
@@ -3271,6 +3298,93 @@ const handleSaveIncident = async () => {
 .verification-badge-text {
   line-height: 1.1;
   letter-spacing: 0.01em;
+}
+
+.verification-photo-select-wrap {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  background-color: var(--primary, #86007D);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  z-index: 6;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.verification-photo-select-wrap.is-empty {
+  background-color: rgba(15, 23, 42, 0.88);
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.verification-photo-select-wrap:hover,
+.verification-photo-select-wrap:focus-within {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
+.verification-photo-select-wrap::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  white-space: nowrap;
+  padding: 0.3rem 0.6rem;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.94);
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-2px);
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
+  pointer-events: none;
+  z-index: 8;
+}
+
+.verification-photo-select-wrap:hover::after,
+.verification-photo-select-wrap:focus-within::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.verification-photo-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 0.38rem 1.75rem 0.38rem 0.75rem;
+  border-radius: 9999px;
+  cursor: pointer;
+}
+
+.verification-photo-select option {
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.verification-select-chevron {
+  position: absolute;
+  right: 0.65rem;
+  color: #ffffff;
+  font-size: 0.78rem;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .btn-switch-photo-corner {
