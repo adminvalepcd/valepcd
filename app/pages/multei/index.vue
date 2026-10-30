@@ -416,6 +416,12 @@ definePageMeta({
 
 useHead({
   title: 'Multei - Denúncia anônima de uso irregular de vagas para PcD',
+  htmlAttrs: {
+    class: 'multei-map-lock-scroll'
+  },
+  bodyAttrs: {
+    class: 'multei-map-lock-scroll'
+  },
   meta: [
     { name: 'description', content: 'Mapeamento colaborativo de vagas e infrações contra acessibilidade com proteção de privacidade por IA.' }
   ],
@@ -1535,20 +1541,37 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+:global(html.multei-map-lock-scroll),
+:global(body.multei-map-lock-scroll) {
+  overflow: hidden !important;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overscroll-behavior: none;
+}
+
 .multei-page-root {
-  position: relative;
+  position: fixed;
+  inset: 0;
   width: 100%;
-  min-height: 180vh;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
   background: #0f172a;
 }
 
 .multei-seo-backdrop {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
   width: 100%;
   max-width: 960px;
+  max-height: 100%;
+  overflow: hidden;
+  pointer-events: none;
   margin: 0 auto;
-  padding: 3rem 1.5rem 6rem;
+  padding: 3rem 1.5rem;
   color: #cbd5e1;
   background: #0f172a;
 }
