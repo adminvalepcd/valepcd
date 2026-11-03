@@ -1,4 +1,4 @@
-const CACHE_NAME = 'multei-images-cache-v1';
+const CACHE_NAME = 'multei-images-cache-v2';
 const MAX_CACHED_IMAGES = 300;
 
 self.addEventListener('install', () => {
@@ -54,7 +54,7 @@ self.addEventListener('fetch', (event) => {
       try {
         const cache = await caches.open(CACHE_NAME);
         const cachedResponse = await cache.match(event.request, { ignoreVary: true });
-        if (cachedResponse) {
+        if (cachedResponse && !(event.request.mode === 'cors' && cachedResponse.type === 'opaque')) {
           return cachedResponse;
         }
 

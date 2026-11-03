@@ -19,7 +19,45 @@
               {{ isIncidentResolved ? '✅ Problema Urbano Corrigido' : 'Detalhes da Ocorrência' }}
             </h2>
           </div>
-          <button class="btn-close" @click="emit('close')" aria-label="Fechar">✕</button>
+          <div class="modal-header-actions">
+            <div class="share-btn-tooltip-wrap is-header-share-wrap">
+              <button
+                type="button"
+                class="btn-share-header"
+                :disabled="isSharingIncident || !currentPhoto"
+                aria-label="Baixar para compartilhar"
+                @click="handleShareIncident('header')"
+              >
+                <svg
+                  class="share-icon-svg"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <circle cx="18" cy="5" r="3.2" fill="currentColor" stroke="none" />
+                  <circle cx="6" cy="12" r="3.2" fill="currentColor" stroke="none" />
+                  <circle cx="18" cy="19" r="3.2" fill="currentColor" stroke="none" />
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+                </svg>
+              </button>
+              <span
+                class="share-action-tooltip is-bottom-tooltip"
+                :class="{
+                  'is-active': activeShareTarget === 'header' && Boolean(shareTooltipState),
+                  'is-success': activeShareTarget === 'header' && shareTooltipState === 'downloaded',
+                  'is-error': activeShareTarget === 'header' && shareTooltipState === 'error'
+                }"
+                role="status"
+                aria-live="polite"
+              >
+                <template v-if="activeShareTarget === 'header' && shareTooltipState === 'generating'">Gerando imagem</template>
+                <template v-else-if="activeShareTarget === 'header' && shareTooltipState === 'downloaded'">✅ Imagem baixada!</template>
+                <template v-else-if="activeShareTarget === 'header' && shareTooltipState === 'error'">Erro ao gerar imagem</template>
+                <template v-else>Baixar para compartilhar</template>
+              </span>
+            </div>
+            <button class="btn-close" @click="emit('close')" aria-label="Fechar">✕</button>
+          </div>
         </div>
 
         <!-- Barra de Paginação quando houver denúncias agrupadas neste endereço ou por possível duplicidade -->
@@ -306,16 +344,52 @@
         </div>
 
         <div class="modal-footer" :class="{ 'is-resolved-footer': isIncidentResolved }">
-          <div v-if="!isIncidentResolved" class="modal-footer-actions">
+          <div class="modal-footer-actions">
             <button
+              v-if="!isIncidentResolved"
               type="button"
               class="btn-report"
               @click="handleOpenReport"
             >
               🚩 Reportar Ocorrência
             </button>
+            <div class="share-btn-tooltip-wrap is-footer-share-wrap">
+              <button
+                type="button"
+                class="btn-share-incident"
+                :disabled="isSharingIncident || !currentPhoto"
+                aria-label="Baixar para compartilhar"
+                @click="handleShareIncident('footer')"
+              >
+                <svg
+                  class="share-icon-svg"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <circle cx="18" cy="5" r="3.2" fill="currentColor" stroke="none" />
+                  <circle cx="6" cy="12" r="3.2" fill="currentColor" stroke="none" />
+                  <circle cx="18" cy="19" r="3.2" fill="currentColor" stroke="none" />
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+                </svg>
+                <span>{{ isSharingIncident && activeShareTarget === 'footer' ? 'Gerando imagem' : 'Compartilhar' }}</span>
+              </button>
+              <span
+                v-if="activeShareTarget === 'footer' && (shareTooltipState === 'downloaded' || shareTooltipState === 'error')"
+                class="share-action-tooltip is-top-tooltip is-active"
+                :class="{
+                  'is-success': shareTooltipState === 'downloaded',
+                  'is-error': shareTooltipState === 'error'
+                }"
+                role="status"
+                aria-live="polite"
+              >
+                <template v-if="shareTooltipState === 'downloaded'">✅ Imagem baixada!</template>
+                <template v-else-if="shareTooltipState === 'error'">Erro ao gerar imagem</template>
+              </span>
+            </div>
             <button
-              v-if="activeIncident.natureza === 'urbana' && !isResolutionPending"
+              v-if="!isIncidentResolved && activeIncident.natureza === 'urbana' && !isResolutionPending"
               type="button"
               class="btn btn-primary btn-resolved"
               @click="handleOpenResolve"
@@ -526,13 +600,15 @@ import {
   reportIncidentInFirebase,
   submitUrbanResolutionToFirebase,
   normalizeVerificacao,
-  getCachedIncidentImageUrl
+  getCachedIncidentImageUrl,
+  fetchIncidentImageAsBase64
 } from '../../services/firebaseService';
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
 import {
   prepareImageForGemini,
   blurSensitiveContentAndCompress,
-  resizeImageForServer
+  resizeImageForServer,
+  shareIncidentWithTemplate
 } from '../../services/imageProcessor';
 import { useModalAccessibility } from '../../composables/useModalAccessibility';
 import LoadingSpinner from './LoadingSpinner.vue';
@@ -556,7 +632,7 @@ const photoImgRef = ref(null);
 const config = useRuntimeConfig();
 const geminiClient = initializeGeminiClient(config.public?.geminiApiKey);
 
-const currentPageIndex = ref(0);
+const currentPageIndex = ref(Number(props.incident?.initialPageIndex) || 0);
 
 const groupItems = computed(() => {
   if (Array.isArray(props.incident?.groupItems) && props.incident.groupItems.length > 0) {
@@ -1052,6 +1128,94 @@ const handleSubmitReport = async () => {
   }
 };
 
+const isSharingIncident = ref(false);
+const activeShareTarget = ref('');
+const shareTooltipState = ref('');
+let shareFeedbackTimer = null;
+
+const clearShareTooltipTimers = () => {
+  if (shareFeedbackTimer) {
+    clearTimeout(shareFeedbackTimer);
+    shareFeedbackTimer = null;
+  }
+};
+
+const buildShareLocationString = () => {
+  const inc = activeIncident.value || {};
+  let streetPart = (displayAddress.value || inc.rua || '').trim();
+  const bairroPart = (inc.bairro || '').trim();
+  if (bairroPart && streetPart && !streetPart.toLowerCase().includes(bairroPart.toLowerCase())) {
+    streetPart = `${streetPart} - ${bairroPart}`;
+  } else if (!streetPart && bairroPart) {
+    streetPart = bairroPart;
+  }
+  const cityState = [inc.cidade, inc.estado].filter(Boolean).join(' - ');
+  return [streetPart, cityState].filter(Boolean).join(' • ') || 'Localização registrada no mapa';
+};
+
+const handleShareIncident = async (target = 'header') => {
+  if (isSharingIncident.value) return;
+  const inc = activeIncident.value;
+  const primaryPhoto = currentPhoto.value || inc?.fotoUrl || inc?.maskedImageUrl || '';
+  if (!primaryPhoto) return;
+
+  const clickStartedAt = Date.now();
+  isSharingIncident.value = true;
+  activeShareTarget.value = target === 'footer' ? 'footer' : 'header';
+  shareTooltipState.value = 'generating';
+  clearShareTooltipTimers();
+
+  try {
+    const resolvedPhoto = isIncidentResolved.value
+      ? (resolvedAfterPhoto.value || inc?.foto_resolucao || '')
+      : '';
+
+    const res = await shareIncidentWithTemplate({
+      photoUrl: primaryPhoto,
+      resolvedPhotoUrl: resolvedPhoto,
+      isResolved: isIncidentResolved.value,
+      natureza: inc?.natureza,
+      verificacao: inc?.verificacao ?? inc?.verification,
+      descricao: inc?.descricao,
+      cidade: inc?.cidade,
+      locationText: buildShareLocationString(),
+      latitude: Number(inc?.latitude),
+      longitude: Number(inc?.longitude),
+      timestamp: inc?.timestamp || inc?.data
+    });
+
+    if (res?.shared) {
+      const elapsed = Date.now() - clickStartedAt;
+      const minGeneratingMs = target === 'header' ? 600 : 250;
+      const waitMs = Math.max(0, minGeneratingMs - elapsed);
+      shareFeedbackTimer = setTimeout(() => {
+        isSharingIncident.value = false;
+        shareTooltipState.value = 'downloaded';
+        shareFeedbackTimer = setTimeout(() => {
+          shareTooltipState.value = '';
+          activeShareTarget.value = '';
+        }, 3200);
+      }, waitMs);
+    } else {
+      isSharingIncident.value = false;
+      shareTooltipState.value = '';
+      activeShareTarget.value = '';
+    }
+  } catch (err) {
+    console.error('Erro ao compartilhar denúncia:', err);
+    isSharingIncident.value = false;
+    shareTooltipState.value = 'error';
+    shareFeedbackTimer = setTimeout(() => {
+      shareTooltipState.value = '';
+      activeShareTarget.value = '';
+    }, 3200);
+  }
+};
+
+onUnmounted(() => {
+  clearShareTooltipTimers();
+});
+
 const { focusInitialElement } = useModalAccessibility({
   modalRef: modalCardRef,
   canClose: () => !isSubmittingReport.value && !isSubmittingResolve.value && !isProcessingResolvePhoto.value,
@@ -1088,11 +1252,14 @@ onMounted(() => {
   loadPhotoIfNeeded();
 });
 
-watch(() => props.incident, () => {
-  currentPageIndex.value = 0;
+watch(() => props.incident, (newInc) => {
+  currentPageIndex.value = Number(newInc?.initialPageIndex) || 0;
   currentPhotoIndex.value = 0;
   isPhotoExpanded.value = false;
   localMarkedResolved.value = false;
+  clearShareTooltipTimers();
+  shareTooltipState.value = '';
+  activeShareTarget.value = '';
   resolveAddress();
   loadPhotoIfNeeded();
 });
@@ -1101,6 +1268,9 @@ watch(currentPageIndex, () => {
   currentPhotoIndex.value = 0;
   isPhotoExpanded.value = false;
   localMarkedResolved.value = false;
+  clearShareTooltipTimers();
+  shareTooltipState.value = '';
+  activeShareTarget.value = '';
   resolveAddress();
   loadPhotoIfNeeded();
 });
@@ -1117,6 +1287,7 @@ watch(currentPageIndex, () => {
   justify-content: center;
   padding: 1rem;
   z-index: 9999;
+  overscroll-behavior: contain;
 }
 
 .modal-card {
@@ -1137,6 +1308,7 @@ watch(currentPageIndex, () => {
 .modal-card-body {
   padding: 1.75rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   flex: 1 1 auto;
 }
 
@@ -1619,6 +1791,104 @@ watch(currentPageIndex, () => {
   color: var(--text-muted, #475466);
 }
 
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.btn-share-header {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  border: 1px solid rgba(134, 0, 125, 0.28);
+  background: rgba(134, 0, 125, 0.08);
+  color: var(--primary, #86007D);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-share-header:hover:not(:disabled) {
+  background: var(--primary, #86007D);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.btn-share-header:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.share-icon-svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.share-btn-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.share-action-tooltip {
+  position: absolute;
+  z-index: 40;
+  white-space: nowrap;
+  padding: 0.36rem 0.68rem;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  background-color: #1e293b;
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.22);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
+}
+
+.share-action-tooltip.is-bottom-tooltip {
+  top: calc(100% + 7px);
+  right: 0;
+  transform: translateY(-4px);
+}
+
+.share-action-tooltip.is-top-tooltip {
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translate(-50%, 4px);
+}
+
+.is-header-share-wrap:hover .share-action-tooltip,
+.is-header-share-wrap:focus-within .share-action-tooltip,
+.share-action-tooltip.is-bottom-tooltip.is-active {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.share-action-tooltip.is-top-tooltip.is-active {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.share-action-tooltip.is-success {
+  background-color: #50004b;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.share-action-tooltip.is-error {
+  background-color: #b91c1c;
+  color: #ffffff;
+}
+
 .modal-footer {
   display: flex;
   justify-content: space-between;
@@ -1632,6 +1902,32 @@ watch(currentPageIndex, () => {
   align-items: center;
   gap: 0.6rem;
   flex-wrap: wrap;
+}
+
+.btn-share-incident {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  background: rgba(134, 0, 125, 0.08);
+  color: var(--primary, #86007D);
+  border: 1.5px solid rgba(134, 0, 125, 0.35);
+  padding: 0.5rem 0.95rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-share-incident:hover:not(:disabled) {
+  background: var(--primary, #86007D);
+  color: #ffffff;
+  border-color: var(--primary, #86007D);
+}
+
+.btn-share-incident:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .btn-resolved {

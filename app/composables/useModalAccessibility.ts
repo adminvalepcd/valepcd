@@ -49,6 +49,13 @@ export interface UseModalAccessibilityOptions {
 const activeModalStack: string[] = [];
 let programmaticBackCount = 0;
 
+const syncDocumentModalScrollLock = () => {
+  if (typeof document === 'undefined') return;
+  const shouldLock = activeModalStack.length > 0;
+  document.documentElement.classList.toggle('multei-modal-scroll-locked', shouldLock);
+  document.body?.classList.toggle('multei-modal-scroll-locked', shouldLock);
+};
+
 const isTopMostModal = (id: string): boolean =>
   activeModalStack.length > 0 && activeModalStack[activeModalStack.length - 1] === id;
 
@@ -181,6 +188,7 @@ export function useModalAccessibility(options: UseModalAccessibilityOptions) {
     if (!activeModalStack.includes(instanceId)) {
       activeModalStack.push(instanceId);
     }
+    syncDocumentModalScrollLock();
 
     try {
       window.history.pushState({ multeiModalId: instanceId }, '');
@@ -203,6 +211,7 @@ export function useModalAccessibility(options: UseModalAccessibilityOptions) {
     if (stackIdx !== -1) {
       activeModalStack.splice(stackIdx, 1);
     }
+    syncDocumentModalScrollLock();
 
     window.removeEventListener('popstate', handlePopState);
     document.removeEventListener('keydown', handleKeyDown, true);

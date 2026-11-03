@@ -627,3 +627,683 @@ export function areImagesVisuallyIdentical(imageUrlA: string, imageUrlB: string)
     return meanDiff < 5.5;
   });
 }
+
+export interface IncidentShareCardOptions {
+  photoUrl?: string;
+  photoSrc?: string;
+  resolvedPhotoUrl?: string;
+  afterPhotoSrc?: string;
+  isResolved?: boolean;
+  natureza?: string;
+  verificacao?: string;
+  descricao?: string;
+  cidade?: string;
+  locationText: string;
+  latitude: number;
+  longitude: number;
+  timestamp?: string | number;
+}
+
+/**
+ * Codifica as coordenadas (e minuto aproximado) em um token curto em Base36
+ * para compartilhamento de link direto no mapa sem expor o ID da denúncia.
+ */
+export function encodeIncidentShareToken(
+  latitude: number,
+  longitude: number,
+  timestamp?: string | number
+): string {
+  const latNum = Number(latitude);
+  const lngNum = Number(longitude);
+  if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return '';
+  const latInt = Math.max(0, Math.round((latNum + 90) * 100000));
+  const lngInt = Math.max(0, Math.round((lngNum + 180) * 100000));
+  const baseToken = `${latInt.toString(36)}-${lngInt.toString(36)}`;
+  if (timestamp) {
+    const tsMs = new Date(timestamp).getTime();
+    if (Number.isFinite(tsMs) && tsMs > 0) {
+      const tsMin = Math.floor(tsMs / 60000);
+      return `${baseToken}-${tsMin.toString(36)}`;
+    }
+  }
+  return baseToken;
+}
+
+/**
+ * Decodifica o token curto gerado por encodeIncidentShareToken.
+ */
+export function decodeIncidentShareToken(
+  token: string
+): { latitude: number; longitude: number; timestampMin?: number } | null {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.trim().split(/[-_]/);
+  if (parts.length < 2) return null;
+  const latInt = parseInt(parts[0], 36);
+  const lngInt = parseInt(parts[1], 36);
+  if (!Number.isFinite(latInt) || !Number.isFinite(lngInt)) return null;
+  const latitude = Number((latInt / 100000 - 90).toFixed(5));
+  const longitude = Number((lngInt / 100000 - 180).toFixed(5));
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  const timestampMin = parts[2] ? parseInt(parts[2], 36) : undefined;
+  return {
+    latitude,
+    longitude,
+    timestampMin: Number.isFinite(timestampMin) ? timestampMin : undefined
+  };
+}
+
+function drawRoundedRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, radius);
+  } else {
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + w, y, x + w, y + h, radius);
+    ctx.arcTo(x + w, y + h, x, y + h, radius);
+    ctx.arcTo(x, y + h, x, y, radius);
+    ctx.arcTo(x, y, x + w, y, radius);
+    ctx.closePath();
+  }
+}
+
+const shareImageMemoryCache = new Map<string, string>();
+
+async function loadImageForCanvas(src: string): Promise<HTMLImageElement | null> {
+  if (!src || typeof window === 'undefined') return null;
+
+  const loadFromUrl = (urlToLoad: string, useCors: boolean): Promise<HTMLImageElement | null> =>
+    new Promise((resolve) => {
+      const img = new Image();
+      if (useCors) {
+        img.crossOrigin = 'anonymous';
+      }
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = urlToLoad;
+    });
+
+  if (src.startsWith('data:') || src.startsWith('blob:')) {
+    return loadFromUrl(src, false);
+  }
+
+  const cachedDataUrl = shareImageMemoryCache.get(src);
+  if (cachedDataUrl) {
+    const fromMem = await loadFromUrl(cachedDataUrl, false);
+    if (fromMem) return fromMem;
+  }
+
+  // 1. Lê diretamente do CacheStorage do navegador ('multei-images-cache-v2')
+  if ('caches' in window) {
+    try {
+      const cache = await window.caches.open('multei-images-cache-v2');
+      const cachedResp = await cache.match(src, { ignoreVary: true });
+      if (cachedResp && cachedResp.ok && cachedResp.type !== 'opaque') {
+        const blob = await cachedResp.blob();
+        if (blob.size > 0) {
+          const objUrl = URL.createObjectURL(blob);
+          const loaded = await loadFromUrl(objUrl, false);
+          setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+          if (loaded) return loaded;
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Caso ainda não esteja como blob no CacheStorage, lê do cache HTTP do navegador com CORS
+  // (com fallback 'reload' apenas se o cache HTTP de disco antigo for anterior à ativação do CORS)
+  try {
+    const resp = await fetch(src, { mode: 'cors', credentials: 'omit', cache: 'force-cache' }).catch(() =>
+      fetch(src, { mode: 'cors', credentials: 'omit', cache: 'reload' })
+    );
+    if (resp.ok) {
+      if ('caches' in window) {
+        try {
+          const cache = await window.caches.open('multei-images-cache-v2');
+          await cache.put(src, resp.clone());
+        } catch {}
+      }
+      const blob = await resp.blob();
+      if (blob.size > 0) {
+        const objUrl = URL.createObjectURL(blob);
+        const loaded = await loadFromUrl(objUrl, false);
+        setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+        if (loaded) return loaded;
+      }
+    }
+  } catch {}
+
+  return loadFromUrl(src, true);
+}
+
+function drawImageSmartInFrame(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  fx: number,
+  fy: number,
+  fw: number,
+  fh: number,
+  radius: number,
+  alwaysCover = false
+) {
+  ctx.save();
+  drawRoundedRectPath(ctx, fx, fy, fw, fh, radius);
+  ctx.clip();
+
+  const iw = img.naturalWidth || img.width || 1;
+  const ih = img.naturalHeight || img.height || 1;
+  const imgRatio = iw / ih;
+  const frameRatio = fw / fh;
+
+  const coverScale = Math.max(fw / iw, fh / ih);
+  const coverW = iw * coverScale;
+  const coverH = ih * coverScale;
+  const coverX = fx + (fw - coverW) / 2;
+  const coverY = fy + (fh - coverH) / 2;
+
+  const ratioDiff = Math.abs(imgRatio - frameRatio) / frameRatio;
+
+  if (alwaysCover || ratioDiff <= 0.38) {
+    ctx.drawImage(img, coverX, coverY, coverW, coverH);
+  } else {
+    // Fundo preenchido com desfoque suave + imagem inteira nítida centralizada
+    ctx.save();
+    ctx.filter = 'blur(26px) brightness(0.72)';
+    ctx.drawImage(img, coverX - 24, coverY - 24, coverW + 48, coverH + 48);
+    ctx.restore();
+
+    const containScale = Math.min(fw / iw, fh / ih);
+    const containW = iw * containScale;
+    const containH = ih * containScale;
+    const containX = fx + (fw - containW) / 2;
+    const containY = fy + (fh - containH) / 2;
+    ctx.drawImage(img, containX, containY, containW, containH);
+  }
+
+  ctx.restore();
+}
+
+function wrapCanvasText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number
+): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const lines: string[] = [];
+  let currentLine = words[0];
+
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i];
+    const testLine = `${currentLine} ${word}`;
+    if (ctx.measureText(testLine).width <= maxWidth) {
+      currentLine = testLine;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+      if (lines.length === maxLines - 1) {
+        for (let j = i + 1; j < words.length; j++) {
+          const nextTry = `${currentLine} ${words[j]}`;
+          if (ctx.measureText(`${nextTry}…`).width <= maxWidth) {
+            currentLine = nextTry;
+          } else {
+            currentLine = `${currentLine}…`;
+            break;
+          }
+        }
+        break;
+      }
+    }
+  }
+  if (lines.length < maxLines && currentLine) {
+    lines.push(currentLine);
+  }
+  return lines;
+}
+
+export function getShareHeadlineInfo(options: {
+  isResolved?: boolean;
+  natureza?: string;
+  verificacao?: string;
+}): {
+  line1: string;
+  line2: string;
+  badgeIcon: string;
+  badgeBg: string;
+  shareTitlePlain: string;
+} {
+  if (options.isResolved) {
+    return {
+      line1: 'Problema de Mobilidade',
+      line2: 'Resolvido',
+      badgeIcon: '✓',
+      badgeBg: '#16a34a',
+      shareTitlePlain: 'Problema de Mobilidade Resolvido'
+    };
+  }
+
+  const nat = String(options.natureza || '').trim().toLowerCase();
+  const verif = String(options.verificacao || '').trim().toLowerCase();
+
+  if (nat === 'urbana') {
+    return {
+      line1: 'Denúncia de',
+      line2: 'Mobilidade Urbana',
+      badgeIcon: '🚧',
+      badgeBg: '#d97706',
+      shareTitlePlain: 'Denúncia de Mobilidade Urbana'
+    };
+  }
+
+  if (verif.includes('exclusiva')) {
+    return {
+      line1: 'Denúncia de Vaga',
+      line2: 'Exclusiva PcD',
+      badgeIcon: '♿',
+      badgeBg: '#86007D',
+      shareTitlePlain: 'Denúncia de Vaga Exclusiva PcD'
+    };
+  }
+
+  if (verif.includes('transferencia')) {
+    return {
+      line1: 'Denúncia de Área',
+      line2: 'de Transferência',
+      badgeIcon: '♿',
+      badgeBg: '#86007D',
+      shareTitlePlain: 'Denúncia de Área de Transferência'
+    };
+  }
+
+  if (verif.includes('pedestre')) {
+    return {
+      line1: 'Denúncia de Faixa',
+      line2: 'de Pedestres',
+      badgeIcon: '🚷',
+      badgeBg: '#86007D',
+      shareTitlePlain: 'Denúncia de Faixa de Pedestres'
+    };
+  }
+
+  return {
+    line1: 'Denúncia de',
+    line2: 'Infração de Trânsito',
+    badgeIcon: '♿',
+    badgeBg: '#86007D',
+    shareTitlePlain: 'Denúncia de Infração de Trânsito'
+  };
+}
+
+/**
+ * Gera o card visual de compartilhamento (1080x1920, proporção 9:16 Stories) para WhatsApp e Instagram.
+ */
+export async function generateIncidentShareCardFile(
+  options: IncidentShareCardOptions,
+  mimeType: 'image/jpeg' | 'image/png' = 'image/jpeg'
+): Promise<File> {
+  const W = 1080;
+  const H = 1920;
+  const FOOTER_H = 264;
+  const BODY_H = H - FOOTER_H; // 1656
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Contexto 2D indisponível para gerar o card de compartilhamento.');
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  // 1. Fundo claro lavanda suave (Opção 2 aprovada)
+  const bgGrad = ctx.createLinearGradient(0, 0, W, BODY_H);
+  bgGrad.addColorStop(0, '#f8fafc');
+  bgGrad.addColorStop(0.5, '#f5f0ff');
+  bgGrad.addColorStop(1, '#f3e3fa');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, BODY_H);
+
+  // Brilho lateral suave lavanda
+  const glowRight = ctx.createRadialGradient(W * 0.92, BODY_H * 0.52, 40, W * 0.92, BODY_H * 0.52, 640);
+  glowRight.addColorStop(0, 'rgba(192, 132, 252, 0.22)');
+  glowRight.addColorStop(1, 'rgba(192, 132, 252, 0)');
+  ctx.fillStyle = glowRight;
+  ctx.fillRect(0, 0, W, BODY_H);
+
+  const fontStack = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+  // 2. Selo superior "VALE PCD"
+  // Quando a aplicação for liberada para todo o público, voltar para: const pillText = 'MULTEI • VALE PCD';
+  const pillText = 'VALE PCD';
+  ctx.font = `700 26px ${fontStack}`;
+  const pillTextW = ctx.measureText(pillText).width;
+  const pillW = pillTextW + 64;
+  const pillH = 56;
+  const pillX = (W - pillW) / 2;
+  const pillY = 76;
+
+  drawRoundedRectPath(ctx, pillX, pillY, pillW, pillH, 28);
+  ctx.fillStyle = 'rgba(237, 233, 254, 0.9)';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(134, 0, 125, 0.18)';
+  ctx.stroke();
+
+  ctx.fillStyle = '#1e293b';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(pillText, W / 2, pillY + pillH / 2 + 1);
+
+  // 3. Título Principal ("Denúncia de <Tipo>" ou "Problema de Mobilidade Resolvido") com ícone reduzido proporcional
+  const headline = getShareHeadlineInfo(options);
+  ctx.font = `800 64px ${fontStack}`;
+  ctx.fillStyle = '#070b19';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(headline.line1, W / 2, 214);
+
+  const line2Width = ctx.measureText(headline.line2).width;
+  const badgeSize = 46; // Ícone discreto e menor que a caixa alta do título
+  const badgeGap = 16;
+  const totalLine2W = line2Width + badgeGap + badgeSize;
+  const line2StartX = (W - totalLine2W) / 2;
+  const line2BaselineY = 292;
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#070b19';
+  ctx.fillText(headline.line2, line2StartX, line2BaselineY);
+
+  // Desenha o mini-badge com o ícone ao lado da 2ª linha
+  const badgeX = line2StartX + line2Width + badgeGap;
+  const badgeY = line2BaselineY - badgeSize + 4;
+  drawRoundedRectPath(ctx, badgeX, badgeY, badgeSize, badgeSize, 12);
+  ctx.fillStyle = headline.badgeBg;
+  ctx.fill();
+
+  ctx.font = `700 27px ${fontStack}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(headline.badgeIcon, badgeX + badgeSize / 2, badgeY + badgeSize / 2 + 1);
+
+  // 4. Localização (até 2 linhas centralizadas)
+  const cleanLoc = (options.locationText || 'Local registrado no Multei').trim();
+  const fullLocString = `📍 ${cleanLoc}`;
+  ctx.font = `600 32px ${fontStack}`;
+  ctx.fillStyle = '#1e293b';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+
+  const locLines = wrapCanvasText(ctx, fullLocString, 920, 2);
+  let locY = 358;
+  for (const line of locLines) {
+    ctx.fillText(line, W / 2, locY);
+    locY += 44;
+  }
+
+  // 5. Quadro Central da Foto (ou Antes/Depois quando resolvido)
+  const cardX = 68;
+  const cardY = locLines.length > 1 ? 444 : 416;
+  const cardW = W - cardX * 2; // 944
+  const cardH = BODY_H - cardY - 56;
+  const cardRadius = 40;
+
+  // Sombra + Moldura branca
+  ctx.save();
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.14)';
+  ctx.shadowBlur = 34;
+  ctx.shadowOffsetY = 14;
+  drawRoundedRectPath(ctx, cardX, cardY, cardW, cardH, cardRadius);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.restore();
+
+  const pad = 12;
+  const innerX = cardX + pad;
+  const innerY = cardY + pad;
+  const innerW = cardW - pad * 2;
+  const innerH = cardH - pad * 2;
+  const innerRadius = cardRadius - 8;
+
+  const primaryPhotoUrl = options.photoUrl || options.photoSrc || '';
+  const resolvedAfterUrl = options.resolvedPhotoUrl || options.afterPhotoSrc || '';
+
+  if (options.isResolved && resolvedAfterUrl) {
+    // MODO PROBLEMA RESOLVIDO: Comparativo ANTES e DEPOIS lado a lado
+    const [beforeImg, afterImg] = await Promise.all([
+      loadImageForCanvas(primaryPhotoUrl),
+      loadImageForCanvas(resolvedAfterUrl)
+    ]);
+
+    const colGap = 12;
+    const colW = (innerW - colGap) / 2;
+    const leftX = innerX;
+    const rightX = innerX + colW + colGap;
+
+    // Coluna ANTES
+    drawRoundedRectPath(ctx, leftX, innerY, colW, innerH, 28);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fill();
+    if (beforeImg) {
+      drawImageSmartInFrame(ctx, beforeImg, leftX, innerY, colW, innerH, 28, true);
+    }
+
+    // Badge "⚠️ ANTES"
+    const beforeTagText = '⚠️ ANTES';
+    ctx.font = `800 25px ${fontStack}`;
+    const beforeTagW = ctx.measureText(beforeTagText).width + 46;
+    const beforeTagH = 52;
+    const beforeTagX = leftX + (colW - beforeTagW) / 2;
+    const beforeTagY = innerY + 24;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
+    ctx.shadowBlur = 12;
+    drawRoundedRectPath(ctx, beforeTagX, beforeTagY, beforeTagW, beforeTagH, 26);
+    const beforeGrad = ctx.createLinearGradient(beforeTagX, beforeTagY, beforeTagX, beforeTagY + beforeTagH);
+    beforeGrad.addColorStop(0, 'rgba(217, 119, 6, 0.95)');
+    beforeGrad.addColorStop(1, 'rgba(180, 83, 9, 0.95)');
+    ctx.fillStyle = beforeGrad;
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(beforeTagText, beforeTagX + beforeTagW / 2, beforeTagY + beforeTagH / 2 + 1);
+
+    // Coluna DEPOIS
+    drawRoundedRectPath(ctx, rightX, innerY, colW, innerH, 28);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fill();
+    if (afterImg) {
+      drawImageSmartInFrame(ctx, afterImg, rightX, innerY, colW, innerH, 28, true);
+    }
+
+    // Badge "✅ DEPOIS" (sem "(RESOLVIDO)")
+    const afterTagText = '✅ DEPOIS';
+    ctx.font = `800 25px ${fontStack}`;
+    const afterTagW = ctx.measureText(afterTagText).width + 46;
+    const afterTagH = 52;
+    const afterTagX = rightX + (colW - afterTagW) / 2;
+    const afterTagY = innerY + 24;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
+    ctx.shadowBlur = 12;
+    drawRoundedRectPath(ctx, afterTagX, afterTagY, afterTagW, afterTagH, 26);
+    const afterGrad = ctx.createLinearGradient(afterTagX, afterTagY, afterTagX, afterTagY + afterTagH);
+    afterGrad.addColorStop(0, 'rgba(22, 163, 74, 0.95)');
+    afterGrad.addColorStop(1, 'rgba(21, 128, 61, 0.95)');
+    ctx.fillStyle = afterGrad;
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(afterTagText, afterTagX + afterTagW / 2, afterTagY + afterTagH / 2 + 1);
+  } else {
+    // MODO PADRÃO: Foto única da denúncia
+    drawRoundedRectPath(ctx, innerX, innerY, innerW, innerH, innerRadius);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+
+    const mainImg = await loadImageForCanvas(primaryPhotoUrl);
+    if (mainImg) {
+      drawImageSmartInFrame(ctx, mainImg, innerX, innerY, innerW, innerH, innerRadius, false);
+    }
+
+    // Selo "Filtro privacidade aplicado" no canto inferior direito da foto
+    const blurBadgeText = 'Filtro privacidade aplicado';
+    ctx.font = `600 24px ${fontStack}`;
+    const blurTextW = ctx.measureText(blurBadgeText).width;
+    const blurW = blurTextW + 46;
+    const blurH = 50;
+    const blurX = innerX + innerW - blurW - 24;
+    const blurY = innerY + innerH - blurH - 22;
+
+    drawRoundedRectPath(ctx, blurX, blurY, blurW, blurH, 25);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(blurBadgeText, blurX + blurW / 2, blurY + blurH / 2 + 1);
+  }
+
+  // 6. Rodapé Call-to-Action Roxo (#86007D)
+  const footerGrad = ctx.createLinearGradient(0, BODY_H, W, H);
+  footerGrad.addColorStop(0, '#86007D');
+  footerGrad.addColorStop(1, '#6e0066');
+  ctx.fillStyle = footerGrad;
+  ctx.fillRect(0, BODY_H, W, FOOTER_H);
+
+  // Quando a aplicação for liberada para todo o público, voltar para: 'Denuncie você também pelo' e 'www.valepcd.com.br/multei'
+  ctx.font = `700 44px ${fontStack}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('Saiba como participar em:', W / 2, BODY_H + 88);
+
+  // Pílula branca "www.valepcd.com.br"
+  const ctaUrlText = 'www.valepcd.com.br';
+  ctx.font = `800 42px ${fontStack}`;
+  const ctaUrlW = ctx.measureText(ctaUrlText).width;
+  const ctaPillW = ctaUrlW + 88;
+  const ctaPillH = 86;
+  const ctaPillX = (W - ctaPillW) / 2;
+  const ctaPillY = BODY_H + 120;
+
+  drawRoundedRectPath(ctx, ctaPillX, ctaPillY, ctaPillW, ctaPillH, 43);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  ctx.fillStyle = '#86007D';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(ctaUrlText, W / 2, ctaPillY + ctaPillH / 2 + 2);
+
+  const isPng = mimeType === 'image/png';
+  const blob: Blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) => {
+        if (b) resolve(b);
+        else reject(new Error('Falha ao exportar card de compartilhamento.'));
+      },
+      isPng ? 'image/png' : 'image/jpeg',
+      isPng ? undefined : 0.93
+    );
+  });
+
+  const fileName = buildShareCardFilename(options, isPng);
+  return new File(
+    [blob],
+    fileName,
+    { type: isPng ? 'image/png' : 'image/jpeg' }
+  );
+}
+
+function buildShareCardFilename(options: IncidentShareCardOptions, isPng: boolean): string {
+  const nat = String(options.natureza || '').trim().toLowerCase();
+  const verif = String(options.verificacao || '').trim().toLowerCase();
+
+  let tipo = 'Infração de Trânsito';
+  if (options.isResolved) {
+    tipo = 'Mobilidade Resolvido';
+  } else if (nat === 'urbana') {
+    tipo = 'Mobilidade Urbana';
+  } else if (verif.includes('exclusiva')) {
+    tipo = 'Vaga Exclusiva PcD';
+  } else if (verif.includes('transferencia')) {
+    tipo = 'Área de Transferência';
+  } else if (verif.includes('pedestre')) {
+    tipo = 'Faixa de Pedestres';
+  }
+
+  let cidade = String(options.cidade || '').trim();
+  if (!cidade && options.locationText) {
+    const parts = options.locationText.split('•').map((s) => s.trim());
+    if (parts.length > 1) {
+      cidade = parts[parts.length - 1].split('-')[0].trim();
+    }
+  }
+
+  const rawDate = options.timestamp ? new Date(options.timestamp) : new Date();
+  const validDate = Number.isNaN(rawDate.getTime()) ? new Date() : rawDate;
+  const dd = String(validDate.getDate()).padStart(2, '0');
+  const mm = String(validDate.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(validDate.getFullYear());
+  const dateFormatted = `${dd}_${mm}_${yyyy}`;
+
+  const segments = ['Ocorrencia', tipo, cidade, dateFormatted].filter(Boolean);
+  const safeBase = segments
+    .join(' ')
+    .replace(/[\\/:*?"<>|]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return `${safeBase}.${isPng ? 'png' : 'jpg'}`;
+}
+
+function triggerCardDownload(file: File) {
+  if (typeof document === 'undefined') return;
+  const objUrl = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = objUrl;
+  link.download = file.name || 'Ocorrencia.jpg';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(objUrl), 4000);
+}
+
+export async function shareIncidentWithTemplate(
+  options: IncidentShareCardOptions
+): Promise<{
+  status: 'shared' | 'copied' | 'downloaded' | 'cancelled';
+  shared: boolean;
+  method: 'web-share' | 'clipboard-image' | 'download';
+  shareUrl: string;
+}> {
+  const token = encodeIncidentShareToken(options.latitude, options.longitude, options.timestamp);
+  const shareUrl = token
+    ? `https://www.valepcd.com.br/multei?p=${encodeURIComponent(token)}`
+    : 'https://www.valepcd.com.br/multei';
+
+  const file = await generateIncidentShareCardFile(options, 'image/jpeg');
+  triggerCardDownload(file);
+
+  return { status: 'downloaded', shared: true, method: 'download', shareUrl };
+}

@@ -2213,7 +2213,7 @@ function markIncidentResolvedInLocalCache(ocorrenciaId: string) {
   } catch {}
 }
 
-const IMAGE_CACHE_NAME = 'multei-images-cache-v1';
+const IMAGE_CACHE_NAME = 'multei-images-cache-v2';
 const inMemoryImageBlobUrls = new Map<string, string>();
 
 /**
@@ -2275,8 +2275,10 @@ export async function getCachedIncidentImageUrl(url: string): Promise<string> {
         return url;
       }
 
-      // Se ainda não estiver no CacheStorage, tenta buscar via fetch com cache forçado e salvar no CacheStorage
-      const netResponse = await fetch(url, { mode: 'cors', credentials: 'omit', cache: 'force-cache' });
+      // Se ainda não estiver no CacheStorage, tenta buscar via fetch com cache forçado (e fallback 'reload' caso o cache HTTP de disco antigo esteja sem o header CORS)
+      const netResponse = await fetch(url, { mode: 'cors', credentials: 'omit', cache: 'force-cache' }).catch(() =>
+        fetch(url, { mode: 'cors', credentials: 'omit', cache: 'reload' })
+      );
       if (netResponse.ok) {
         try {
           await cache.put(url, netResponse.clone());

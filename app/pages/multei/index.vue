@@ -1,5 +1,5 @@
 <template>
-  <div class="multei-page-root">
+  <div class="multei-page-root" :class="{ 'is-modal-open': isAnyModalOpen }">
     <div
       class="multei-fullscreen-page"
       :style="fullscreenPageStyle"
@@ -408,6 +408,7 @@ import { fetchIncidentsByVisibleArea } from '~/services/firebaseService';
     isCoordinateInBrazilBounds,
     checkIfCoordsInBrazil
   } from '~/services/geoService';
+  import { decodeIncidentShareToken } from '~/services/imageProcessor';
   import { useModalAccessibility } from '~/composables/useModalAccessibility';
 
 definePageMeta({
@@ -520,6 +521,19 @@ const handleOpenCreateModal = async () => {
 
   const isAnyModalOpen = computed(() =>
     Boolean(isCreateModalOpen.value || selectedIncident.value || isWhatToReportModalOpen.value)
+  );
+
+  watch(
+    isAnyModalOpen,
+    (open) => {
+      if (typeof document === 'undefined' || typeof window === 'undefined') return;
+      document.documentElement.classList.toggle('multei-modal-scroll-locked', open);
+      document.body?.classList.toggle('multei-modal-scroll-locked', open);
+      if (open && window.scrollY > 0) {
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      }
+    },
+    { immediate: true }
   );
 
   useModalAccessibility({
@@ -1491,9 +1505,12 @@ onMounted(async () => {
   }
 
   const route = useRoute();
-  const qLat = Number(route.query?.lat);
-  const qLng = Number(route.query?.lng);
-  const qZoom = Number(route.query?.zoom) || 18;
+  const rawShareToken = typeof route.query?.p === 'string' ? route.query.p : '';
+  const decodedShare = rawShareToken ? decodeIncidentShareToken(rawShareToken) : null;
+
+  const qLat = decodedShare ? decodedShare.latitude : Number(route.query?.lat);
+  const qLng = decodedShare ? decodedShare.longitude : Number(route.query?.lng);
+  const qZoom = decodedShare ? 18 : Number(route.query?.zoom) || 18;
   if (Number.isFinite(qLat) && Number.isFinite(qLng) && (qLat !== 0 || qLng !== 0)) {
     const targetCoords = {
       latitude: qLat,
@@ -1517,6 +1534,47 @@ onMounted(async () => {
       latitude: qLat,
       longitude: qLng
     });
+
+    if (decodedShare && Array.isArray(filteredIncidents.value) && filteredIncidents.value.length > 0) {
+      let bestPin = null;
+      let bestPageIndex = 0;
+      let bestScore = Infinity;
+
+      for (const pin of filteredIncidents.value) {
+        const items = Array.isArray(pin.groupItems) && pin.groupItems.length > 0 ? pin.groupItems : [pin];
+        for (let idx = 0; idx < items.length; idx++) {
+          const item = items[idx];
+          const itemLat = Number(item?.latitude ?? pin.latitude);
+          const itemLng = Number(item?.longitude ?? pin.longitude);
+          if (!Number.isFinite(itemLat) || !Number.isFinite(itemLng)) continue;
+
+          const distMeters = getDistanceKm(qLat, qLng, itemLat, itemLng) * 1000;
+          if (distMeters > 120) continue;
+
+          let timeDiffMin = 0;
+          if (decodedShare.timestampMin && item?.timestamp) {
+            const itemMin = Math.floor(new Date(item.timestamp).getTime() / 60000);
+            if (Number.isFinite(itemMin)) {
+              timeDiffMin = Math.abs(itemMin - decodedShare.timestampMin);
+            }
+          }
+
+          const score = distMeters + timeDiffMin * 0.5;
+          if (score < bestScore) {
+            bestScore = score;
+            bestPin = pin;
+            bestPageIndex = idx;
+          }
+        }
+      }
+
+      if (bestPin) {
+        selectedIncident.value = {
+          ...bestPin,
+          initialPageIndex: bestPageIndex
+        };
+      }
+    }
     return;
   }
 
@@ -1530,6 +1588,8 @@ onMounted(async () => {
     if (mapCenterCountryTimer) clearTimeout(mapCenterCountryTimer);
     if (typeof document !== 'undefined') {
       document.removeEventListener('mousedown', handleDocumentClick);
+      document.documentElement.classList.remove('multei-modal-scroll-locked');
+      document.body?.classList.remove('multei-modal-scroll-locked');
     }
     if (geoPermissionStatus) {
       try {
@@ -1543,35 +1603,45 @@ onMounted(async () => {
 <style scoped>
 :global(html.multei-map-lock-scroll),
 :global(body.multei-map-lock-scroll) {
-  overflow: hidden !important;
-  height: 100vh;
-  height: 100dvh;
-  max-height: 100dvh;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   overscroll-behavior: none;
 }
 
+:global(html.multei-map-lock-scroll::-webkit-scrollbar),
+:global(body.multei-map-lock-scroll::-webkit-scrollbar) {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+:global(html.multei-modal-scroll-locked),
+:global(body.multei-modal-scroll-locked) {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
 .multei-page-root {
-  position: fixed;
-  inset: 0;
+  position: relative;
   width: 100%;
-  height: 100vh;
-  height: 100dvh;
-  max-height: 100dvh;
-  overflow: hidden;
+  min-height: 180vh;
   background: #0f172a;
 }
 
+.multei-page-root.is-modal-open {
+  min-height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
 .multei-seo-backdrop {
-  position: absolute;
-  inset: 0;
+  position: relative;
   z-index: 1;
   width: 100%;
   max-width: 960px;
-  max-height: 100%;
-  overflow: hidden;
   pointer-events: none;
   margin: 0 auto;
-  padding: 3rem 1.5rem;
+  padding: 3rem 1.5rem 6rem;
   color: #cbd5e1;
   background: #0f172a;
 }
@@ -1589,7 +1659,10 @@ onMounted(async () => {
 }
 
 .multei-fullscreen-page {
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 10;
   width: 100%;
   height: 100vh;

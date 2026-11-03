@@ -611,9 +611,45 @@
         <p v-else class="success-desc">
           A infração foi salva e já está visível no mapa.
         </p>
-        <button class="btn btn-primary mt-4" @click="emit('close')">
-          Fechar
-        </button>
+
+        <div class="success-actions-row mt-4">
+          <div
+            v-if="!savedForCredentialReview && lastCreatedIncident"
+            class="created-share-tooltip-wrap"
+          >
+            <button
+              type="button"
+              class="btn btn-share-created"
+              :disabled="isSharingCreatedIncident"
+              aria-label="Baixar para compartilhar"
+              @click="handleShareCreatedIncident"
+            >
+              <svg
+                class="share-icon-svg"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <circle cx="18" cy="5" r="3.2" fill="currentColor" stroke="none" />
+                <circle cx="6" cy="12" r="3.2" fill="currentColor" stroke="none" />
+                <circle cx="18" cy="19" r="3.2" fill="currentColor" stroke="none" />
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+              </svg>
+              <span>{{ isSharingCreatedIncident ? 'Gerando imagem' : 'Compartilhar denúncia' }}</span>
+            </button>
+            <span
+              v-if="createdShareFeedback"
+              class="created-share-tooltip"
+              role="status"
+              aria-live="polite"
+            >
+              {{ createdShareFeedback }}
+            </span>
+          </div>
+          <button type="button" class="btn btn-primary" @click="emit('close')">
+            Fechar
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -633,8 +669,9 @@ import {
   extractPhotoMetadata,
   blurSensitiveContentAndCompress,
   prepareImageForGemini,
-          resizeImageForServer,
-          areImagesVisuallyIdentical
+  resizeImageForServer,
+  areImagesVisuallyIdentical,
+  shareIncidentWithTemplate
 } from '../../services/imageProcessor';
 import {
   saveIncidentToFirebase,
@@ -2707,6 +2744,11 @@ const handleSaveIncident = async () => {
     }
 
     savedForCredentialReview.value = isPossibleCredential;
+    lastCreatedIncident.value = {
+      ...newIncident,
+      localPreviewPhoto: processedImageWebp.value || serverImageWebp || newIncident.fotoUrl || newIncident.maskedImageUrl
+    };
+    createdShareFeedback.value = '';
     emit('incidentCreated', newIncident);
     step.value = 'success';
   } catch (err) {
@@ -2714,6 +2756,64 @@ const handleSaveIncident = async () => {
     saveError.value = 'Não foi possível salvar a ocorrência no momento. Tente novamente ou verifique a conexão.';
   } finally {
     isSaving.value = false;
+  }
+};
+
+const lastCreatedIncident = ref(null);
+const isSharingCreatedIncident = ref(false);
+const createdShareFeedback = ref('');
+let createdShareTimer = null;
+
+const handleShareCreatedIncident = async () => {
+  if (isSharingCreatedIncident.value || !lastCreatedIncident.value) return;
+  const inc = lastCreatedIncident.value;
+  const photoSrc = inc.localPreviewPhoto || processedImageWebp.value || inc.fotoUrl || inc.maskedImageUrl || '';
+  if (!photoSrc) return;
+
+  isSharingCreatedIncident.value = true;
+  createdShareFeedback.value = '';
+  if (createdShareTimer) {
+    clearTimeout(createdShareTimer);
+    createdShareTimer = null;
+  }
+  try {
+    let streetPart = (inc.rua || '').trim();
+    const bairroPart = (inc.bairro || '').trim();
+    if (bairroPart && streetPart && !streetPart.toLowerCase().includes(bairroPart.toLowerCase())) {
+      streetPart = `${streetPart} - ${bairroPart}`;
+    } else if (!streetPart && bairroPart) {
+      streetPart = bairroPart;
+    }
+    const cityState = [inc.cidade, inc.estado].filter(Boolean).join(' - ');
+    const locationText = [streetPart, cityState].filter(Boolean).join(' • ') || inc.description || 'Localização registrada no mapa';
+
+    const res = await shareIncidentWithTemplate({
+      photoSrc,
+      isResolved: false,
+      natureza: inc.natureza,
+      verificacao: inc.verificacao,
+      descricao: inc.descricao,
+      cidade: inc.cidade,
+      locationText,
+      latitude: Number(inc.latitude),
+      longitude: Number(inc.longitude),
+      timestamp: inc.timestamp
+    });
+
+    if (res?.shared) {
+      createdShareFeedback.value = '✅ Imagem baixada!';
+      createdShareTimer = setTimeout(() => {
+        createdShareFeedback.value = '';
+      }, 3200);
+    }
+  } catch (err) {
+    console.error('Erro ao compartilhar denúncia criada:', err);
+    createdShareFeedback.value = 'Erro ao gerar imagem';
+    createdShareTimer = setTimeout(() => {
+      createdShareFeedback.value = '';
+    }, 3200);
+  } finally {
+    isSharingCreatedIncident.value = false;
   }
 };
 </script>
@@ -2729,6 +2829,7 @@ const handleSaveIncident = async () => {
   justify-content: center;
   padding: 1rem;
   z-index: 9999;
+  overscroll-behavior: contain;
 }
 
 .modal-card {
@@ -2739,6 +2840,7 @@ const handleSaveIncident = async () => {
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
   border: 1px solid var(--border, rgba(0, 0, 0, 0.1));
 }
@@ -4431,5 +4533,69 @@ const handleSaveIncident = async () => {
   line-height: 1.45;
   color: #451a03;
   font-weight: 500;
+}
+
+.success-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.btn-share-created {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: rgba(134, 0, 125, 0.1);
+  color: var(--primary, #86007D);
+  border: 2px solid var(--primary, #86007D);
+  padding: 0.75rem 1.35rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  font-size: 0.96rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-share-created:hover:not(:disabled) {
+  background: var(--primary, #86007D);
+  color: #ffffff;
+}
+
+.btn-share-created:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.share-icon-svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.created-share-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.created-share-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  white-space: nowrap;
+  padding: 0.36rem 0.68rem;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  background-color: #50004b;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.22);
+  pointer-events: none;
 }
 </style>
