@@ -3202,9 +3202,221 @@ const handlePartnerSubmitResolution = async () => {
   }
 };
 
+const normalizePanelMapAddressToken = (val: any) =>
+  String(val || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+
+const getPanelIncidentNaturezaBucket = (inc: any) =>
+  String(inc?.natureza || '').trim().toLowerCase() === 'urbana' ? 'urbana' : 'transito';
+
+const getNormalizedPanelIncidentAddressKey = (inc: any) => {
+  const rua = normalizePanelMapAddressToken(inc?.rua);
+  if (!rua) return '';
+  const bairro = normalizePanelMapAddressToken(inc?.bairro);
+  const cidade = normalizePanelMapAddressToken(inc?.cidade);
+  const estado = normalizePanelMapAddressToken(inc?.estado);
+  return `${getPanelIncidentNaturezaBucket(inc)}__${rua}|${bairro}|${cidade}|${estado}`;
+};
+
+const groupPanelMapIncidents = (rawList: any[]) => {
+  if (!Array.isArray(rawList) || rawList.length === 0) return [];
+
+  const validList = rawList.filter(Boolean);
+  if (validList.length === 0) return [];
+
+  const byId = new Map<string, any>();
+  for (const inc of validList) {
+    if (inc?.id) {
+      byId.set(String(inc.id).trim(), inc);
+    }
+  }
+
+  const resolveRootKey = (inc: any) => {
+    const ownId = inc?.id ? String(inc.id).trim() : '';
+    if (!inc?.possivel_duplicidade) {
+      return ownId || `${inc.latitude}_${inc.longitude}_${inc.timestamp}`;
+    }
+
+    let parentId = inc?.duplicidade_de_id ? String(inc.duplicidade_de_id).trim() : '';
+
+    if (parentId) {
+      const visited = new Set([ownId]);
+      while (parentId && byId.has(parentId) && !visited.has(parentId)) {
+        visited.add(parentId);
+        const parentObj = byId.get(parentId);
+        const nextParent =
+          parentObj?.possivel_duplicidade && parentObj?.duplicidade_de_id
+            ? String(parentObj.duplicidade_de_id).trim()
+            : '';
+        if (nextParent) {
+          parentId = nextParent;
+        } else {
+          break;
+        }
+      }
+      return parentId;
+    }
+
+    if (inc?.possivel_duplicidade && String(inc?.natureza || '').toLowerCase() !== 'urbana') {
+      const incTime = new Date(inc.timestamp).getTime() || 0;
+      for (const other of validList) {
+        if (!other || other === inc || !other.id) continue;
+        if (other.possivel_duplicidade) continue;
+        if (String(other.natureza || '').toLowerCase() === 'urbana') continue;
+        const otherTime = new Date(other.timestamp).getTime() || 0;
+        const diffMs = Math.abs(incTime - otherTime);
+        if (diffMs <= 2 * 60 * 1000) {
+          const distMeters = getDistanceMeters(
+            Number(inc.latitude),
+            Number(inc.longitude),
+            Number(other.latitude),
+            Number(other.longitude)
+          );
+          if (distMeters <= 10) {
+            return String(other.id).trim();
+          }
+        }
+      }
+    }
+
+    return ownId || `${inc.latitude}_${inc.longitude}_${inc.timestamp}`;
+  };
+
+  const n = validList.length;
+  const parentIdx = Array.from({ length: n }, (_, i) => i);
+  const findRoot = (i: number): number => {
+    let curr = i;
+    while (parentIdx[curr] !== curr) {
+      parentIdx[curr] = parentIdx[parentIdx[curr]];
+      curr = parentIdx[curr];
+    }
+    return curr;
+  };
+  const union = (a: number, b: number) => {
+    const rootA = findRoot(a);
+    const rootB = findRoot(b);
+    if (rootA !== rootB) {
+      parentIdx[rootB] = rootA;
+    }
+  };
+
+  const rootKeys = validList.map((inc) => resolveRootKey(inc));
+  const addrKeys = validList.map((inc) => getNormalizedPanelIncidentAddressKey(inc));
+  const natBuckets = validList.map((inc) => getPanelIncidentNaturezaBucket(inc));
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (rootKeys[i] && rootKeys[i] === rootKeys[j]) {
+        union(i, j);
+        continue;
+      }
+      if (natBuckets[i] !== natBuckets[j]) continue;
+
+      if (addrKeys[i] && addrKeys[i] === addrKeys[j]) {
+        union(i, j);
+        continue;
+      }
+
+      const distMeters = getDistanceMeters(
+        Number(validList[i].latitude),
+        Number(validList[i].longitude),
+        Number(validList[j].latitude),
+        Number(validList[j].longitude)
+      );
+      if (Number.isFinite(distMeters) && distMeters < 15) {
+        union(i, j);
+      }
+    }
+  }
+
+  const addressBucketsMap = new Map<number, any[]>();
+  for (let i = 0; i < n; i++) {
+    const r = findRoot(i);
+    if (!addressBucketsMap.has(r)) {
+      addressBucketsMap.set(r, []);
+    }
+    addressBucketsMap.get(r)!.push(validList[i]);
+  }
+
+  const finalGroups: any[][] = [];
+
+  for (const [, bucket] of addressBucketsMap.entries()) {
+    if (bucket.length > 3) {
+      // Mais de 3 denúncias (4+) no mesmo endereço/ponto e mesma natureza: agrupa em 1 pin único
+      finalGroups.push(bucket);
+    } else {
+      // Até 3 denúncias no mesmo endereço: mantém separadas, exceto possíveis duplicidades
+      const dupMap = new Map<string, any[]>();
+      for (const inc of bucket) {
+        const k = resolveRootKey(inc);
+        if (!dupMap.has(k)) {
+          dupMap.set(k, []);
+        }
+        dupMap.get(k)!.push(inc);
+      }
+      for (const [, dupGroup] of dupMap.entries()) {
+        finalGroups.push(dupGroup);
+      }
+    }
+  }
+
+  const groupedResult: any[] = [];
+  const occupiedCoordsCount = new Map<string, number>();
+
+  for (const group of finalGroups) {
+    if (group.length === 1) {
+      const item = group[0];
+      const coordKey = `${Number(item.latitude).toFixed(5)}_${Number(item.longitude).toFixed(5)}`;
+      const seenCount = occupiedCoordsCount.get(coordKey) || 0;
+      occupiedCoordsCount.set(coordKey, seenCount + 1);
+
+      const angle = (seenCount * Math.PI) / 3;
+      const offsetLat = seenCount > 0 ? Math.sin(angle) * 0.000032 : 0;
+      const offsetLng = seenCount > 0 ? Math.cos(angle) * 0.000032 : 0;
+
+      groupedResult.push({
+        ...item,
+        latitude: Number(item.latitude) + offsetLat,
+        longitude: Number(item.longitude) + offsetLng,
+        groupItems: [item],
+        groupCount: 1
+      });
+    } else {
+      const sortedGroup = [...group].sort((a, b) => {
+        const timeA = new Date(a.timestamp).getTime() || 0;
+        const timeB = new Date(b.timestamp).getTime() || 0;
+        return timeB - timeA;
+      });
+
+      const primary = sortedGroup[0];
+      const coordKey = `${Number(primary.latitude).toFixed(5)}_${Number(primary.longitude).toFixed(5)}`;
+      const seenCount = occupiedCoordsCount.get(coordKey) || 0;
+      occupiedCoordsCount.set(coordKey, seenCount + 1);
+
+      const angle = (seenCount * Math.PI) / 3;
+      const offsetLat = seenCount > 0 ? Math.sin(angle) * 0.000032 : 0;
+      const offsetLng = seenCount > 0 ? Math.cos(angle) * 0.000032 : 0;
+
+      groupedResult.push({
+        ...primary,
+        latitude: Number(primary.latitude) + offsetLat,
+        longitude: Number(primary.longitude) + offsetLng,
+        groupItems: sortedGroup,
+        groupCount: sortedGroup.length
+      });
+    }
+  }
+
+  return groupedResult;
+};
+
 const panelMapIncidents = computed(() => {
   const current = mapModalTarget.value;
-  if (!current) return nearbyMapIncidents.value;
+  if (!current) return groupPanelMapIncidents(nearbyMapIncidents.value);
 
   const targetId = String(current.ocorrenciaId || current.id || '').trim();
   const isFromResolvidos = Boolean(current.ocorrenciaFotoUrl !== undefined);
@@ -3241,6 +3453,10 @@ const panelMapIncidents = computed(() => {
     classificacao: current.classificacao,
     verificacao: current.verificacao,
     ativo: current.ativo ?? true,
+    possivel_duplicidade: Boolean(current.possivel_duplicidade),
+    duplicidade_de_id: current.duplicidade_de_id || '',
+    rotulo_duplicidade: current.rotulo_duplicidade || '',
+    motivo_duplicidade: current.motivo_duplicidade || '',
     resolvido: isResolved,
     status_resolucao: isResolved ? 'resolvido' : current.status_resolucao,
     foto_resolucao: isFromResolvidos ? current.fotoUrl || '' : current.foto_resolucao || '',
@@ -3251,7 +3467,7 @@ const panelMapIncidents = computed(() => {
   const others = nearbyMapIncidents.value.filter(
     (inc) => String(inc?.id || '').trim() !== targetId
   );
-  return [currentAsIncident, ...others];
+  return groupPanelMapIncidents([currentAsIncident, ...others]);
 });
 
 const sameSpotOtherIncidentsCount = computed(() => {
