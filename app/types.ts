@@ -34,6 +34,7 @@ export interface IncidentAnalysisResult {
 
 export interface SecondTrafficPhotoAnalysisResult {
   isAppropriate: boolean;
+  possibleCredential?: boolean;
   vehiclePlate: string;
   plates: BoundingBox[];
   faces: BoundingBox[];

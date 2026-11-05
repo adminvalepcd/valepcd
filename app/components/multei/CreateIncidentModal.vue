@@ -786,6 +786,8 @@ const confirmSwitchToTraffic = () => {
 const declineSwitchToTraffic = () => {
   selectedNatureza.value = 'urbana';
   detectedVerificacao.value = '';
+  firstPhotoPossibleCredential.value = false;
+  secondPhotoPossibleCredential.value = false;
   detectedPossibleCredential.value = false;
   detectedIsRearView.value = false;
   showSwitchToTrafficModal.value = false;
@@ -843,6 +845,8 @@ const currentBairro = ref('');
 const currentCidade = ref('');
 const currentEstado = ref('');
 const detectedVerificacao = ref('');
+const firstPhotoPossibleCredential = ref(false);
+const secondPhotoPossibleCredential = ref(false);
 const detectedPossibleCredential = ref(false);
     const detectedIsRearView = ref(false);
 const savedForCredentialReview = ref(false);
@@ -1792,6 +1796,8 @@ onMounted(async () => {
 
     const removeSecondPhoto = () => {
       secondProcessedImageWebp.value = '';
+      secondPhotoPossibleCredential.value = false;
+      detectedPossibleCredential.value = Boolean(firstPhotoPossibleCredential.value);
       activePreviewPhotoIndex.value = 0;
       secondPhotoError.value = '';
       canReanalyzeSecondPhoto.value = false;
@@ -1871,6 +1877,8 @@ const resetToUpload = () => {
   firstPhotoOptimizedBase64.value = '';
   firstPhotoVehiclePlate.value = '';
   detectedVerificacao.value = '';
+  firstPhotoPossibleCredential.value = false;
+  secondPhotoPossibleCredential.value = false;
   detectedPossibleCredential.value = false;
   detectedIsRearView.value = false;
   savedForCredentialReview.value = false;
@@ -1986,6 +1994,9 @@ const processSelectedImage = async (file) => {
   firstPhotoHash.value = '';
   firstPhotoOptimizedBase64.value = '';
   firstPhotoVehiclePlate.value = '';
+  firstPhotoPossibleCredential.value = false;
+  secondPhotoPossibleCredential.value = false;
+  detectedPossibleCredential.value = false;
   detectedIsRearView.value = false;
   analyzingStatusText.value = 'Identificando localização...';
 
@@ -2154,6 +2165,8 @@ const processSelectedImage = async (file) => {
       urbanDescricao.value = (analysis.urbanDescription || '').trim().slice(0, 300);
       pendingVehicleVerification.value = normalizeVerificacao(analysis.verification);
       detectedVerificacao.value = '';
+      firstPhotoPossibleCredential.value = false;
+      secondPhotoPossibleCredential.value = false;
       detectedPossibleCredential.value = false;
       detectedIsRearView.value = false;
       showSwitchToTrafficModal.value = Boolean(analysis.hasTrafficInfractionVehicle);
@@ -2178,7 +2191,9 @@ const processSelectedImage = async (file) => {
       }
 
       detectedVerificacao.value = normalizedVerif;
-      detectedPossibleCredential.value = Boolean(analysis.possibleCredential);
+      firstPhotoPossibleCredential.value = Boolean(analysis.possibleCredential);
+      secondPhotoPossibleCredential.value = false;
+      detectedPossibleCredential.value = firstPhotoPossibleCredential.value;
       detectedIsRearView.value = Boolean(analysis.isRearView);
       firstPhotoHash.value = computedHash || '';
       firstPhotoOptimizedBase64.value = optimizedBase64;
@@ -2288,7 +2303,8 @@ const processSelectedImage = async (file) => {
             const isSecondInappropriate = isInappropriatePhotoRejection(cachedSecondData);
             const needsSecondPlateRefreshAfterReload =
               !wasSecondRejected &&
-              cachedSecondData.vehiclePlate === undefined;
+              (cachedSecondData.vehiclePlate === undefined ||
+                cachedSecondData.possibleCredential === undefined);
             const canSecondAttemptAgain =
               wasSecondRejected &&
               !isSecondInappropriate &&
@@ -2305,7 +2321,7 @@ const processSelectedImage = async (file) => {
         }
 
         if (!secondAnalysis) {
-          analyzingStatusText.value = 'Verificando placa e aplicando máscaras na 2ª foto...';
+          analyzingStatusText.value = 'Verificando placa, credencial e aplicando máscaras na 2ª foto...';
           secondAnalysis = await analyzeSecondTrafficPhoto(geminiClient, secondOptimizedBase64);
           secondAttemptsUsed = secondAttemptsUsed + 1;
           if (secondCacheKey && secondAnalysis && !secondAnalysis.apiError) {
@@ -2355,6 +2371,10 @@ const processSelectedImage = async (file) => {
           secondAnalysis.faces
         );
 
+        secondPhotoPossibleCredential.value = Boolean(secondAnalysis.possibleCredential);
+        detectedPossibleCredential.value = Boolean(
+          firstPhotoPossibleCredential.value || secondPhotoPossibleCredential.value
+        );
         secondProcessedImageWebp.value = finalSecondWebp;
         activePreviewPhotoIndex.value = 1;
         secondPhotoError.value = '';

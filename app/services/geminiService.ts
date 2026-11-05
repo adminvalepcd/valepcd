@@ -471,7 +471,8 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
 
 /**
  * Análise exclusiva para a 2ª foto de uma denúncia de infração de trânsito:
- * - Aplica somente as máscaras de privacidade LGPD (placas e rostos/cabeça)
+ * - Aplica as máscaras de privacidade LGPD (placas e rostos/cabeça)
+ * - Verifica se há possível credencial visível no painel/para-brisa ("possibleCredential")
  * - Extrai momentaneamente a placa do veículo (vehiclePlate) para verificar que corresponde ao mesmo veículo da 1ª foto
  */
 export async function analyzeSecondTrafficPhoto(
@@ -480,6 +481,7 @@ export async function analyzeSecondTrafficPhoto(
 ): Promise<SecondTrafficPhotoAnalysisResult> {
   const defaultFailure: SecondTrafficPhotoAnalysisResult = {
     isAppropriate: false,
+    possibleCredential: false,
     vehiclePlate: '',
     plates: [],
     faces: [],
@@ -495,14 +497,18 @@ export async function analyzeSecondTrafficPhoto(
     };
   }
 
-  const secondPhotoPrompt = `Audite a segunda foto da denúncia de trânsito exclusivamente para colocar as máscaras de privacidade (LGPD) em placas e rostos e ler a placa do veículo para conferência com a 1ª foto. Retorne o JSON:
+  const secondPhotoPrompt = `Audite a segunda foto (frontal/complementar) da denúncia de trânsito para verificar se há credencial no painel/para-brisa, ler a placa do veículo para conferência com a 1ª foto e colocar as máscaras de privacidade (LGPD) em placas e rostos. Retorne o JSON:
 
 DIRETRIZES:
 1. Moderação ("isAppropriate"):
 - "isAppropriate": true (imagem adequada). false APENAS para conteúdo impróprio (pornografia, violência, gore).
-2. Leitura da Placa para Conferência ("vehiclePlate"):
+2. Credencial no Para-brisa / Painel ("possibleCredential"):
+- Inspecione a BASE (parte inferior) do para-brisa e o topo do painel do veículo principal em 3 zonas: esquerda, centro e direita (acima do volante).
+- true: visão dianteira/frontal com QUALQUER cartão, papel, documento, etiqueta retangular ou MANCHA CLARA/BRANCA GEOMÉTRICA (faixa, tira, trapézio ou retângulo branco/claro) na base do para-brisa ou deitada sobre o painel (mesmo pequena, achatada pela perspectiva, desfocada ou sob reflexo do vidro).
+- false: visão traseira/lateral sem visão do painel, insulfilm 100% opaco impedindo visão interna, base do para-brisa/painel totalmente escura/limpa, ou quando houver adesivo/tag SOMENTE no topo do vidro (perto do retrovisor central) com o painel vazio.
+3. Leitura da Placa para Conferência ("vehiclePlate"):
 - "vehiclePlate": texto alfanumérico (apenas letras e números em maiúsculas, sem espaços ou hífens, ex: "ABC1D23") da placa do veículo principal na foto, se estiver visível e legível. Se a placa não estiver visível ou legível, retorne "".
-3. Máscaras de Privacidade LGPD ("plates" e "faces"):
+4. Máscaras de Privacidade LGPD ("plates" e "faces"):
 - "plates": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem. Se não houver placas visíveis, retorne [].
 - "faces": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) delimitando ESTRITAMENTE a região do ROSTO/CABEÇA humana (ymin no topo da testa/cabeça e ymax no queixo; xmin e xmax de orelha a orelha). PROIBIDO incluir pescoço, ombros, tronco, roupas, pernas ou o corpo inteiro da pessoa/pedestre. Se não houver rostos visíveis, retorne [].`;
 
@@ -545,6 +551,10 @@ DIRETRIZES:
         type: Type.BOOLEAN,
         description: 'True (imagem adequada). False APENAS para conteúdo impróprio (pornografia, violência, gore).'
       },
+      possibleCredential: {
+        type: Type.BOOLEAN,
+        description: 'True se em visão dianteira/frontal houver QUALQUER cartão, papel, documento ou mancha clara/branca geométrica (faixa, tira, trapézio ou retângulo claro) na base do para-brisa ou sobre o painel do veículo (mesmo pequeno, desfocado ou sob reflexo).'
+      },
       vehiclePlate: {
         type: Type.STRING,
         description: 'Texto alfanumérico (apenas letras e números em maiúsculas, sem espaços ou hífens, ex: "ABC1D23") da placa do veículo principal na imagem, se visível e legível. Caso contrário, "".'
@@ -560,7 +570,7 @@ DIRETRIZES:
         items: faceBox2dItemSchema
       }
     },
-    propertyOrdering: ['isAppropriate', 'vehiclePlate', 'plates', 'faces']
+    propertyOrdering: ['isAppropriate', 'possibleCredential', 'vehiclePlate', 'plates', 'faces']
   };
 
   for (const model of CANDIDATE_MODELS) {
@@ -582,16 +592,18 @@ DIRETRIZES:
 
       const parsed = JSON.parse(jsonMatch[0]);
       const isAppropriate = Boolean(parsed.isAppropriate);
+      const possibleCredential = Boolean(parsed.possibleCredential);
       const vehiclePlate = normalizeVehiclePlate(parsed.vehiclePlate);
       const plates = sanitizeAndNormalizeBoxes(parsed.plates);
       const faces = sanitizeAndNormalizeBoxes(parsed.faces);
 
       console.log(
-        `[geminiService] Sucesso (2ª foto trânsito) com ${model}. Placas mascaradas: ${plates.length}, Rostos mascarados: ${faces.length}, Placa legível: ${Boolean(vehiclePlate)}`
+        `[geminiService] Sucesso (2ª foto trânsito) com ${model}. Possível credencial: ${possibleCredential}, Placas mascaradas: ${plates.length}, Rostos mascarados: ${faces.length}, Placa legível: ${Boolean(vehiclePlate)}`
       );
 
       return {
         isAppropriate,
+        possibleCredential,
         vehiclePlate,
         plates,
         faces,
