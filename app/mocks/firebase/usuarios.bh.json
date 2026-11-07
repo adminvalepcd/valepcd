@@ -1,0 +1,41 @@
+[
+  {
+    "id": "mock-uid-admin-bh",
+    "uid": "mock-uid-admin-bh",
+    "role": "admin",
+    "nome": "Admin",
+    "sobrenome": "Multei BH",
+    "email": "admin@valepcd.com.br",
+    "cidade": "Belo Horizonte",
+    "estado": "MG",
+    "ativo": true,
+    "createdAt": "2026-09-01T12:00:00.000Z",
+    "updatedAt": "2026-11-07T12:00:00.000Z"
+  },
+  {
+    "id": "mock-uid-parceria-pbh",
+    "uid": "mock-uid-parceria-pbh",
+    "role": "parceria",
+    "nome": "Parceria",
+    "sobrenome": "PBH Acessibilidade",
+    "email": "parceria@pbh.gov.br",
+    "cidade": "Belo Horizonte",
+    "estado": "MG",
+    "ativo": true,
+    "createdAt": "2026-09-15T14:30:00.000Z",
+    "updatedAt": "2026-11-07T12:00:00.000Z"
+  },
+  {
+    "id": "mock-uid-bhtrans",
+    "uid": "mock-uid-bhtrans",
+    "role": "parceria",
+    "nome": "Fiscalização",
+    "sobrenome": "BHTrans Mobilidade",
+    "email": "mobilidade@bhtrans.pbh.gov.br",
+    "cidade": "Belo Horizonte",
+    "estado": "MG",
+    "ativo": true,
+    "createdAt": "2026-10-10T09:15:00.000Z",
+    "updatedAt": "2026-11-06T16:00:00.000Z"
+  }
+]

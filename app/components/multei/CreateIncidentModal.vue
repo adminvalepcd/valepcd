@@ -3,6 +3,10 @@
     <div
       ref="modalCardRef"
       class="modal-card"
+      :class="{
+        'is-step-success': step === 'success',
+        'is-preparing-success': step === 'success' && isPreparingSuccessAd
+      }"
       role="dialog"
       aria-modal="true"
       aria-labelledby="create-incident-modal-title"
@@ -10,7 +14,7 @@
       <!-- Cabeçalho -->
       <div class="modal-header">
         <h2 id="create-incident-modal-title" class="modal-title">{{ modalTitle }}</h2>
-        <button class="btn-close" @click="emit('close')" aria-label="Fechar" :disabled="isAnalyzing || isSaving">✕</button>
+        <button class="btn-close" @click="emit('close')" aria-label="Fechar" :disabled="isAnalyzing || isSaving || isPreparingSuccessAd">✕</button>
       </div>
 
       <!-- Bloqueio: Exige GPS Ativo para realizar denúncia -->
@@ -602,7 +606,11 @@
       </div>
 
       <!-- Etapa 4: Sucesso -->
-      <div v-if="step === 'success'" class="step-success">
+      <div
+        v-if="step === 'success'"
+        class="step-success"
+        :aria-hidden="isPreparingSuccessAd ? 'true' : undefined"
+      >
         <div class="success-icon">✅</div>
         <h3 class="success-title">Ocorrência Registrada!</h3>
         <p v-if="savedForCredentialReview" class="success-desc">
@@ -611,6 +619,17 @@
         <p v-else class="success-desc">
           A infração foi salva e já está visível no mapa.
         </p>
+
+        <!-- Banner pequeno (320x50) acima dos botões Compartilhar / Fechar -->
+        <div v-if="successAdSlot" class="success-ad-banner-slot">
+          <AdSenseBanner
+            :ad-slot="successAdSlot"
+            :width="320"
+            :height="50"
+            :timeout-ms="2500"
+            @ready="handleSuccessAdReady"
+          />
+        </div>
 
         <div class="success-actions-row mt-4">
           <div
@@ -651,6 +670,18 @@
           </button>
         </div>
       </div>
+
+      <!-- Camada de carregamento exibida enquanto a propaganda da tela de sucesso é preparada -->
+      <div
+        v-if="step === 'success' && isPreparingSuccessAd"
+        class="success-ad-loading-veil"
+        role="status"
+        aria-live="polite"
+      >
+        <LoadingSpinner />
+        <p class="success-ad-loading-title">Finalizando registro...</p>
+        <span class="success-ad-loading-sub">Preparando confirmação da ocorrência</span>
+      </div>
     </div>
   </div>
 </template>
@@ -658,6 +689,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import LoadingSpinner from './LoadingSpinner.vue';
+import AdSenseBanner from '../AdSenseBanner.vue';
 import {
   initializeGeminiClient,
   analyzeIncidentImage,
@@ -794,10 +826,20 @@ const declineSwitchToTraffic = () => {
 };
 const isAnalyzing = ref(false);
 const isSaving = ref(false);
+const isPreparingSuccessAd = ref(false);
+let successAdSafetyTimer = null;
+
+const handleSuccessAdReady = () => {
+  if (successAdSafetyTimer) {
+    clearTimeout(successAdSafetyTimer);
+    successAdSafetyTimer = null;
+  }
+  isPreparingSuccessAd.value = false;
+};
 
 const { focusInitialElement } = useModalAccessibility({
   modalRef: modalCardRef,
-  canClose: () => !isAnalyzing.value && !isSaving.value,
+  canClose: () => !isAnalyzing.value && !isSaving.value && !isPreparingSuccessAd.value,
   onRequestClose: () => {
     if (showCamera.value) {
       showCamera.value = false;
@@ -814,8 +856,9 @@ const { focusInitialElement } = useModalAccessibility({
 });
 
 watch(
-  [step, showCamera, showSwitchToTrafficModal, () => props.isGpsEnabled],
+  [step, isPreparingSuccessAd, showCamera, showSwitchToTrafficModal, () => props.isGpsEnabled],
   () => {
+    if (isPreparingSuccessAd.value) return;
     nextTick(() => {
       focusInitialElement();
     });
@@ -1562,6 +1605,9 @@ const extractCityAndStateFromText = (text) => {
 const config = useRuntimeConfig();
 const geminiApiKey = config.public.geminiApiKey;
 const geminiClient = initializeGeminiClient(geminiApiKey);
+const successAdSlot = computed(() =>
+  String(config.public.adsenseSuccessSlot || '5711602967').trim()
+);
 
 let latestAddressRequestId = 0;
 const lastGeocodedCoords = reactive({
@@ -1828,6 +1874,14 @@ onBeforeUnmount(() => {
   if (addressValidationTimer) {
     clearTimeout(addressValidationTimer);
     addressValidationTimer = null;
+  }
+  if (successAdSafetyTimer) {
+    clearTimeout(successAdSafetyTimer);
+    successAdSafetyTimer = null;
+  }
+  if (createdShareTimer) {
+    clearTimeout(createdShareTimer);
+    createdShareTimer = null;
   }
 });
 
@@ -2770,6 +2824,20 @@ const handleSaveIncident = async () => {
     };
     createdShareFeedback.value = '';
     emit('incidentCreated', newIncident);
+
+    if (successAdSafetyTimer) {
+      clearTimeout(successAdSafetyTimer);
+      successAdSafetyTimer = null;
+    }
+    if (successAdSlot.value) {
+      isPreparingSuccessAd.value = true;
+      successAdSafetyTimer = setTimeout(() => {
+        isPreparingSuccessAd.value = false;
+        successAdSafetyTimer = null;
+      }, 3000);
+    } else {
+      isPreparingSuccessAd.value = false;
+    }
     step.value = 'success';
   } catch (err) {
     console.error('Erro ao salvar no Firebase:', err);
@@ -2853,6 +2921,7 @@ const handleShareCreatedIncident = async () => {
 }
 
 .modal-card {
+  position: relative;
   background: var(--surface, #ffffff);
   border-radius: var(--radius-lg, 24px);
   padding: 2rem;
@@ -2863,6 +2932,10 @@ const handleShareCreatedIncident = async () => {
   overscroll-behavior: contain;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
   border: 1px solid var(--border, rgba(0, 0, 0, 0.1));
+}
+
+.modal-card.is-preparing-success {
+  overflow: hidden;
 }
 
 .modal-header {
@@ -4555,7 +4628,58 @@ const handleShareCreatedIncident = async () => {
   font-weight: 500;
 }
 
+.success-ad-banner-slot {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.success-ad-loading-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  background: var(--surface, #ffffff);
+  border-radius: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 2rem 1.25rem;
+  text-align: center;
+}
+
+.success-ad-loading-title {
+  margin: 0.25rem 0 0;
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: var(--text, #0f172a);
+}
+
+.success-ad-loading-sub {
+  font-size: 0.86rem;
+  color: var(--text-muted, #475569);
+}
+
+@media (max-width: 460px) {
+  .modal-backdrop {
+    padding: 0.5rem;
+  }
+
+  .modal-card.is-step-success {
+    padding: 1.5rem 0.65rem;
+  }
+
+  .modal-card.is-step-success .step-success {
+    padding: 1.25rem 0.25rem 0.5rem;
+  }
+}
+
 .success-actions-row {
+  position: relative;
+  z-index: 50;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4606,7 +4730,7 @@ const handleShareCreatedIncident = async () => {
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 40;
+  z-index: 60;
   white-space: nowrap;
   padding: 0.36rem 0.68rem;
   border-radius: 8px;

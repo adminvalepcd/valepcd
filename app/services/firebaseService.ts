@@ -56,6 +56,41 @@ import {
   isValidBrazilUF,
   checkIfCoordsInBrazil
 } from './geoService';
+import {
+  isFirebaseMockEnabled,
+  resetFirebaseMockStore,
+  MOCK_BH_DEFAULT_CENTER,
+  resolveMockPhotoUrl,
+  mockFetchIncidentsByVisibleArea,
+  mockFindRecentNearbyTrafficIncidents,
+  mockFetchIncidentImageAsBase64,
+  mockSaveIncidentToFirebase,
+  mockReportIncidentInFirebase,
+  mockSubmitUrbanResolutionToFirebase,
+  mockRecalculateAndSyncMulteiStats,
+  mockFetchMulteiStatsOnce,
+  mockSubscribeToMulteiStatsDocument,
+  mockResolveMulteiPanelUserProfile,
+  mockGetPanelSessionRemainingMs,
+  mockRefreshCurrentMulteiPanelProfile,
+  mockSignInMulteiPanel,
+  mockSignOutMulteiPanel,
+  mockSubscribeToMulteiPanelAuth,
+  mockFetchPanelUsersFromFirebase,
+  mockCreatePanelUserInFirebase,
+  mockUpdatePanelUserInFirebase,
+  mockTogglePanelUserActiveInFirebase,
+  mockDeletePanelUserFromFirebase,
+  mockSendPanelUserPasswordReset,
+  mockFetchReportedIncidentsForPanel,
+  mockReviewReportedIncidentInFirebase,
+  mockFetchPartnerIncidentsFromFirebase,
+  mockResolveUrbanIncidentByPartnerInFirebase,
+  mockFetchResolvedIncidentsForPanel,
+  mockReviewResolvedIncidentInFirebase
+} from './firebaseMockService';
+
+export { isFirebaseMockEnabled, resetFirebaseMockStore, MOCK_BH_DEFAULT_CENTER };
 
 export const OCORRENCIAS_COLLECTION = 'ocorrencias';
 export const RESOLVIDOS_COLLECTION = 'resolvidos';
@@ -506,6 +541,9 @@ export async function fetchIncidentsByVisibleArea(options: {
   radiusKm?: number;
   forceRefresh?: boolean;
 }): Promise<ReportedIncident[]> {
+  if (isFirebaseMockEnabled()) {
+    return mockFetchIncidentsByVisibleArea(options);
+  }
   try {
     let centerLat: number;
     let centerLng: number;
@@ -663,6 +701,9 @@ export async function findRecentNearbyTrafficIncidents(
   windowMs = 2 * 60 * 1000,
   radiusMeters = 10
 ): Promise<ReportedIncident[]> {
+  if (isFirebaseMockEnabled()) {
+    return mockFindRecentNearbyTrafficIncidents(latitude, longitude, windowMs, radiusMeters);
+  }
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return [];
   }
@@ -737,6 +778,9 @@ export async function findRecentNearbyTrafficIncidents(
 export async function fetchIncidentImageAsBase64(
   incident: Partial<ReportedIncident>
 ): Promise<string | null> {
+  if (isFirebaseMockEnabled()) {
+    return mockFetchIncidentImageAsBase64(incident);
+  }
   if (!incident) return null;
 
   const id = (incident.id || '').trim();
@@ -833,6 +877,9 @@ export async function saveIncidentToFirebase(
   duplicidade_de_id?: string;
   rotulo_duplicidade?: string;
 }> {
+  if (isFirebaseMockEnabled()) {
+    return mockSaveIncidentToFirebase(incident);
+  }
   const latNum = Number(incident.latitude);
   const lngNum = Number(incident.longitude);
   if (!isCoordinateInBrazilBounds(latNum, lngNum)) {
@@ -1220,6 +1267,9 @@ export async function reportIncidentInFirebase(
   reason: string,
   incidentData?: Partial<ReportedIncident>
 ): Promise<{ success: boolean; deactivated: boolean; totalReports: number }> {
+  if (isFirebaseMockEnabled()) {
+    return mockReportIncidentInFirebase(id, reason, incidentData);
+  }
   const cleanId = (id || '').trim();
   if (!cleanId) {
     throw new Error('ID da ocorrência ausente para denúncia.');
@@ -1448,6 +1498,9 @@ export async function submitUrbanResolutionToFirebase(
   id: string;
   fotoUrl: string;
 }> {
+  if (isFirebaseMockEnabled()) {
+    return mockSubmitUrbanResolutionToFirebase(payload);
+  }
   const ocorrenciaId = (payload.ocorrenciaId || '').trim();
   if (!ocorrenciaId) {
     throw new Error('ID da ocorrência ausente para registro de resolução.');
@@ -1727,6 +1780,9 @@ function adjustCachedStats(deltas: {
  * e grava o documento único `estatisticas/resumo`.
  */
 export async function recalculateAndSyncMulteiStats(forceRefresh = false): Promise<MulteiStats> {
+  if (isFirebaseMockEnabled()) {
+    return mockRecalculateAndSyncMulteiStats(forceRefresh);
+  }
   if (!forceRefresh) {
     const cached = loadCachedStatsEntry();
     if (cached && Date.now() - cached.fetchedAt < STATS_CACHE_TTL_MS) {
@@ -1823,6 +1879,9 @@ export async function fetchMulteiStatsOnce(
   onCached?: (stats: MulteiStats) => void,
   options?: { forceRefresh?: boolean }
 ): Promise<MulteiStats> {
+  if (isFirebaseMockEnabled()) {
+    return mockFetchMulteiStatsOnce(onCached, options);
+  }
   const cachedEntry = loadCachedStatsEntry();
   if (cachedEntry?.stats && onCached) {
     onCached(cachedEntry.stats);
@@ -1892,6 +1951,9 @@ export function subscribeToMulteiStatsDocument(
   onUpdate: (stats: MulteiStats) => void
 ): () => void {
   if (typeof window === 'undefined') return () => {};
+  if (isFirebaseMockEnabled()) {
+    return mockSubscribeToMulteiStatsDocument(onUpdate);
+  }
   try {
     const { db } = getFirebaseServices();
     const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
@@ -2251,6 +2313,9 @@ export async function seedIncidentImageCache(
 export async function getCachedIncidentImageUrl(url: string): Promise<string> {
   if (!url || typeof window === 'undefined') return url;
   if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+  if (isFirebaseMockEnabled() && url.startsWith('/api/multei/mock-photo')) {
+    return resolveMockPhotoUrl(url);
+  }
 
   const existingMemoryUrl = inMemoryImageBlobUrls.get(url);
   if (existingMemoryUrl) {
@@ -2319,6 +2384,9 @@ export async function resolveMulteiPanelUserProfile(
   user: User,
   options?: { forceRefresh?: boolean }
 ): Promise<MulteiPanelUserProfile> {
+  if (isFirebaseMockEnabled()) {
+    return mockResolveMulteiPanelUserProfile(user, options);
+  }
   if (!options?.forceRefresh && user?.uid) {
     const cached = recentPanelProfileCache.get(user.uid);
     if (cached && Date.now() - cached.fetchedAt < PANEL_PROFILE_CACHE_TTL_MS) {
@@ -2606,6 +2674,9 @@ function getValidPanelSessionMeta(user: User): PanelSessionMeta | null {
  * retorna `0` para encerrar a sessão e exigir novo login imediatamente.
  */
 export function getPanelSessionRemainingMs(user?: User | null): number {
+  if (isFirebaseMockEnabled()) {
+    return mockGetPanelSessionRemainingMs(user);
+  }
   if (!user) return 0;
   const meta = getValidPanelSessionMeta(user);
   if (!meta) return 0;
@@ -2615,6 +2686,9 @@ export function getPanelSessionRemainingMs(user?: User | null): number {
 
 export async function refreshCurrentMulteiPanelProfile(): Promise<MulteiPanelUserProfile | null> {
   if (typeof window === 'undefined') return null;
+  if (isFirebaseMockEnabled()) {
+    return mockRefreshCurrentMulteiPanelProfile();
+  }
   try {
     const { auth } = getFirebaseServices();
     if (!auth.currentUser) {
@@ -2638,6 +2712,9 @@ export async function signInMulteiPanel(
   email: string,
   password: string
 ): Promise<MulteiPanelUserProfile> {
+  if (isFirebaseMockEnabled()) {
+    return mockSignInMulteiPanel(email, password);
+  }
   const { auth } = getFirebaseServices();
   const cleanEmail = (email || '').trim();
   if (!cleanEmail || !password) {
@@ -2663,6 +2740,10 @@ export async function signInMulteiPanel(
 
 export async function signOutMulteiPanel(): Promise<void> {
   clearPanelSessionMeta();
+  if (isFirebaseMockEnabled()) {
+    await mockSignOutMulteiPanel();
+    return;
+  }
   const { auth } = getFirebaseServices();
   await signOut(auth);
 }
@@ -2672,6 +2753,9 @@ export function subscribeToMulteiPanelAuth(
   onSessionExpired?: () => void
 ): () => void {
   if (typeof window === 'undefined') return () => {};
+  if (isFirebaseMockEnabled()) {
+    return mockSubscribeToMulteiPanelAuth(onChange, onSessionExpired);
+  }
   try {
     const { auth } = getFirebaseServices();
     let expiryTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -2816,6 +2900,9 @@ export function subscribeToMulteiPanelAuth(
  * Lista todos os usuários cadastrados na coleção `usuarios` para a aba de Gestão de Usuários.
  */
 export async function fetchPanelUsersFromFirebase(): Promise<MulteiPanelManagedUser[]> {
+  if (isFirebaseMockEnabled()) {
+    return mockFetchPanelUsersFromFirebase();
+  }
   const { db } = getFirebaseServices();
   const colRef = collection(db, USUARIOS_COLLECTION);
   const snap = await getDocs(colRef);
@@ -2892,6 +2979,9 @@ export interface UpdatePanelUserPayload {
 export async function createPanelUserInFirebase(
   payload: CreatePanelUserPayload
 ): Promise<MulteiPanelManagedUser> {
+  if (isFirebaseMockEnabled()) {
+    return mockCreatePanelUserInFirebase(payload);
+  }
   const { db } = getFirebaseServices();
 
   const cleanRole: 'admin' | 'parceria' = payload.role === 'parceria' ? 'parceria' : 'admin';
@@ -2989,6 +3079,9 @@ export async function updatePanelUserInFirebase(
   docId: string,
   payload: UpdatePanelUserPayload
 ): Promise<void> {
+  if (isFirebaseMockEnabled()) {
+    return mockUpdatePanelUserInFirebase(docId, payload);
+  }
   const { db } = getFirebaseServices();
   if (!docId) {
     throw new Error('ID do usuário inválido.');
@@ -3043,6 +3136,9 @@ export async function togglePanelUserActiveInFirebase(
   docId: string,
   ativo: boolean
 ): Promise<void> {
+  if (isFirebaseMockEnabled()) {
+    return mockTogglePanelUserActiveInFirebase(docId, ativo);
+  }
   const { db } = getFirebaseServices();
   if (!docId) {
     throw new Error('ID do usuário inválido.');
@@ -3062,6 +3158,9 @@ export async function togglePanelUserActiveInFirebase(
  * Exclui o registro do usuário na coleção `usuarios`.
  */
 export async function deletePanelUserFromFirebase(docId: string): Promise<void> {
+  if (isFirebaseMockEnabled()) {
+    return mockDeletePanelUserFromFirebase(docId);
+  }
   const { db } = getFirebaseServices();
   if (!docId) {
     throw new Error('ID do usuário inválido.');
@@ -3074,6 +3173,9 @@ export async function deletePanelUserFromFirebase(docId: string): Promise<void> 
  * Envia e-mail oficial do Firebase Authentication para redefinição de senha do usuário.
  */
 export async function sendPanelUserPasswordReset(email: string): Promise<void> {
+  if (isFirebaseMockEnabled()) {
+    return mockSendPanelUserPasswordReset(email);
+  }
   const { auth } = getFirebaseServices();
   const cleanEmail = (email || '').trim().toLowerCase();
   if (!cleanEmail) {
@@ -3088,6 +3190,9 @@ export async function sendPanelUserPasswordReset(email: string): Promise<void> {
  * da mesma `ocorrenciaId` para exibir o histórico completo, selo de 2ª/3ª vez reportada e opções de duplicidade.
  */
 export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncidentPanelItem[]> {
+  if (isFirebaseMockEnabled()) {
+    return mockFetchReportedIncidentsForPanel();
+  }
   const { db } = getFirebaseServices();
   const reportadasCol = collection(db, REPORTADAS_COLLECTION);
   const dupQuery = query(
@@ -3515,6 +3620,9 @@ export async function reviewReportedIncidentInFirebase(params: {
   observacaoAdmin?: string;
   reviewerEmail?: string;
 }): Promise<ReportedIncidentPanelItem> {
+  if (isFirebaseMockEnabled()) {
+    return mockReviewReportedIncidentInFirebase(params);
+  }
   const { item, decision, observacaoAdmin = '', reviewerEmail = '' } = params;
   const ocorrenciaId = (item.ocorrenciaId || item.id || '').trim();
   if (!ocorrenciaId) {
@@ -3761,6 +3869,9 @@ export async function fetchPartnerIncidentsFromFirebase(options: {
   center?: { latitude: number; longitude: number } | null;
   radiusKm?: number;
 }): Promise<ReportedIncident[]> {
+  if (isFirebaseMockEnabled()) {
+    return mockFetchPartnerIncidentsFromFirebase(options);
+  }
   const { db } = getFirebaseServices();
   const colRef = collection(db, OCORRENCIAS_COLLECTION);
   const targetCityKey = normalizeCityKey(options.cidade);
@@ -3982,6 +4093,9 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
   dataResolucao: string;
   descricaoResolucao: string;
 }> {
+  if (isFirebaseMockEnabled()) {
+    return mockResolveUrbanIncidentByPartnerInFirebase(payload);
+  }
   const ocorrenciaId = (payload.ocorrenciaId || '').trim();
   if (!ocorrenciaId) {
     throw new Error('ID da ocorrência ausente para registro de resolução.');
@@ -4203,6 +4317,9 @@ export async function fetchResolvedIncidentsForPanel(options?: {
   cidade?: string;
   estado?: string;
 }): Promise<ResolvedIncidentPanelItem[]> {
+  if (isFirebaseMockEnabled()) {
+    return mockFetchResolvedIncidentsForPanel(options);
+  }
   const { db } = getFirebaseServices();
   const snap = await getDocs(collection(db, RESOLVIDOS_COLLECTION));
 
@@ -4334,6 +4451,9 @@ export async function reviewResolvedIncidentInFirebase(params: {
   observacaoAdmin?: string;
   reviewerEmail?: string;
 }): Promise<ResolvedIncidentPanelItem> {
+  if (isFirebaseMockEnabled()) {
+    return mockReviewResolvedIncidentInFirebase(params);
+  }
   const { item, decision, observacaoAdmin = '', reviewerEmail = '' } = params;
   const docId = (item.id || item.ocorrenciaId || '').trim();
   const ocorrenciaId = (item.ocorrenciaId || item.id || '').trim();

@@ -1,7 +1,7 @@
 <template>
   <div 
     class="modal-backdrop"
-    @click="emit('close')"
+    @click="handleBackdropClick"
   >
     <div 
       ref="modalCardRef"
@@ -542,7 +542,7 @@
               type="button" 
               class="btn-close" 
               @click="handleCancelReport" 
-              :disabled="isSubmittingReport"
+              :disabled="isSubmittingReport || isPreparingReportAd || isWatchingReportAd"
             >✕</button>
           </div>
 
@@ -562,7 +562,7 @@
               class="report-textarea"
               rows="4"
               placeholder="Ex: Não há vaga PCD demarcada neste local, o carro possui credencial visível no painel, a foto não corresponde ao endereço, etc."
-              :disabled="isSubmittingReport"
+              :disabled="isSubmittingReport || isPreparingReportAd || isWatchingReportAd"
             ></textarea>
 
             <p v-if="reportError" class="report-error-msg">{{ reportError }}</p>
@@ -572,7 +572,7 @@
                 type="button"
                 class="btn btn-secondary"
                 @click="handleCancelReport"
-                :disabled="isSubmittingReport"
+                :disabled="isSubmittingReport || isPreparingReportAd || isWatchingReportAd"
               >
                 Cancelar
               </button>
@@ -580,10 +580,10 @@
                 type="button"
                 class="btn btn-danger"
                 @click="handleSubmitReport"
-                :disabled="isSubmittingReport"
+                :disabled="isSubmittingReport || isPreparingReportAd || isWatchingReportAd"
               >
                 <span v-if="isSubmittingReport">Enviando denúncia...</span>
-                <span v-else>Confirmar e Desativar</span>
+                <span v-else>{{ adClosedBeforeReward ? 'Assistir e confirmar' : 'Confirmar e Desativar' }}</span>
               </button>
             </div>
           </div>
@@ -610,6 +610,11 @@ import {
   resizeImageForServer,
   shareIncidentWithTemplate
 } from '../../services/imageProcessor';
+import {
+  preloadRewardedAd,
+  prepareRewardedAdWithTimeout,
+  disposeRewardedAdSession
+} from '../../services/rewardedAdService';
 import { useModalAccessibility } from '../../composables/useModalAccessibility';
 import LoadingSpinner from './LoadingSpinner.vue';
 
@@ -860,6 +865,12 @@ const reportReason = ref('');
 const isSubmittingReport = ref(false);
 const reportError = ref('');
 const reportSuccess = ref(false);
+const gamRewardedReportUnit = computed(() =>
+  String(config.public?.gamRewardedReportUnit || '/23391888447/multei_report_rewarded').trim()
+);
+const isPreparingReportAd = ref(false);
+const isWatchingReportAd = ref(false);
+const adClosedBeforeReward = ref(false);
 
 const isResolveModalOpen = ref(false);
 const showResolveCamera = ref(false);
@@ -968,12 +979,19 @@ const handleOpenReport = () => {
   reportReason.value = isCurrentDuplicate.value ? 'Ocorrência duplicada' : '';
   reportError.value = '';
   reportSuccess.value = false;
+  isPreparingReportAd.value = false;
+  isWatchingReportAd.value = false;
+  adClosedBeforeReward.value = false;
+  preloadRewardedAd(gamRewardedReportUnit.value);
 };
 
 const handleCancelReport = () => {
-  if (!isSubmittingReport.value) {
-    isReportModalOpen.value = false;
+  if (isSubmittingReport.value || isPreparingReportAd.value || isWatchingReportAd.value) {
+    return;
   }
+  isReportModalOpen.value = false;
+  adClosedBeforeReward.value = false;
+  disposeRewardedAdSession();
 };
 
 const handleOpenResolve = () => {
@@ -1098,12 +1116,7 @@ const handleSubmitResolve = async () => {
   }
 };
 
-const handleSubmitReport = async () => {
-  if (!reportReason.value.trim()) {
-    reportError.value = 'Por favor, descreva o problema observado nesta ocorrência.';
-    return;
-  }
-
+const executeReportSubmission = async () => {
   isSubmittingReport.value = true;
   reportError.value = '';
 
@@ -1112,6 +1125,7 @@ const handleSubmitReport = async () => {
     const id = targetIncident?.id || '';
     const res = await reportIncidentInFirebase(id, reportReason.value.trim(), targetIncident);
 
+    adClosedBeforeReward.value = false;
     reportSuccess.value = true;
     // Emite imediatamente para que o mapa reflita a remoção em tempo real (a menos que já tenha sido validada como improcedente antes)
     if (!res || res.deactivated !== false) {
@@ -1126,6 +1140,65 @@ const handleSubmitReport = async () => {
   } finally {
     isSubmittingReport.value = false;
   }
+};
+
+const handleSubmitReport = async () => {
+  if (isSubmittingReport.value || isPreparingReportAd.value || isWatchingReportAd.value) {
+    return;
+  }
+  if (!reportReason.value.trim()) {
+    reportError.value = 'Por favor, descreva o problema observado nesta ocorrência.';
+    return;
+  }
+
+  reportError.value = '';
+  isPreparingReportAd.value = true;
+
+  let adResult = null;
+  try {
+    adResult = await prepareRewardedAdWithTimeout(gamRewardedReportUnit.value, 5000);
+  } catch {
+    adResult = null;
+  }
+
+  if (!isReportModalOpen.value) {
+    isPreparingReportAd.value = false;
+    return;
+  }
+
+  if (adResult && adResult.status === 'ready' && typeof adResult.show === 'function') {
+    isWatchingReportAd.value = true;
+    isPreparingReportAd.value = false;
+
+    let outcome = { granted: false, failed: false };
+    try {
+      outcome = await adResult.show();
+    } catch {
+      outcome = { granted: false, failed: true };
+    }
+
+    if (!isReportModalOpen.value) {
+      isWatchingReportAd.value = false;
+      return;
+    }
+
+    if (outcome?.granted || outcome?.failed) {
+      isSubmittingReport.value = true;
+      isWatchingReportAd.value = false;
+      await executeReportSubmission();
+      return;
+    }
+
+    isWatchingReportAd.value = false;
+    adClosedBeforeReward.value = true;
+    preloadRewardedAd(gamRewardedReportUnit.value);
+    return;
+  }
+
+  // Fallback seguro: caso não haja inventário em até 5s ou haja bloqueador de anúncios
+  isSubmittingReport.value = true;
+  isPreparingReportAd.value = false;
+  await executeReportSubmission();
 };
 
 const isSharingIncident = ref(false);
@@ -1212,13 +1285,32 @@ const handleShareIncident = async (target = 'header') => {
   }
 };
 
+const handleBackdropClick = () => {
+  if (
+    isSubmittingReport.value ||
+    isPreparingReportAd.value ||
+    isWatchingReportAd.value ||
+    isSubmittingResolve.value ||
+    isProcessingResolvePhoto.value
+  ) {
+    return;
+  }
+  emit('close');
+};
+
 onUnmounted(() => {
   clearShareTooltipTimers();
+  disposeRewardedAdSession();
 });
 
 const { focusInitialElement } = useModalAccessibility({
   modalRef: modalCardRef,
-  canClose: () => !isSubmittingReport.value && !isSubmittingResolve.value && !isProcessingResolvePhoto.value,
+  canClose: () =>
+    !isSubmittingReport.value &&
+    !isPreparingReportAd.value &&
+    !isWatchingReportAd.value &&
+    !isSubmittingResolve.value &&
+    !isProcessingResolvePhoto.value,
   onRequestClose: () => {
     if (showResolveCamera.value) {
       showResolveCamera.value = false;
@@ -1864,12 +1956,18 @@ watch(currentPageIndex, () => {
   transform: translate(-50%, 4px);
 }
 
-.is-header-share-wrap:hover .share-action-tooltip,
-.is-header-share-wrap:focus-within .share-action-tooltip,
 .share-action-tooltip.is-bottom-tooltip.is-active {
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
+}
+
+@media (hover: hover) {
+  .is-header-share-wrap:hover .share-action-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
 }
 
 .share-action-tooltip.is-top-tooltip.is-active {

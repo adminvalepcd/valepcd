@@ -1,0 +1,226 @@
+[
+  {
+    "id": "bh-oc-006",
+    "ocorrenciaId": "bh-oc-006",
+    "data": "2026-11-07T10:15:00.000Z",
+    "data_report": "2026-11-07T10:15:00.000Z",
+    "ultima_data_report": "2026-11-07T10:15:00.000Z",
+    "latitude": -19.93165,
+    "longitude": -43.94415,
+    "geohash": "6gkzq6n5t2",
+    "fotoUrl": "/api/multei/mock-photo?scene=lourdes-credencial-1",
+    "fotoUrl2": "/api/multei/mock-photo?scene=lourdes-credencial-2",
+    "fotosUrls": [
+      "/api/multei/mock-photo?scene=lourdes-credencial-1",
+      "/api/multei/mock-photo?scene=lourdes-credencial-2"
+    ],
+    "natureza": "infracao_veicular",
+    "descricao": "",
+    "rua": "Rua Marília de Dirceu, 226",
+    "bairro": "Lourdes",
+    "cidade": "Belo Horizonte",
+    "estado": "MG",
+    "classificacao": "A",
+    "verificacao": "exclusiva",
+    "ativo": false,
+    "possivel_credencial": true,
+    "possivel_duplicidade": false,
+    "origem_duplicidade": false,
+    "duplicidade_de_id": "",
+    "rotulo_duplicidade": "",
+    "motivo_denuncia": "possível credencial a vista",
+    "motivo_report": "possível credencial a vista",
+    "total_reports": 1,
+    "outras_revisoes_solicitadas": false,
+    "historico_reports": [
+      {
+        "motivo": "possível credencial a vista",
+        "data": "2026-11-07T10:15:00.000Z",
+        "apos_revisao": false
+      }
+    ],
+    "revisada": false,
+    "status_revisao": "pendente",
+    "resultado_revisao": ""
+  },
+  {
+    "id": "bh-oc-002",
+    "ocorrenciaId": "bh-oc-002",
+    "data": "2026-11-07T13:11:15.000Z",
+    "data_report": "2026-11-07T13:11:15.000Z",
+    "ultima_data_report": "2026-11-07T13:11:15.000Z",
+    "latitude": -19.93645,
+    "longitude": -43.93482,
+    "geohash": "6gkzq6x9m9",
+    "fotoUrl": "/api/multei/mock-photo?scene=savassi-dup-1",
+    "fotoUrl2": "/api/multei/mock-photo?scene=savassi-dup-2",
+    "fotosUrls": [
+      "/api/multei/mock-photo?scene=savassi-dup-1",
+      "/api/multei/mock-photo?scene=savassi-dup-2"
+    ],
+    "natureza": "infracao_veicular",
+    "descricao": "",
+    "rua": "Rua Pernambuco, 1000",
+    "bairro": "Savassi",
+    "cidade": "Belo Horizonte",
+    "estado": "MG",
+    "classificacao": "A",
+    "verificacao": "exclusiva",
+    "ativo": true,
+    "possivel_duplicidade": true,
+    "origem_duplicidade": true,
+    "duplicidade_de_id": "bh-oc-001",
+    "rotulo_duplicidade": "Possível duplicidade",
+    "motivo_denuncia": "Possível duplicidade detectada pelo Gemini: Mesmo SUV prata estacionado na mesma vaga PcD sob ângulo lateral diferente.",
+    "motivo_report": "Possível duplicidade detectada pelo Gemini: Mesmo SUV prata estacionado na mesma vaga PcD sob ângulo lateral diferente.",
+    "total_reports": 1,
+    "outras_revisoes_solicitadas": false,
+    "historico_reports": [
+      {
+        "motivo": "Possível duplicidade detectada pelo Gemini: Mesmo SUV prata estacionado na mesma vaga PcD sob ângulo lateral diferente.",
+        "data": "2026-11-07T13:11:15.000Z",
+        "apos_revisao": false
+      }
+    ],
+    "revisada": false,
+    "status_revisao": "pendente",
+    "resultado_revisao": ""
+  },
+  {
+    "id": "bh-oc-007",
+    "ocorrenciaId": "bh-oc-007",
+    "data": "2026-11-05T15:10:00.000Z",
+    "data_report": "2026-11-07T09:05:00.000Z",
+    "ultima_data_report": "2026-11-07T09:05:00.000Z",
+    "latitude": -19.92285,
+    "longitude": -43.95018,
+    "geohash": "6gkzqd0j8w",
+    "fotoUrl": "/api/multei/mock-photo?scene=barro-preto-vaga-1",
+    "fotoUrl2": "/api/multei/mock-photo?scene=barro-preto-vaga-2",
+    "fotosUrls": [
+      "/api/multei/mock-photo?scene=barro-preto-vaga-1",
+      "/api/multei/mock-photo?scene=barro-preto-vaga-2"
+    ],
+    "natureza": "infracao_veicular",
+    "descricao": "",
+    "rua": "Rua Mato Grosso, 539",
+    "bairro": "Barro Preto",
+    "cidade": "Belo Horizonte",
+    "estado": "MG",
+    "classificacao": "B",
+    "verificacao": "exclusiva",
+    "ativo": false,
+    "possivel_duplicidade": false,
+    "origem_duplicidade": false,
+    "duplicidade_de_id": "",
+    "rotulo_duplicidade": "",
+    "motivo_denuncia": "O motorista apresentou credencial PcD válida logo ao estacionar e a deixou visível no painel.",
+    "motivo_report": "O motorista apresentou credencial PcD válida logo ao estacionar e a deixou visível no painel.",
+    "total_reports": 1,
+    "outras_revisoes_solicitadas": false,
+    "historico_reports": [
+      {
+        "motivo": "O motorista apresentou credencial PcD válida logo ao estacionar e a deixou visível no painel.",
+        "data": "2026-11-07T09:05:00.000Z",
+        "apos_revisao": false
+      }
+    ],
+    "revisada": false,
+    "status_revisao": "pendente",
+    "resultado_revisao": ""
+  },
+  {
+    "id": "bh-oc-003",
+    "ocorrenciaId": "bh-oc-003",
+    "data": "2026-11-06T16:40:00.000Z",
+    "data_report": "2026-11-06T18:00:00.000Z",
+    "ultima_data_report": "2026-11-07T08:30:00.000Z",
+    "latitude": -19.92274,
+    "longitude": -43.93662,
+    "geohash": "6gkzqd9v3r",
+    "fotoUrl": "/api/multei/mock-photo?scene=centro-transferencia-1",
+    "fotoUrl2": "/api/multei/mock-photo?scene=centro-transferencia-2",
+    "fotosUrls": [
+      "/api/multei/mock-photo?scene=centro-transferencia-1",
+      "/api/multei/mock-photo?scene=centro-transferencia-2"
+    ],
+    "natureza": "infracao_veicular",
+    "descricao": "",
+    "rua": "Avenida Afonso Pena, 1270",
+    "bairro": "Centro",
+    "cidade": "Belo Horizonte",
+    "estado": "MG",
+    "classificacao": "B",
+    "verificacao": "transferencia",
+    "ativo": true,
+    "possivel_duplicidade": false,
+    "origem_duplicidade": false,
+    "duplicidade_de_id": "",
+    "rotulo_duplicidade": "",
+    "motivo_denuncia": "Solicitando nova verificação: a pintura zebrada parece ser área de embarque rápida.",
+    "motivo_report": "Solicitando nova verificação: a pintura zebrada parece ser área de embarque rápida.",
+    "total_reports": 2,
+    "outras_revisoes_solicitadas": true,
+    "historico_reports": [
+      {
+        "motivo": "Acredito que não seja vaga demarcada neste trecho da avenida.",
+        "data": "2026-11-06T18:00:00.000Z",
+        "apos_revisao": false
+      },
+      {
+        "motivo": "Solicitando nova verificação: a pintura zebrada parece ser área de embarque rápida.",
+        "data": "2026-11-07T08:30:00.000Z",
+        "apos_revisao": true
+      }
+    ],
+    "revisada": false,
+    "status_revisao": "pendente",
+    "resultado_revisao": ""
+  },
+  {
+    "id": "bh-oc-012",
+    "ocorrenciaId": "bh-oc-012",
+    "data": "2026-11-03T12:25:00.000Z",
+    "data_report": "2026-11-04T10:00:00.000Z",
+    "ultima_data_report": "2026-11-04T10:00:00.000Z",
+    "latitude": -19.94015,
+    "longitude": -43.93395,
+    "geohash": "6gkzq6r7d4",
+    "fotoUrl": "/api/multei/mock-photo?scene=contorno-vaga-1",
+    "fotoUrl2": "/api/multei/mock-photo?scene=contorno-vaga-2",
+    "fotosUrls": [
+      "/api/multei/mock-photo?scene=contorno-vaga-1",
+      "/api/multei/mock-photo?scene=contorno-vaga-2"
+    ],
+    "natureza": "infracao_veicular",
+    "descricao": "",
+    "rua": "Avenida do Contorno, 6061",
+    "bairro": "Savassi",
+    "cidade": "Belo Horizonte",
+    "estado": "MG",
+    "classificacao": "A",
+    "verificacao": "exclusiva",
+    "ativo": true,
+    "possivel_duplicidade": false,
+    "origem_duplicidade": false,
+    "duplicidade_de_id": "",
+    "rotulo_duplicidade": "",
+    "motivo_denuncia": "A sinalização vertical parecia encoberta pela árvore.",
+    "motivo_report": "A sinalização vertical parecia encoberta pela árvore.",
+    "total_reports": 1,
+    "outras_revisoes_solicitadas": false,
+    "historico_reports": [
+      {
+        "motivo": "A sinalização vertical parecia encoberta pela árvore.",
+        "data": "2026-11-04T10:00:00.000Z",
+        "apos_revisao": false
+      }
+    ],
+    "revisada": true,
+    "status_revisao": "revisada",
+    "resultado_revisao": "improcedente",
+    "data_revisao": "2026-11-04T14:20:00.000Z",
+    "revisado_por": "Admin Multei BH (admin@valepcd.com.br)",
+    "observacao_admin": "Sinalização horizontal SIA e placa R-6b visíveis em ambas as fotos. Ocorrência mantida ativa."
+  }
+]

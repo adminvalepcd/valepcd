@@ -20,9 +20,22 @@
         <NuxtLink to="/multei/sobre" class="btn-secondary-nav">
           <span>📊 Estatísticas ao Vivo</span>
         </NuxtLink>
+
+        <span v-if="isDevMockMode" class="dev-mock-pill" title="Ambiente local usando mocks de Belo Horizonte (0 chamadas reais ao Firebase)">
+          🧪 Mock BH (localhost)
+        </span>
       </div>
 
       <div v-if="userProfile" class="user-session-bar">
+        <button
+          v-if="isDevMockMode"
+          type="button"
+          class="btn-reset-mocks"
+          title="Restaurar os arquivos de resposta mockados de Belo Horizonte ao estado inicial"
+          @click="handleResetBhMocks"
+        >
+          🔄 Resetar Mocks BH
+        </button>
         <span
           class="live-monitor-badge"
           :title="
@@ -114,6 +127,28 @@
             <span>{{ isLoggingIn ? 'Autenticando...' : 'Entrar' }}</span>
           </button>
         </form>
+
+        <div v-if="isDevMockMode" class="dev-mock-login-box">
+          <p class="dev-mock-login-title">🧪 Acesso rápido local (Mocks Belo Horizonte)</p>
+          <div class="dev-mock-login-actions">
+            <button
+              type="button"
+              class="btn-dev-mock-login"
+              :disabled="isLoggingIn"
+              @click="handleDevQuickLogin('admin@valepcd.com.br')"
+            >
+              🛡️ Entrar como Admin (BH)
+            </button>
+            <button
+              type="button"
+              class="btn-dev-mock-login"
+              :disabled="isLoggingIn"
+              @click="handleDevQuickLogin('parceria@pbh.gov.br')"
+            >
+              🤝 Entrar como Parceria PBH
+            </button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -2418,6 +2453,8 @@ import {
   resolveUrbanIncidentByPartnerInFirebase,
   fetchMulteiStatsOnce,
   subscribeToMulteiLiveEvents,
+  isFirebaseMockEnabled,
+  resetFirebaseMockStore,
   type MulteiLiveDeltaEvent,
   type MulteiPanelUserProfile,
   type MulteiPanelManagedUser,
@@ -2431,6 +2468,7 @@ const themeCookie = useCookie('theme', { default: () => 'light' });
 const currentTheme = useState('theme', () => themeCookie.value || 'light');
 const config = useRuntimeConfig();
 const geminiClient = initializeGeminiClient(config.public?.geminiApiKey as string);
+const isDevMockMode = ref(Boolean(import.meta.dev));
 
 useHead({
   title: 'Painel de Averiguação | Multei • Vale PcD',
@@ -4095,6 +4133,33 @@ const handleLogout = async () => {
   } catch {}
 };
 
+const handleDevQuickLogin = async (email: string) => {
+  if (!isFirebaseMockEnabled() || isLoggingIn.value) return;
+  loginEmail.value = email;
+  loginPassword.value = 'mock-bh-dev';
+  await handleLogin();
+};
+
+const handleResetBhMocks = async () => {
+  if (!isFirebaseMockEnabled()) return;
+  const freshStats = resetFirebaseMockStore();
+  panelStatsTotalGeral.value = freshStats.totalGeral;
+  selectedItem.value = null;
+  selectedResolutionItem.value = null;
+  selectedPartnerIncident.value = null;
+  if (userProfile.value?.role === 'admin') {
+    await Promise.all([
+      loadReports(),
+      loadPartnerDenuncias({ silent: true }),
+      loadResolutions({ silent: true }),
+      loadPanelUsers()
+    ]);
+  } else if (userProfile.value) {
+    await Promise.all([loadPartnerDenuncias(), loadResolutions({ silent: true })]);
+  }
+  announceSr('Mocks de Belo Horizonte restaurados ao estado inicial.');
+};
+
 const isDuplicityReviewItem = (item?: ReportedIncidentPanelItem | null): boolean => {
   if (!item) return false;
   return Boolean(item.possivel_duplicidade || item.resultado_revisao === 'indefinido');
@@ -4416,6 +4481,7 @@ watch(adminMainSection, () => {
 });
 
 onMounted(() => {
+  isDevMockMode.value = isFirebaseMockEnabled();
   suppressPanelAds();
 
   if (typeof MutationObserver !== 'undefined' && document.body) {
@@ -6740,6 +6806,98 @@ select.field-input {
 
   .decision-actions,
   .metadata-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dev-mock-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.36rem 0.72rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  background: var(--pp-amber-bg, rgba(245, 158, 11, 0.16));
+  color: var(--pp-amber-text, #b45309);
+  border: 1.5px solid rgba(245, 158, 11, 0.45);
+  white-space: nowrap;
+}
+
+.btn-reset-mocks {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.8rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  background: var(--pp-surface-alt, #f8fafc);
+  color: var(--pp-text-primary, #0f172a);
+  border: 1.5px solid var(--pp-border, #cbd5e1);
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.btn-reset-mocks:hover {
+  border-color: var(--pp-accent, #86007D);
+  transform: translateY(-1px);
+}
+
+.btn-reset-mocks:active {
+  transform: scale(0.98);
+}
+
+.dev-mock-login-box {
+  margin-top: 1.1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  background: var(--pp-surface-alt, #f8fafc);
+  border: 1.5px dashed var(--pp-border-strong, #94a3b8);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.dev-mock-login-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--pp-text-secondary, #475569);
+  text-align: center;
+}
+
+.dev-mock-login-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.btn-dev-mock-login {
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  background: var(--pp-surface, #ffffff);
+  color: var(--pp-text-primary, #0f172a);
+  border: 1.5px solid var(--pp-border, #cbd5e1);
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.12s ease;
+}
+
+.btn-dev-mock-login:hover:not(:disabled) {
+  border-color: var(--pp-accent, #86007D);
+  transform: translateY(-1px);
+}
+
+.btn-dev-mock-login:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 520px) {
+  .dev-mock-login-actions {
     grid-template-columns: 1fr;
   }
 }

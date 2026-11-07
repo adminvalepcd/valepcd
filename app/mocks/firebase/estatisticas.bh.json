@@ -1,0 +1,16 @@
+{
+  "center": {
+    "latitude": -19.9275,
+    "longitude": -43.9385,
+    "cidade": "Belo Horizonte",
+    "estado": "MG",
+    "bairro": "Savassi / Centro"
+  },
+  "resumo": {
+    "totalGeral": 9,
+    "infracoesTransito": 5,
+    "mobilidadeUrbana": 4,
+    "resolvidos": 2,
+    "updatedAt": "2026-11-07T13:15:00.000Z"
+  }
+}

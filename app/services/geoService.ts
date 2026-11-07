@@ -1,15 +1,36 @@
 import type { Geolocation } from '../types';
+import { isFirebaseMockEnabled, MOCK_BH_DEFAULT_CENTER } from './firebaseMockService';
 
 // Cache em memória para evitar chamadas repetidas de geocodificação
 const addressCache = new Map<string, string>();
 
 /**
  * Solicita a geolocalização do navegador de forma resiliente:
- * 1. Tenta alta precisão (GPS) com timeout curto (6s).
- * 2. Se falhar ou der timeout (comum em notebooks, Wi-Fi ou ambientes fechados),
+ * 1. Em modo mock de desenvolvimento (`localhost` / `import.meta.dev`), retorna imediatamente
+ *    o centro de Belo Horizonte - MG para alinhar Mapa + Painel sem depender do GPS físico
+ *    (use `?gps=real` na URL caso deseje testar o hardware de GPS real localmente).
+ * 2. Tenta alta precisão (GPS) com timeout curto (6s).
+ * 3. Se falhar ou der timeout (comum em notebooks, Wi-Fi ou ambientes fechados),
  *    tenta imediatamente precisão padrão com cache (maximumAge: 300000).
  */
 export function requestUserLocation(): Promise<Geolocation> {
+  if (typeof window !== 'undefined' && isFirebaseMockEnabled()) {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if ((params.get('gps') || '').trim().toLowerCase() !== 'real') {
+        return Promise.resolve({
+          latitude: MOCK_BH_DEFAULT_CENTER.latitude,
+          longitude: MOCK_BH_DEFAULT_CENTER.longitude
+        });
+      }
+    } catch {
+      return Promise.resolve({
+        latitude: MOCK_BH_DEFAULT_CENTER.latitude,
+        longitude: MOCK_BH_DEFAULT_CENTER.longitude
+      });
+    }
+  }
+
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || !navigator.geolocation) {
       return reject(new Error('Geolocalização não é suportada neste navegador.'));

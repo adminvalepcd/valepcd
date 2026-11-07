@@ -9,9 +9,23 @@ import {
 } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
 import { getAuth } from 'firebase/auth'
+import { isFirebaseMockEnabled } from '~/services/firebaseMockService'
 
 export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig()
+
+  if (isFirebaseMockEnabled() && String(config.public.useFirebaseMock || '').toLowerCase() !== 'false') {
+    if (typeof window !== 'undefined') {
+      console.info('[Multei Mock] Ambiente local detectado: usando mocks de Belo Horizonte (0 chamadas reais ao Firebase).')
+    }
+    return {
+      provide: {
+        db: null,
+        storage: null,
+        auth: null
+      }
+    }
+  }
 
   const firebaseConfig = {
     apiKey: config.public.firebaseApiKey,

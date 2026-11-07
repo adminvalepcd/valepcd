@@ -401,7 +401,12 @@
 
 <script setup>
   import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { fetchIncidentsByVisibleArea } from '~/services/firebaseService';
+  import {
+    fetchIncidentsByVisibleArea,
+    subscribeToMulteiLiveEvents,
+    isFirebaseMockEnabled,
+    MOCK_BH_DEFAULT_CENTER
+  } from '~/services/firebaseService';
   import {
     requestUserLocation,
     searchAddresses,
@@ -565,20 +570,15 @@ const handleOpenCreateModal = async () => {
   let searchDebounceTimer = null;
   let boundsFetchDebounceTimer = null;
 
-const initialCenter = ref({
-  latitude: -23.55052,
-  longitude: -46.633308
-});
+const defaultMapCenter = isFirebaseMockEnabled()
+  ? { latitude: MOCK_BH_DEFAULT_CENTER.latitude, longitude: MOCK_BH_DEFAULT_CENTER.longitude }
+  : { latitude: -23.55052, longitude: -46.633308 };
 
-const loadedCenter = ref({
-  latitude: -23.55052,
-  longitude: -46.633308
-});
+const initialCenter = ref({ ...defaultMapCenter });
 
-const currentMapCenter = ref({
-  latitude: -23.55052,
-  longitude: -46.633308
-});
+const loadedCenter = ref({ ...defaultMapCenter });
+
+const currentMapCenter = ref({ ...defaultMapCenter });
 
 const incidents = ref([]);
 const mapBounds = ref(null);
@@ -1286,6 +1286,9 @@ const calculateBottomAdOffset = () => {
   candidates.forEach((node) => {
     const el = node.closest('ins.adsbygoogle, [data-anchor-status]') || node;
     if (!(el instanceof HTMLElement)) return;
+    if (el.closest('[data-manual-ad-banner], .modal-backdrop, [role="dialog"]')) {
+      return;
+    }
 
     const anchorStatus = el.getAttribute('data-anchor-status');
     const adStatus = el.getAttribute('data-ad-status');
@@ -1504,6 +1507,16 @@ onMounted(async () => {
     } catch {}
   }
 
+  if (isFirebaseMockEnabled()) {
+    unsubscribeMockLiveSync = subscribeToMulteiLiveEvents(() => {
+      void loadIncidents(
+        filterScope.value,
+        currentMapCenter.value || initialCenter.value,
+        mapBounds.value
+      );
+    });
+  }
+
   const route = useRoute();
   const rawShareToken = typeof route.query?.p === 'string' ? route.query.p : '';
   const decodedShare = rawShareToken ? decodeIncidentShareToken(rawShareToken) : null;
@@ -1581,8 +1594,14 @@ onMounted(async () => {
   await requestLocation();
 });
 
+  let unsubscribeMockLiveSync = null;
+
   onBeforeUnmount(() => {
     cleanupBottomAdObserver();
+    if (unsubscribeMockLiveSync) {
+      unsubscribeMockLiveSync();
+      unsubscribeMockLiveSync = null;
+    }
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
     if (boundsFetchDebounceTimer) clearTimeout(boundsFetchDebounceTimer);
     if (mapCenterCountryTimer) clearTimeout(mapCenterCountryTimer);

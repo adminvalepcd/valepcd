@@ -181,7 +181,11 @@ export default defineNuxtConfig({
       firebaseProjectId: process.env.NUXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || '',
       firebaseStorageBucket: process.env.NUXT_PUBLIC_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || '',
       firebaseMessagingSenderId: process.env.NUXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || '',
-      firebaseAppId: process.env.NUXT_PUBLIC_FIREBASE_APP_ID || process.env.FIREBASE_APP_ID || ''
+      firebaseAppId: process.env.NUXT_PUBLIC_FIREBASE_APP_ID || process.env.FIREBASE_APP_ID || '',
+      adsenseClient: process.env.NUXT_PUBLIC_ADSENSE_CLIENT || 'ca-pub-6260779513509504',
+      adsenseSuccessSlot: process.env.NUXT_PUBLIC_ADSENSE_SUCCESS_SLOT || '5711602967',
+      gamRewardedReportUnit: process.env.NUXT_PUBLIC_GAM_REWARDED_REPORT_UNIT || '/23391888447/multei_report_rewarded',
+      useFirebaseMock: process.env.NUXT_PUBLIC_USE_FIREBASE_MOCK || ''
     }
   }
 })
