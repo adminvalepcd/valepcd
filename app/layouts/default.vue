@@ -18,7 +18,9 @@
     <AppVLibras />
 
     <!-- Aviso de Consentimento de Cookies -->
-    <CookieConsent />
+    <div class="cookie-consent-host">
+      <CookieConsent />
+    </div>
   </div>
 </template>
 

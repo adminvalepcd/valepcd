@@ -13,6 +13,9 @@ import { onMounted } from 'vue'
 onMounted(() => {
   // VLibras is a Brazil-government accessibility widget for sign language (Libras) translation.
   // We load it dynamically on client-side mount to prevent SSR hydration mismatches.
+  if (document.querySelector('script[src*="vlibras-plugin.js"]')) {
+    return
+  }
   const script = document.createElement('script')
   script.src = 'https://vlibras.gov.br/app/vlibras-plugin.js'
   script.async = true

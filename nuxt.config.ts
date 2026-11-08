@@ -157,13 +157,11 @@ export default defineNuxtConfig({
         {
           src: 'https://www.googletagmanager.com/gtag/js?id=G-4QRMKWNJ8S',
           async: true
-        },
-        {
-          src: 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6260779513509504',
-          async: true,
-          crossorigin: 'anonymous',
-          'data-overlays': 'bottom'
         }
+        // O script `adsbygoogle.js` é injetado em `app/plugins/analytics.client.ts` logo após
+        // `app:mounted` (fim da hidratação SSR do Vue), mantendo `<meta name="google-adsense-account">`
+        // estático no `<head>`. Isso impede que o Auto Ads ou o Visualizador do AdSense modifiquem
+        // `#__nuxt` durante a hidratação e dupliquem a página inteira no preview de áreas excluídas.
         // O @googlemaps/markerclusterer NÃO é carregado aqui de propósito.
         // Ele só é usado na página /multei e é carregado sob demanda por
         // `loadClustererScript()` em app/components/multei/MapDisplay.vue.
