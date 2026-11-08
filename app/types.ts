@@ -17,6 +17,7 @@ export interface GeminiSensitiveContentResponse {
 }
 
 export interface IncidentAnalysisResult {
+  isAiGenerated?: boolean;
   hasVehicle: boolean;
   isAppropriate: boolean;
   possibleCredential?: boolean;
@@ -33,6 +34,7 @@ export interface IncidentAnalysisResult {
 }
 
 export interface SecondTrafficPhotoAnalysisResult {
+  isAiGenerated?: boolean;
   isAppropriate: boolean;
   possibleCredential?: boolean;
   vehiclePlate: string;

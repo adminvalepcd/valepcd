@@ -137,18 +137,28 @@ export default defineNuxtConfig({
             window.dataLayer = window.dataLayer || [];
             window.gtag = window.gtag || function(){dataLayer.push(arguments);};
             
+            var isMulteiMap = window.location && window.location.pathname && /^\\/(?:(?:en|es)\\/)?multei\\/?$/i.test(window.location.pathname);
+            var multeiConsent = null;
+            try {
+              var consentMatch = document.cookie && document.cookie.match(/(?:^|;\\s*)multei_consent=(all|essentials)(?:;|$)/);
+              if (consentMatch) multeiConsent = consentMatch[1];
+            } catch (e) {}
+            var grantInitial = !isMulteiMap || multeiConsent === 'all';
+
             window.gtag('consent', 'default', {
-              'ad_storage': 'granted',
-              'ad_user_data': 'granted',
-              'ad_personalization': 'granted',
-              'analytics_storage': 'granted'
+              'ad_storage': grantInitial ? 'granted' : 'denied',
+              'ad_user_data': grantInitial ? 'granted' : 'denied',
+              'ad_personalization': grantInitial ? 'granted' : 'denied',
+              'analytics_storage': grantInitial ? 'granted' : 'denied'
             });
-            window.gtag('consent', 'update', {
-              'ad_storage': 'granted',
-              'ad_user_data': 'granted',
-              'ad_personalization': 'granted',
-              'analytics_storage': 'granted'
-            });
+            if (grantInitial) {
+              window.gtag('consent', 'update', {
+                'ad_storage': 'granted',
+                'ad_user_data': 'granted',
+                'ad_personalization': 'granted',
+                'analytics_storage': 'granted'
+              });
+            }
             
             window.gtag('js', new Date());
             window.gtag('config', 'G-4QRMKWNJ8S', { send_page_view: false });

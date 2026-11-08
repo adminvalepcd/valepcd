@@ -1308,11 +1308,16 @@ const isLocationValid = computed(() => {
   );
 });
 
-  // --- Trava de Segurança 2: Cache de Análise Gemini (até 2x por foto/dia via SHA-256, exceto foto inapropriada) ---
-  const GEMINI_CACHE_PREFIX = 'multei_gemini_cache_v12_';
+  // --- Trava de Segurança 2: Cache de Análise Gemini (até 2x por foto/dia via SHA-256, exceto foto gerada por IA ou inapropriada) ---
+  const GEMINI_CACHE_PREFIX = 'multei_gemini_cache_v13_';
 const GEMINI_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
     const MAX_GEMINI_ANALYSIS_ATTEMPTS = 2;
     const sessionPlateMemoryCache = new Map();
+
+    const isAiGeneratedPhotoRejection = (analysis) => {
+      if (!analysis) return false;
+      return Boolean(analysis.isAiGenerated);
+    };
 
     const isInappropriatePhotoRejection = (analysis) => {
       if (!analysis) return false;
@@ -1328,6 +1333,7 @@ const GEMINI_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
 
     const isFirstPhotoAnalysisRejected = (analysis, natureza) => {
       if (!analysis || analysis.apiError) return false;
+      if (isAiGeneratedPhotoRejection(analysis)) return true;
       if (isInappropriatePhotoRejection(analysis)) return true;
       if (natureza === 'urbana') {
         return analysis.isUrbanEnvironment === false;
@@ -1338,6 +1344,7 @@ const GEMINI_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
 
     const isSecondPhotoAnalysisRejected = (secondAnalysis, expectedPlate) => {
       if (!secondAnalysis || secondAnalysis.apiError) return false;
+      if (isAiGeneratedPhotoRejection(secondAnalysis)) return true;
       if (isInappropriatePhotoRejection(secondAnalysis)) return true;
       if (secondAnalysis.hasReadablePlate === false) return true;
       const plate = normalizeVehiclePlate(secondAnalysis.vehiclePlate);
@@ -1386,6 +1393,18 @@ const computeFileSha256 = async (file) => {
     return null;
   }
 };
+
+  const getCachedAiGeneratedRejection = (rawHash) => {
+    if (!rawHash) return null;
+    const suffixes = ['infracao_veicular', 'urbana', 'second_traffic'];
+    for (const suffix of suffixes) {
+      const entry = getCachedGeminiAnalysisEntry(`${rawHash}_${suffix}`);
+      if (entry?.data && isAiGeneratedPhotoRejection(entry.data)) {
+        return entry.data;
+      }
+    }
+    return null;
+  };
 
   const saveGeminiAnalysisCache = (hash, data, attempts = 1) => {
   if (typeof window === 'undefined' || !hash || !data) return;
@@ -2148,12 +2167,17 @@ const processSelectedImage = async (file) => {
     try {
       computedHash = await computeFileSha256(file);
       cacheKey = `${computedHash}_${selectedNatureza.value}`;
+      const cachedAiRejection = getCachedAiGeneratedRejection(computedHash);
+      if (cachedAiRejection) {
+        analysis = cachedAiRejection;
+      } else {
       const cachedEntry = getCachedGeminiAnalysisEntry(cacheKey);
       if (cachedEntry) {
         const cachedData = cachedEntry.data;
         const prevAttempts = cachedEntry.attempts;
         const wasRejected = isFirstPhotoAnalysisRejected(cachedData, selectedNatureza.value);
         const isInappropriate = isInappropriatePhotoRejection(cachedData);
+        const isAiGenerated = isAiGeneratedPhotoRejection(cachedData);
         const needsPlateRefreshAfterReload =
           !wasRejected &&
           selectedNatureza.value !== 'urbana' &&
@@ -2162,6 +2186,7 @@ const processSelectedImage = async (file) => {
         const canAttemptAgain =
           wasRejected &&
           !isInappropriate &&
+          !isAiGenerated &&
           prevAttempts < MAX_GEMINI_ANALYSIS_ATTEMPTS;
 
         if (!canAttemptAgain && !needsPlateRefreshAfterReload) {
@@ -2171,6 +2196,7 @@ const processSelectedImage = async (file) => {
         } else {
           attemptsUsed = prevAttempts;
         }
+      }
       }
     } catch (hashErr) {
       console.warn('[CreateIncidentModal] Erro ao consultar cache da imagem:', hashErr);
@@ -2195,6 +2221,18 @@ const processSelectedImage = async (file) => {
       canReanalyzeRejectedPhoto.value = false;
       step.value = 'error';
       errorMessage.value = analysis.rejectionReason || 'Instabilidade temporária no serviço de IA (Google Gemini). Por favor, tente novamente.';
+      return;
+    }
+
+    // Primeira validação obrigatória: foto gerada por IA segue fluxo de invalidação sem opção de reavaliar a mesma foto
+    if (isAiGeneratedPhotoRejection(analysis)) {
+      isApiError.value = false;
+      canReanalyzeRejectedPhoto.value = false;
+      lastSelectedFile.value = null;
+      step.value = 'error';
+      errorMessage.value =
+        analysis.rejectionReason ||
+        'Fotos geradas por IA não são permitidas. Envie uma foto real tirada no local.';
       return;
     }
 
@@ -2342,7 +2380,10 @@ const processSelectedImage = async (file) => {
         const secondCacheKey = secondHash ? `${secondHash}_second_traffic` : null;
         let secondAnalysis = null;
         let secondAttemptsUsed = 0;
-        if (secondCacheKey) {
+        const cachedSecondAiRejection = getCachedAiGeneratedRejection(secondHash);
+        if (cachedSecondAiRejection) {
+          secondAnalysis = cachedSecondAiRejection;
+        } else if (secondCacheKey) {
           const cachedSecondEntry = getCachedGeminiAnalysisEntry(secondCacheKey);
           if (cachedSecondEntry) {
             const cachedSecondData = cachedSecondEntry.data;
@@ -2355,6 +2396,7 @@ const processSelectedImage = async (file) => {
             );
             const wasSecondRejected = isSecondPhotoAnalysisRejected(cachedSecondData, firstPhotoVehiclePlate.value);
             const isSecondInappropriate = isInappropriatePhotoRejection(cachedSecondData);
+            const isSecondAiGenerated = isAiGeneratedPhotoRejection(cachedSecondData);
             const needsSecondPlateRefreshAfterReload =
               !wasSecondRejected &&
               (cachedSecondData.vehiclePlate === undefined ||
@@ -2362,6 +2404,7 @@ const processSelectedImage = async (file) => {
             const canSecondAttemptAgain =
               wasSecondRejected &&
               !isSecondInappropriate &&
+              !isSecondAiGenerated &&
               !isSecondPlateMismatch &&
               prevSecondAttempts < MAX_GEMINI_ANALYSIS_ATTEMPTS;
 
@@ -2388,6 +2431,16 @@ const processSelectedImage = async (file) => {
           secondPhotoError.value =
             secondAnalysis.rejectionReason ||
             'Instabilidade temporária no serviço de IA ao analisar a 2ª foto. Tente novamente.';
+          step.value = 'preview';
+          return;
+        }
+
+        if (isAiGeneratedPhotoRejection(secondAnalysis)) {
+          canReanalyzeSecondPhoto.value = false;
+          lastSecondSelectedFile.value = null;
+          secondPhotoError.value =
+            secondAnalysis.rejectionReason ||
+            'A 2ª foto foi identificada como gerada por IA e não é permitida. Envie uma foto real.';
           step.value = 'preview';
           return;
         }

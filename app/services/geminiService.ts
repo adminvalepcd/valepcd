@@ -138,6 +138,7 @@ export async function analyzeIncidentImage(
   const isUrbanMode = natureza === 'urbana';
 
   const defaultFailure: IncidentAnalysisResult = {
+    isAiGenerated: false,
     hasVehicle: false,
     isAppropriate: false,
     possibleCredential: false,
@@ -166,52 +167,63 @@ export async function analyzeIncidentImage(
 
 DIRETRIZES
 
-1. Moderação e Vaga Auditada em Primeiro Plano ("isAppropriate", "hasVehicle" e "isRearView"):
+1. PRIMEIRA VERIFICAÇÃO OBRIGATÓRIA — Detecção de Imagem Gerada por IA ("isAiGenerated"):
+- Avalie PRIMEIRO se a imagem foi gerada, renderizada ou criada/manipulada sinteticamente por Inteligência Artificial (ex: modelos de difusão como Midjourney/DALL-E/Imagen/Flux, GANs, CGI/renderização 3D, texturas plásticas/artificiais em asfalto/veículos/vegetação, textos ou placas com caracteres incoerentes/deformados típicos de IA, geometria/perspectiva/iluminação sintética inconsistente ou marcas d'água de geradores de IA). Fotos reais de câmera de celular (mesmo com compressão JPEG/WhatsApp, HDR comum ou baixa luz) devem receber "isAiGenerated": false.
+- REGRA DE INTERRUPÇÃO IMEDIATA (CURTO-CIRCUITO): Se "isAiGenerated" for true, NÃO ANALISE O RESTANTE DA IMAGEM. Interrompa imediatamente as demais verificações e retorne valores padrão neutros nos demais campos: "isAppropriate": true, "hasVehicle": false, "isRearView": false, "possibleCredential": false, "verification": "", "rejectionReason": "Fotos geradas por IA não são permitidas. Envie uma foto real tirada no local.", "vehiclePlate": "", "plates": [], "faces": [].
+- SOMENTE se "isAiGenerated" for false, prossiga com os itens 2 a 6 abaixo.
+
+2. Moderação e Vaga Auditada em Primeiro Plano ("isAppropriate", "hasVehicle" e "isRearView"):
 - "isAppropriate": true (imagem adequada). false APENAS para conteúdo impróprio (pornografia, violência, gore).
 - "hasVehicle": true SOMENTE se houver um veículo estacionado DENTRO/SOBRE o piso da vaga auditada em primeiro plano.
 - ATENÇÃO CRÍTICA CONTRA FALSOS POSITIVOS DE SEGUNDO PLANO: Se o piso/chão da vaga em primeiro plano estiver vazio/desocupado (mesmo que existam outros carros estacionados ao fundo, atrás da vaga, do outro lado da via ou em vagas vizinhas), defina OBRIGATORIAMENTE "hasVehicle": false. NUNCA considere veículos em segundo plano/fundo como veículo da vaga auditada.
 - "isRearView": true SOMENTE se a foto mostrar a TRASEIRA (parte de trás: porta-malas/tampa traseira, lanternas traseiras, vidro traseiro) do veículo principal da infração E esse veículo NÃO for motocicleta/moto (ou seja: apenas para carros, SUVs, picapes/caminhonetes, vans, caminhões ou ônibus). Se for uma moto/motocicleta, ou se a foto mostrar a dianteira/frente do veículo (para-brisa dianteiro, capô, faróis dianteiros), defina OBRIGATORIAMENTE "isRearView": false.
 
-2. Credencial no Para-brisa / Painel ("possibleCredential"):
+3. Credencial no Para-brisa / Painel ("possibleCredential"):
 - Se "hasVehicle" for false, defina obrigatoriamente "possibleCredential": false.
 - Se "hasVehicle" for true, inspecione a BASE (parte inferior) do para-brisa e o topo do painel do veículo em primeiro plano em 3 zonas: esquerda, centro e direita (acima do volante).
 - true: visão dianteira com QUALQUER cartão, papel, documento, etiqueta retangular ou MANCHA CLARA/BRANCA GEOMÉTRICA (faixa, tira, trapézio ou retângulo branco/claro) na base do para-brisa ou deitada sobre o painel (mesmo pequena, achatada pela perspectiva, desfocada ou sob reflexo do vidro).
 - false: visão traseira/lateral, insulfilm 100% opaco impedindo visão interna, base do para-brisa/painel totalmente escura/limpa, ou quando houver adesivo/tag SOMENTE no topo do vidro (perto do retrovisor central) com o painel vazio.
 
-3. Infrações ("verification") da Vaga Auditada / Área de Transferência:
+4. Infrações ("verification") da Vaga Auditada / Área de Transferência:
 - "transferencia": quando a área de transferência zebrada (listras diagonais brancas ou amarelas no solo associadas à vaga em primeiro plano) estiver obstruída ou invadida parcial ou totalmente por qualquer veículo, motocicleta, roda/pneu, para-choque ou objeto (cone, carrinho de compras, placa/cavalete, lixeira, etc.), INCLUSIVE quando a vaga principal estiver vazia ("hasVehicle": false).
 - "faixa de pedestres": quando "hasVehicle" for true e as rodas ou carroceria estiverem SOBRE a faixa de pedestres (parado antes/depois = "").
 - "Vaga exclusiva": quando "hasVehicle" for true, o veículo estiver parado na vaga reservada (sinalização no solo PCD/idoso ou placa R-6b) E "possibleCredential" for false.
 - "": vaga vazia sem obstrução na área de transferência zebrada, vaga comum, "possibleCredential" = true (sem invadir área zebrada), ou sem infração clara.
 
-4. Motivo de Rejeição ("rejectionReason"):
+5. Motivo de Rejeição ("rejectionReason"):
+- Se "isAiGenerated" for true, retorne "Fotos geradas por IA não são permitidas. Envie uma foto real tirada no local.".
 - Se "isAppropriate" for true E ("hasVehicle" for true OU "verification" for "transferencia"), retorne "".
 - Caso contrário, descreva brevemente o motivo (ex: "A vaga em primeiro plano está vazia.").
 
-5. Anonimização LGPD ("plates" e "faces") e Leitura Temporária da Placa ("vehiclePlate"):
+6. Anonimização LGPD ("plates" e "faces") e Leitura Temporária da Placa ("vehiclePlate"):
 - "vehiclePlate": texto alfanumérico (apenas letras e números em maiúsculas, sem espaços ou hífens, ex: "ABC1D23") da placa do veículo principal na vaga auditada, se estiver visível e legível na foto. Se a placa do veículo não estiver visível ou legível, retorne "".
 - "plates": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem (independentemente de o veículo ser o principal na vaga auditada, adjacente ou ao fundo). Se não houver placas visíveis, retorne [].
 - "faces": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) delimitando ESTRITAMENTE a região do ROSTO/CABEÇA humana (ymin no topo da testa/cabeça e ymax no queixo; xmin e xmax de orelha a orelha). PROIBIDO incluir pescoço, ombros, tronco, roupas, pernas ou o corpo inteiro da pessoa/pedestre. Se a pessoa estiver de costas ou sem rosto visível, ignore. Se não houver rostos visíveis, retorne [].`;
 
   const urbanPrompt = `
 Audite a imagem (LGPD/Mobilidade e Acessibilidade Urbana) e retorne o JSON:
-{"isAppropriate": bool, "isUrbanEnvironment": bool, "hasTrafficInfractionVehicle": bool, "verification": str, "urbanDescription": str, "rejectionReason": str, "plates": [{box_2d: [ymin,xmin,ymax,xmax]}], "faces": [{box_2d: [ymin,xmin,ymax,xmax]}]}
+{"isAiGenerated": bool, "isAppropriate": bool, "isUrbanEnvironment": bool, "hasTrafficInfractionVehicle": bool, "verification": str, "urbanDescription": str, "rejectionReason": str, "plates": [{x,y,width,height}], "faces": [{x,y,width,height}]}
 
 Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
 
-1. Moderação e Pertinência da Imagem:
+1. PRIMEIRA VERIFICAÇÃO OBRIGATÓRIA — Detecção de Imagem Gerada por IA ("isAiGenerated"):
+- Avalie PRIMEIRO se a imagem foi gerada, renderizada ou criada/manipulada sinteticamente por Inteligência Artificial (ex: modelos de difusão como Midjourney/DALL-E/Imagen/Flux, GANs, CGI/renderização 3D, texturas plásticas/artificiais em calçadas/asfalto/vegetação, caracteres incoerentes/deformados típicos de IA em placas/letreiros, geometria/perspectiva/iluminação sintética inconsistente ou marcas d'água de geradores de IA). Fotos reais de câmera de celular (mesmo com compressão JPEG/WhatsApp, HDR comum ou baixa luz) devem receber "isAiGenerated": false.
+- REGRA DE INTERRUPÇÃO IMEDIATA (CURTO-CIRCUITO): Se "isAiGenerated" for true, NÃO ANALISE O RESTANTE DA IMAGEM. Interrompa imediatamente as demais verificações e retorne valores padrão neutros nos demais campos: "isAppropriate": true, "isUrbanEnvironment": false, "hasTrafficInfractionVehicle": false, "verification": "", "urbanDescription": "", "rejectionReason": "Fotos geradas por IA não são permitidas. Envie uma foto real tirada no local.", "plates": [], "faces": [].
+- SOMENTE se "isAiGenerated" for false, prossiga com os itens 2 a 5 abaixo.
+
+2. Moderação e Pertinência da Imagem:
 - "isAppropriate": false SOMENTE se a imagem contiver conteúdo impróprio (nudez, pornografia, violência, gore ou semelhantes). Se for imprópria, retorne "foto inapropriada" em "rejectionReason".
 - "isUrbanEnvironment": true se a foto mostrar ambiente urbano, calçada, rua, rampa, faixa de travessia, piso tátil, estacionamento ou espaço público/coletivo. false se a imagem claramente não tiver relação com ambiente urbano/calçada/via pública (ex: foto interna de quarto, selfie fechada, tela de computador, objeto doméstico).
-- "rejectionReason": se "isAppropriate" for false, retorne exatamente "foto inapropriada". Se "isUrbanEnvironment" for false, explique brevemente que a foto deve mostrar uma calçada ou via pública. Caso contrário, retorne "".
+- "rejectionReason": se "isAiGenerated" for true, retorne "Fotos geradas por IA não são permitidas. Envie uma foto real tirada no local.". Se "isAppropriate" for false, retorne exatamente "foto inapropriada". Se "isUrbanEnvironment" for false, explique brevemente que a foto deve mostrar uma calçada ou via pública. Caso contrário, retorne "".
 
-2. Detecção de Infração de Trânsito na Imagem ("hasTrafficInfractionVehicle" e "verification"):
+3. Detecção de Infração de Trânsito na Imagem ("hasTrafficInfractionVehicle" e "verification"):
 - "hasTrafficInfractionVehicle": true SE constar na foto um veículo parado sobre faixa de pedestres OU em vagas de estacionamento PCD / área de transferência zebrada PCD. Caso contrário, false.
 - "verification": se "hasTrafficInfractionVehicle" for true, preencha com "faixa de pedestres", "transferencia" ou "Vaga exclusiva". Senão, retorne "".
 
-3. Descrição de Acessibilidade Urbana ("urbanDescription"):
+4. Descrição de Acessibilidade Urbana ("urbanDescription"):
 - Descreva em português (máximo de 300 caracteres) o que há na imagem com foco na acessibilidade e mobilidade urbana (ex: "Buraco na calçada dificultando a passagem", "Rampa de acessibilidade quebrada ou inexistente", "Piso tátil danificado, interrompido ou inexistente", "Calçada obstruída por entulho/obras", etc.).
 
-4. Proteção de Privacidade / LGPD ("plates" e "faces") — OBRIGATÓRIO:
+5. Proteção de Privacidade / LGPD ("plates" e "faces") — OBRIGATÓRIO (quando "isAiGenerated" for false):
 - "plates": IMPORTANTE: Localize com precisão as caixas delimitadoras (bounding boxes) de TODAS as placas de veículos visíveis na cena (dianteiras e traseiras de qualquer veículo estacionado, em movimento ou ao fundo), cobrindo toda a extensão da placa (incluindo moldura e caracteres), onde x e y são o canto superior esquerdo (xmin, ymin) e width e height são a largura e altura da caixa para aplicação do desfoque pesado de privacidade.
 - "faces": IMPORTANTE: Localize com precisão as caixas delimitadoras APENAS dos rostos humanos visíveis na cena (da testa ao queixo, de orelha a orelha — NUNCA inclua tronco, roupas, pernas ou o corpo inteiro), onde x e y são o canto superior esquerdo (xmin, ymin) e width e height são a largura e altura estritas do rosto para aplicação do desfoque de privacidade.`;
 
@@ -264,42 +276,47 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
     ? {
         type: Type.OBJECT,
         properties: {
+          isAiGenerated: {
+            type: Type.BOOLEAN,
+            description: 'PRIMEIRA VERIFICAÇÃO: True se a imagem foi gerada ou criada/manipulada sinteticamente por IA (difusão, GAN, CGI/render, artefatos visuais de IA). Se true, interrompa a análise do restante e preencha valores padrão vazios nos demais campos.'
+          },
           isAppropriate: {
             type: Type.BOOLEAN,
-            description: 'False se a imagem contiver nudez, pornografia, violência ou conteúdo impróprio.'
+            description: 'Se isAiGenerated=true, retorne true. Senão, false apenas se a imagem contiver nudez, pornografia, violência ou conteúdo impróprio.'
           },
           isUrbanEnvironment: {
             type: Type.BOOLEAN,
-            description: 'True se a imagem mostrar calçada, via pública, estacionamento ou ambiente urbano.'
+            description: 'Se isAiGenerated=true, retorne false. Senão, true se a imagem mostrar calçada, via pública, estacionamento ou ambiente urbano.'
           },
           hasTrafficInfractionVehicle: {
             type: Type.BOOLEAN,
-            description: 'True se houver veículo parado sobre faixa de pedestres ou em vaga/área de estacionamento PCD.'
+            description: 'Se isAiGenerated=true, retorne false. Senão, true se houver veículo parado sobre faixa de pedestres ou em vaga/área de estacionamento PCD.'
           },
           verification: {
             type: Type.STRING,
-            description: 'Se hasTrafficInfractionVehicle for true: "Vaga exclusiva", "transferencia" ou "faixa de pedestres", senão "".'
+            description: 'Se isAiGenerated=true, retorne "". Se hasTrafficInfractionVehicle for true: "Vaga exclusiva", "transferencia" ou "faixa de pedestres", senão "".'
           },
           urbanDescription: {
             type: Type.STRING,
-            description: 'Breve descrição em até 300 caracteres focada na acessibilidade urbana observada na imagem.'
+            description: 'Se isAiGenerated=true, retorne "". Senão, breve descrição em até 300 caracteres focada na acessibilidade urbana observada na imagem.'
           },
           rejectionReason: {
             type: Type.STRING,
-            description: '"foto inapropriada" se isAppropriate for false, motivo se não for ambiente urbano, ou "" se válida.'
+            description: 'Se isAiGenerated=true, retorne "Fotos geradas por IA não são permitidas. Envie uma foto real tirada no local.". "foto inapropriada" se isAppropriate for false, motivo se não for ambiente urbano, ou "" se válida.'
           },
           plates: {
             type: Type.ARRAY,
-            description: 'Lista obrigatória de caixas delimitadoras de TODAS as placas de veículos visíveis na imagem para desfoque de privacidade.',
+            description: 'Se isAiGenerated=true, retorne []. Senão, lista obrigatória de caixas delimitadoras de TODAS as placas de veículos visíveis na imagem para desfoque de privacidade.',
             items: boundingBoxItemsSchema
           },
           faces: {
             type: Type.ARRAY,
-            description: 'Lista obrigatória de caixas delimitadoras APENAS dos rostos humanos (da testa ao queixo, nunca o corpo inteiro) visíveis na imagem.',
+            description: 'Se isAiGenerated=true, retorne []. Senão, lista obrigatória de caixas delimitadoras APENAS dos rostos humanos (da testa ao queixo, nunca o corpo inteiro) visíveis na imagem.',
             items: boundingBoxItemsSchema
           }
         },
         propertyOrdering: [
+          'isAiGenerated',
           'isAppropriate',
           'isUrbanEnvironment',
           'hasTrafficInfractionVehicle',
@@ -313,46 +330,51 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
     : {
         type: Type.OBJECT,
         properties: {
+          isAiGenerated: {
+            type: Type.BOOLEAN,
+            description: 'PRIMEIRA VERIFICAÇÃO: True se a imagem foi gerada ou criada/manipulada sinteticamente por IA (difusão, GAN, CGI/render, artefatos visuais de IA). Se true, interrompa a análise do restante e preencha valores padrão vazios nos demais campos.'
+          },
           isAppropriate: {
             type: Type.BOOLEAN,
-            description: 'True (imagem adequada). False APENAS para conteúdo impróprio (pornografia, violência, gore).'
+            description: 'Se isAiGenerated=true, retorne true. Senão, true (imagem adequada) ou false APENAS para conteúdo impróprio (pornografia, violência, gore).'
           },
           hasVehicle: {
             type: Type.BOOLEAN,
-            description: 'True SOMENTE se houver um veículo estacionado sobre o piso da vaga auditada em primeiro plano. Se o piso da vaga em primeiro plano estiver vazio (mesmo com veículos ao fundo ou em vagas vizinhas), defina obrigatoriamente false.'
+            description: 'Se isAiGenerated=true, retorne false. Senão, true SOMENTE se houver um veículo estacionado sobre o piso da vaga auditada em primeiro plano. Se o piso da vaga em primeiro plano estiver vazio (mesmo com veículos ao fundo ou em vagas vizinhas), defina obrigatoriamente false.'
           },
           isRearView: {
             type: Type.BOOLEAN,
-            description: 'True SOMENTE se a foto mostrar a traseira (porta-malas, lanternas traseiras, vidro traseiro) do veículo principal E esse veículo NÃO for uma moto/motocicleta (apenas carros, SUVs, picapes, vans, caminhões ou ônibus). Se for moto ou visão dianteira, retorne false.'
+            description: 'Se isAiGenerated=true, retorne false. Senão, true SOMENTE se a foto mostrar a traseira (porta-malas, lanternas traseiras, vidro traseiro) do veículo principal E esse veículo NÃO for uma moto/motocicleta (apenas carros, SUVs, picapes, vans, caminhões ou ônibus). Se for moto ou visão dianteira, retorne false.'
           },
           possibleCredential: {
             type: Type.BOOLEAN,
-            description: 'Avalie ANTES de verification: True se hasVehicle for true em visão dianteira com QUALQUER cartão, papel, documento ou mancha clara/branca geométrica (faixa, tira, trapézio ou retângulo claro) na base do para-brisa ou sobre o painel (mesmo pequeno, desfocado ou sob reflexo).'
+            description: 'Se isAiGenerated=true, retorne false. Senão, avalie ANTES de verification: True se hasVehicle for true em visão dianteira com QUALQUER cartão, papel, documento ou mancha clara/branca geométrica (faixa, tira, trapézio ou retângulo claro) na base do para-brisa ou sobre o painel (mesmo pequeno, desfocado ou sob reflexo).'
           },
           verification: {
             type: Type.STRING,
-            description: '"transferencia" (se a área de transferência zebrada estiver obstruída/invadida por veículo, moto, roda ou objeto, inclusive quando hasVehicle for false), "faixa de pedestres", "Vaga exclusiva" (somente se hasVehicle=true E possibleCredential=false) ou "" (se possibleCredential=true ou sem infração).'
+            description: 'Se isAiGenerated=true, retorne "". Senão: "transferencia" (se a área de transferência zebrada estiver obstruída/invadida por veículo, moto, roda ou objeto, inclusive quando hasVehicle for false), "faixa de pedestres", "Vaga exclusiva" (somente se hasVehicle=true E possibleCredential=false) ou "" (se possibleCredential=true ou sem infração).'
           },
           rejectionReason: {
             type: Type.STRING,
-            description: 'Retorne "" se verification for "transferencia" ou se hasVehicle e isAppropriate forem true. Caso contrário, detalhe o motivo.'
+            description: 'Se isAiGenerated=true, retorne "Fotos geradas por IA não são permitidas. Envie uma foto real tirada no local.". Retorne "" se verification for "transferencia" ou se hasVehicle e isAppropriate forem true. Caso contrário, detalhe o motivo.'
           },
           vehiclePlate: {
             type: Type.STRING,
-            description: 'Texto alfanumérico (apenas letras e números em maiúsculas, sem espaços ou hífens, ex: "ABC1D23") da placa do veículo na vaga auditada, se visível e legível. Se não estiver visível ou legível, retorne "".'
+            description: 'Se isAiGenerated=true, retorne "". Senão, texto alfanumérico (apenas letras e números em maiúsculas, sem espaços ou hífens, ex: "ABC1D23") da placa do veículo na vaga auditada, se visível e legível. Se não estiver visível ou legível, retorne "".'
           },
           plates: {
             type: Type.ARRAY,
-            description: 'Lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem (independentemente de o veículo ser o principal, adjacente ou ao fundo). Se não houver, [].',
+            description: 'Se isAiGenerated=true, retorne []. Senão, lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem (independentemente de o veículo ser o principal, adjacente ou ao fundo). Se não houver, [].',
             items: plateBox2dItemSchema
           },
           faces: {
             type: Type.ARRAY,
-            description: 'Lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) delimitando EXCLUSIVAMENTE o rosto/cabeça humana (da testa ao queixo, de orelha a orelha). PROIBIDO incluir tronco, roupas, pernas ou o corpo inteiro do pedestre. Se não houver, [].',
+            description: 'Se isAiGenerated=true, retorne []. Senão, lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) delimitando EXCLUSIVAMENTE o rosto/cabeça humana (da testa ao queixo, de orelha a orelha). PROIBIDO incluir tronco, roupas, pernas ou o corpo inteiro do pedestre. Se não houver, [].',
             items: faceBox2dItemSchema
           }
         },
         propertyOrdering: [
+          'isAiGenerated',
           'isAppropriate',
           'hasVehicle',
           'isRearView',
@@ -385,6 +407,30 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
+      const isAiGenerated = Boolean(parsed.isAiGenerated);
+
+      if (isAiGenerated) {
+        const aiReason =
+          (typeof parsed.rejectionReason === 'string' && parsed.rejectionReason.trim().slice(0, 300)) ||
+          'Fotos geradas por IA não são permitidas. Envie uma foto real tirada no local.';
+        console.log(`[geminiService] Foto rejeitada na 1ª verificação por ser gerada por IA (${model}).`);
+        return {
+          isAiGenerated: true,
+          hasVehicle: false,
+          isAppropriate: true,
+          possibleCredential: false,
+          isRearView: false,
+          isUrbanEnvironment: false,
+          hasTrafficInfractionVehicle: false,
+          urbanDescription: '',
+          rejectionReason: aiReason,
+          plates: [],
+          faces: [],
+          verification: '',
+          vehiclePlate: '',
+          apiError: false
+        };
+      }
 
       const plates = sanitizeAndNormalizeBoxes(parsed.plates);
       const faces = sanitizeAndNormalizeBoxes(parsed.faces);
@@ -406,7 +452,7 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
           rejectionReason = 'foto inapropriada';
         } else if (!isUrbanEnvironment) {
           rejectionReason =
-            (typeof parsed.rejectionReason === 'string' && parsed.rejectionReason.trim()) ||
+            (typeof parsed.rejectionReason === 'string' && parsed.rejectionReason.trim().slice(0, 300)) ||
             'A foto enviada não parece mostrar uma calçada, via pública ou ambiente urbano.';
         }
 
@@ -415,6 +461,7 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
         );
 
         return {
+          isAiGenerated: false,
           hasVehicle: hasTrafficInfractionVehicle,
           isAppropriate,
           possibleCredential: false,
@@ -435,11 +482,12 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
         `[geminiService] Sucesso com ${model}. Placas encontradas: ${plates.length}, Rostos encontrados: ${faces.length}, Possível credencial: ${possibleCredential}, Traseira: ${isRearView}, Verificação: "${verification}"`
       );
 
-      const parsedRejectionReason = typeof parsed.rejectionReason === 'string' ? parsed.rejectionReason.trim() : '';
+      const parsedRejectionReason = typeof parsed.rejectionReason === 'string' ? parsed.rejectionReason.trim().slice(0, 300) : '';
 
       const isTransferencia = verification.toLowerCase().includes('transfer');
 
       return {
+        isAiGenerated: false,
         hasVehicle: Boolean(parsed.hasVehicle),
         isAppropriate: Boolean(parsed.isAppropriate),
         possibleCredential,
@@ -471,6 +519,7 @@ Diretrizes de Moderação e Auditoria (Mobilidade Urbana):
 
 /**
  * Análise exclusiva para a 2ª foto de uma denúncia de infração de trânsito:
+ * - Verifica PRIMEIRO se a imagem foi gerada por IA ("isAiGenerated")
  * - Aplica as máscaras de privacidade LGPD (placas e rostos/cabeça)
  * - Verifica se há possível credencial visível no painel/para-brisa ("possibleCredential")
  * - Extrai momentaneamente a placa do veículo (vehiclePlate) para verificar que corresponde ao mesmo veículo da 1ª foto
@@ -480,6 +529,7 @@ export async function analyzeSecondTrafficPhoto(
   imageBase64: string
 ): Promise<SecondTrafficPhotoAnalysisResult> {
   const defaultFailure: SecondTrafficPhotoAnalysisResult = {
+    isAiGenerated: false,
     isAppropriate: false,
     possibleCredential: false,
     vehiclePlate: '',
@@ -497,18 +547,22 @@ export async function analyzeSecondTrafficPhoto(
     };
   }
 
-  const secondPhotoPrompt = `Audite a segunda foto (frontal/complementar) da denúncia de trânsito para verificar se há credencial no painel/para-brisa, ler a placa do veículo para conferência com a 1ª foto e colocar as máscaras de privacidade (LGPD) em placas e rostos. Retorne o JSON:
+  const secondPhotoPrompt = `Audite a segunda foto (frontal/complementar) da denúncia de trânsito para verificar se há credencial no painel/para-brisa, ler a placa do veículo para conferência com a 1ª foto e colocar as máscaras de privacidade em placas e rostos. Retorne o JSON:
 
 DIRETRIZES:
-1. Moderação ("isAppropriate"):
+1. PRIMEIRA VERIFICAÇÃO OBRIGATÓRIA — Detecção de Imagem Gerada por IA ("isAiGenerated"):
+- Avalie PRIMEIRO se a imagem foi gerada, renderizada ou criada/manipulada sinteticamente por Inteligência Artificial (ex: modelos de difusão como Midjourney/DALL-E/Imagen/Flux, GANs, CGI/renderização 3D, texturas plásticas/artificiais em veículos/asfalto, caracteres incoerentes/deformados típicos de IA em placas/letreiros, geometria/perspectiva/iluminação sintética inconsistente ou marcas d'água de geradores de IA). Fotos reais de câmera de celular (mesmo com compressão JPEG/WhatsApp, HDR comum ou baixa luz) devem receber "isAiGenerated": false.
+- REGRA DE INTERRUPÇÃO IMEDIATA (CURTO-CIRCUITO): Se "isAiGenerated" for true, NÃO ANALISE O RESTANTE DA IMAGEM. Interrompa imediatamente as demais verificações e retorne valores padrão neutros nos demais campos: "isAppropriate": true, "possibleCredential": false, "vehiclePlate": "", "rejectionReason": "A 2ª foto foi identificada como gerada por IA e não é permitida. Envie uma foto real.", "plates": [], "faces": [].
+- SOMENTE se "isAiGenerated" for false, prossiga com os itens 2 a 5 abaixo.
+2. Moderação ("isAppropriate"):
 - "isAppropriate": true (imagem adequada). false APENAS para conteúdo impróprio (pornografia, violência, gore).
-2. Credencial no Para-brisa / Painel ("possibleCredential"):
+3. Credencial no Para-brisa / Painel ("possibleCredential"):
 - Inspecione a BASE (parte inferior) do para-brisa e o topo do painel do veículo principal em 3 zonas: esquerda, centro e direita (acima do volante).
 - true: visão dianteira/frontal com QUALQUER cartão, papel, documento, etiqueta retangular ou MANCHA CLARA/BRANCA GEOMÉTRICA (faixa, tira, trapézio ou retângulo branco/claro) na base do para-brisa ou deitada sobre o painel (mesmo pequena, achatada pela perspectiva, desfocada ou sob reflexo do vidro).
 - false: visão traseira/lateral sem visão do painel, insulfilm 100% opaco impedindo visão interna, base do para-brisa/painel totalmente escura/limpa, ou quando houver adesivo/tag SOMENTE no topo do vidro (perto do retrovisor central) com o painel vazio.
-3. Leitura da Placa para Conferência ("vehiclePlate"):
+4. Leitura da Placa para Conferência ("vehiclePlate"):
 - "vehiclePlate": texto alfanumérico (apenas letras e números em maiúsculas, sem espaços ou hífens, ex: "ABC1D23") da placa do veículo principal na foto, se estiver visível e legível. Se a placa não estiver visível ou legível, retorne "".
-4. Máscaras de Privacidade LGPD ("plates" e "faces"):
+5. Máscaras de Privacidade LGPD ("plates" e "faces"):
 - "plates": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem. Se não houver placas visíveis, retorne [].
 - "faces": lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) delimitando ESTRITAMENTE a região do ROSTO/CABEÇA humana (ymin no topo da testa/cabeça e ymax no queixo; xmin e xmax de orelha a orelha). PROIBIDO incluir pescoço, ombros, tronco, roupas, pernas ou o corpo inteiro da pessoa/pedestre. Se não houver rostos visíveis, retorne [].`;
 
@@ -547,30 +601,46 @@ DIRETRIZES:
   const schema = {
     type: Type.OBJECT,
     properties: {
+      isAiGenerated: {
+        type: Type.BOOLEAN,
+        description: 'PRIMEIRA VERIFICAÇÃO: True se a imagem foi gerada ou criada/manipulada sinteticamente por IA (difusão, GAN, CGI/render, artefatos visuais de IA). Se true, interrompa a análise do restante e preencha valores padrão vazios nos demais campos.'
+      },
       isAppropriate: {
         type: Type.BOOLEAN,
-        description: 'True (imagem adequada). False APENAS para conteúdo impróprio (pornografia, violência, gore).'
+        description: 'Se isAiGenerated=true, retorne true. Senão, true (imagem adequada) ou false APENAS para conteúdo impróprio (pornografia, violência, gore).'
       },
       possibleCredential: {
         type: Type.BOOLEAN,
-        description: 'True se em visão dianteira/frontal houver QUALQUER cartão, papel, documento ou mancha clara/branca geométrica (faixa, tira, trapézio ou retângulo claro) na base do para-brisa ou sobre o painel do veículo (mesmo pequeno, desfocado ou sob reflexo).'
+        description: 'Se isAiGenerated=true, retorne false. Senão, true se em visão dianteira/frontal houver QUALQUER cartão, papel, documento ou mancha clara/branca geométrica (faixa, tira, trapézio ou retângulo claro) na base do para-brisa ou sobre o painel do veículo (mesmo pequeno, desfocado ou sob reflexo).'
       },
       vehiclePlate: {
         type: Type.STRING,
-        description: 'Texto alfanumérico (apenas letras e números em maiúsculas, sem espaços ou hífens, ex: "ABC1D23") da placa do veículo principal na imagem, se visível e legível. Caso contrário, "".'
+        description: 'Se isAiGenerated=true, retorne "". Senão, texto alfanumérico (apenas letras e números em maiúsculas, sem espaços ou hífens, ex: "ABC1D23") da placa do veículo principal na imagem, se visível e legível. Caso contrário, "".'
+      },
+      rejectionReason: {
+        type: Type.STRING,
+        description: 'Se isAiGenerated=true, retorne "A 2ª foto foi identificada como gerada por IA e não é permitida. Envie uma foto real.". Caso contrário, "".'
       },
       plates: {
         type: Type.ARRAY,
-        description: 'Lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem. Se não houver, [].',
+        description: 'Se isAiGenerated=true, retorne []. Senão, lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) de TODAS as placas de veículos visíveis na imagem. Se não houver, [].',
         items: plateBox2dItemSchema
       },
       faces: {
         type: Type.ARRAY,
-        description: 'Lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) delimitando EXCLUSIVAMENTE o rosto/cabeça humana (da testa ao queixo, de orelha a orelha). PROIBIDO incluir tronco, roupas, pernas ou o corpo inteiro. Se não houver, [].',
+        description: 'Se isAiGenerated=true, retorne []. Senão, lista com box_2d [ymin, xmin, ymax, xmax] (0 a 1000) delimitando EXCLUSIVAMENTE o rosto/cabeça humana (da testa ao queixo, de orelha a orelha). PROIBIDO incluir tronco, roupas, pernas ou o corpo inteiro. Se não houver, [].',
         items: faceBox2dItemSchema
       }
     },
-    propertyOrdering: ['isAppropriate', 'possibleCredential', 'vehiclePlate', 'plates', 'faces']
+    propertyOrdering: [
+      'isAiGenerated',
+      'isAppropriate',
+      'possibleCredential',
+      'vehiclePlate',
+      'rejectionReason',
+      'plates',
+      'faces'
+    ]
   };
 
   for (const model of CANDIDATE_MODELS) {
@@ -591,6 +661,25 @@ DIRETRIZES:
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
+      const isAiGenerated = Boolean(parsed.isAiGenerated);
+
+      if (isAiGenerated) {
+        const aiSecondReason =
+          (typeof parsed.rejectionReason === 'string' && parsed.rejectionReason.trim().slice(0, 300)) ||
+          'A 2ª foto foi identificada como gerada por IA e não é permitida. Envie uma foto real.';
+        console.log(`[geminiService] 2ª foto rejeitada na 1ª verificação por ser gerada por IA (${model}).`);
+        return {
+          isAiGenerated: true,
+          isAppropriate: true,
+          possibleCredential: false,
+          vehiclePlate: '',
+          plates: [],
+          faces: [],
+          rejectionReason: aiSecondReason,
+          apiError: false
+        };
+      }
+
       const isAppropriate = Boolean(parsed.isAppropriate);
       const possibleCredential = Boolean(parsed.possibleCredential);
       const vehiclePlate = normalizeVehiclePlate(parsed.vehiclePlate);
@@ -602,6 +691,7 @@ DIRETRIZES:
       );
 
       return {
+        isAiGenerated: false,
         isAppropriate,
         possibleCredential,
         vehiclePlate,
@@ -628,7 +718,7 @@ export async function isCarInImage(
   imageBase64: string
 ): Promise<boolean> {
   const result = await analyzeIncidentImage(client, imageBase64);
-  return result.hasVehicle && result.isAppropriate;
+  return !result.isAiGenerated && result.hasVehicle && result.isAppropriate;
 }
 
 export async function getSensitiveContentBoundingBoxes(

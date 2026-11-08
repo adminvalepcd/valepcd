@@ -339,11 +339,20 @@ export const disposeRewardedAdSession = (): void => {
   }
 };
 
+const hasRewardedAdConsent = (): boolean => {
+  if (typeof document === 'undefined') return false;
+  try {
+    return /(?:^|;\s*)multei_consent=all(?:;|$)/.test(document.cookie);
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Inicia o pré-carregamento silencioso de um Anúncio Premiado (sem exibi-lo na tela).
  */
 export const preloadRewardedAd = (configuredUnit: string): void => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || !hasRewardedAdConsent()) return;
   const effectiveUnit = resolveEffectiveAdUnitPath(configuredUnit);
   if (!effectiveUnit) return;
 
@@ -421,7 +430,7 @@ export const prepareRewardedAdWithTimeout = (
   configuredUnit: string,
   maxWaitMs = 5000
 ): Promise<PreparedRewardedAdResult> => {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || !hasRewardedAdConsent()) {
     return Promise.resolve(buildUnavailableResult());
   }
 

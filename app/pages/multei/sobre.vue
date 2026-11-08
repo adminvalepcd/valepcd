@@ -178,53 +178,84 @@
       </div>
     </section>
 
-    <!-- Seção Preparada para Termos de Uso e Política de Privacidade -->
+    <!-- Seção de Termos de Uso e Política de Privacidade -->
     <section id="termos-e-privacidade" class="legal-section" aria-labelledby="legal-heading">
       <div class="legal-header">
-        <span class="section-tag">Transparência & Governança</span>
+        <span class="section-tag">Transparência e Governança</span>
         <h2 id="legal-heading" class="section-title">Termos de Uso e Política de Privacidade</h2>
         <p class="legal-subtitle">
-          Princípios fundamentais de utilização responsável, proteção de dados (LGPD) e finalidade educativa da plataforma Multei.
+          Resumo das diretrizes de uso responsável, moderação por Inteligência Artificial e proteção integral de dados (LGPD) do
+          Multei, mantido pela ONG Vale PcD.
         </p>
       </div>
 
       <div class="legal-cards-grid">
         <div class="legal-card">
           <div class="legal-card-header">
-            <span class="legal-card-icon" aria-hidden="true">📜</span>
+            <span class="legal-card-badge">Parte 1</span>
             <h3 class="legal-card-title">Termos de Uso</h3>
           </div>
           <div class="legal-card-body">
             <p class="legal-paragraph">
-              O <strong>Multei</strong> é uma ferramenta colaborativa de caráter estritamente <strong>educativo, informativo e estatístico</strong>. Os registros publicados não substituem o auto de infração lavrado por agentes de trânsito oficiais.
+              O <strong>Multei</strong> é um projeto social sem fins lucrativos da <strong>ONG Vale PcD</strong>. Não é órgão
+              autuador, não possui vínculo com departamentos de trânsito e não emite multas oficiais — os dados gerados servem
+              exclusivamente para inteligência e estatística de fiscalização urbana.
             </p>
             <ul class="legal-list">
-              <li>O usuário compromete-se a enviar apenas imagens reais e autênticas de situações presenciadas em vias públicas ou estacionamentos coletivos.</li>
-              <li>É vedado o envio de conteúdos ofensivos, fora de contexto ou que tenham como objetivo expor indivíduos.</li>
-              <li>Qualquer cidadão pode solicitar a revisão ou remoção imediata de uma ocorrência pelo botão <strong>"Reportar Ocorrência"</strong> diretamente no mapa.</li>
+              <li><strong>Segurança em primeiro lugar:</strong> Nunca se coloque em risco para registrar uma infração. O ato de
+                fotografar em via pública ocorre por conta e risco de quem denuncia, sem responsabilidade da plataforma por conflitos
+                ou danos.</li>
+              <li><strong>Apenas fotos reais e inalteradas:</strong> É proibido enviar conteúdo falso, discriminatório, pornográfico,
+                imagens geradas total ou parcialmente por IA ou fotos reais manipuladas/retocadas por editores ou IA.</li>
+              <li><strong>Moderação, licença e idade:</strong> Imagens impróprias são bloqueadas automaticamente por IA, os envios
+                concedem licença gratuita para fins estatísticos, denúncias da comunidade ocultam o pino para revisão humana e o uso é
+                recomendado para maiores de 18 anos.</li>
+              <li><strong>Disponibilidade:</strong> Fornecido no estado em que se encontra, podendo sofrer interrupções ou
+                descontinuação a qualquer momento sem aviso prévio.</li>
             </ul>
-            <span class="legal-status-note">Documento completo de Termos de Uso em atualização.</span>
+            <NuxtLink to="/multei/termos#termos-de-uso" class="legal-full-link">
+              Ler Termos de Uso completos
+            </NuxtLink>
           </div>
         </div>
 
         <div class="legal-card">
           <div class="legal-card-header">
-            <span class="legal-card-icon" aria-hidden="true">🔒</span>
-            <h3 class="legal-card-title">Política de Privacidade (LGPD)</h3>
+            <span class="legal-card-badge">Parte 2</span>
+            <h3 class="legal-card-title">Política de Privacidade</h3>
           </div>
           <div class="legal-card-body">
             <p class="legal-paragraph">
-              Construído sob o princípio de <em>Privacy by Design</em>, o Multei adota medidas técnicas para garantir a não identificação de terceiros e o anonimato do colaborador:
+              Desenvolvido com foco em <strong>Privacidade desde a Concepção</strong>, o Multei não armazena dados capazes de
+              identificar pessoas, protegendo tanto quem denuncia quanto quem é denunciado:
             </p>
             <ul class="legal-list">
-              <li><strong>Anonimização Visual:</strong> Rostos e placas veiculares recebem desfoque antes do armazenamento definitivo.</li>
-              <li><strong>Geolocalização Restrita ao Evento:</strong> As coordenadas GPS são utilizadas exclusivamente para posicionar o pino da ocorrência no mapa e buscar registros próximos.</li>
-              <li><strong>Sem Cadastro Pessoal:</strong> Não exigimos nome, e-mail, CPF ou telefone para enviar ou consultar ocorrências.</li>
+              <li><strong>Censura imediata de rostos e placas:</strong> Nossa IA aplica tarja automática sobre rostos humanos e placas
+                veiculares diretamente na imagem. Apenas a versão já censurada é salva; a foto original nunca é armazenada.</li>
+              <li><strong>Envio 100% isolado e anônimo:</strong> Não pedimos conta, nome, e-mail ou telefone. Capturamos apenas dados
+                técnicos temporários de conexão e, mediante sua autorização, o GPS da ocorrência — sendo impossível identificar quem
+                fez a denúncia.</li>
+              <li><strong>Direito de exclusão pelo mapa (Art. 12 da LGPD):</strong> Por não haver vínculo com quem enviou, a exclusão
+                é feita exclusivamente pelo botão de reporte no pino do mapa, não sendo tecnicamente possível atender pedidos de
+                remoção por e-mail.</li>
+              <li><strong>Infraestrutura e contato:</strong> Dados anônimos podem ser processados em nuvem global segura fora do
+                Brasil. Contato institucional: <a href="mailto:multei@valepcd.com.br"
+                  class="legal-inline-mail">multei@valepcd.com.br</a>.</li>
+              <li><strong>Cookies e publicidade:</strong> Utilizamos cookies essenciais de desempenho e segurança (como hospedagem
+                Vercel) e cookies de publicidade (Google AdSense) para ajudar a custear o projeto, podendo ser desativados ou
+                gerenciados nas Configurações de Anúncios da sua conta Google ou no próprio navegador.</li>
             </ul>
-            <span class="legal-status-note">Documento completo de Política de Privacidade em atualização.</span>
+            <NuxtLink to="/multei/termos#politica-de-privacidade" class="legal-full-link">
+              Ler Política de Privacidade completa
+            </NuxtLink>
           </div>
         </div>
       </div>
+<div class="legal-section-footer">
+  <NuxtLink to="/multei/termos" class="btn-legal-complete">
+    Ler Termos de Uso e Política de Privacidade na íntegra
+  </NuxtLink>
+</div>
     </section>
 
     <!-- Banner Final de Chamada para Ação -->
@@ -1215,11 +1246,21 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 0.65rem;
+  flex-wrap: wrap;
   margin-bottom: 0.9rem;
 }
 
-.legal-card-icon {
-  font-size: 1.5rem;
+.legal-card-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.24rem 0.65rem;
+  border-radius: 9999px;
+  border: 1.5px solid var(--sp-btn-border);
+  color: var(--sp-btn-text);
+  background: var(--sp-btn-bg);
 }
 
 .legal-card-title {
@@ -1254,14 +1295,55 @@ onBeforeUnmount(() => {
   color: var(--sp-text-primary);
 }
 
-.legal-status-note {
+.legal-inline-mail {
+  color: var(--sp-accent-text);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.legal-full-link {
   margin-top: auto;
   display: inline-block;
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--sp-text-secondary);
-  padding-top: 0.8rem;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--sp-accent-text);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  padding-top: 0.85rem;
   border-top: 1px dashed var(--sp-border-dashed);
+  transition: opacity 0.2s ease;
+}
+
+.legal-full-link:hover {
+  opacity: 0.82;
+}
+
+.legal-section-footer {
+  margin-top: 1.6rem;
+  display: flex;
+  justify-content: center;
+}
+
+.btn-legal-complete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.8rem 1.5rem;
+  border-radius: 9999px;
+  background: var(--sp-btn-bg);
+  color: var(--sp-btn-text);
+  border: 2px solid var(--sp-btn-border);
+  font-weight: 800;
+  font-size: 0.92rem;
+  text-decoration: none;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.btn-legal-complete:hover {
+  background: var(--sp-btn-hover-bg);
+  color: var(--sp-btn-hover-text);
 }
 
 /* CTA Final ("Faça parte da mudança na sua cidade") */

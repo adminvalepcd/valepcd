@@ -3130,6 +3130,12 @@ const processPartnerResolutionPhoto = async (file: File) => {
     if (geminiClient) {
       const analysis = await analyzeIncidentImage(geminiClient, optimizedBase64, 'urbana');
       if (!analysis.apiError) {
+        if (analysis.isAiGenerated) {
+          partnerResolveError.value =
+            analysis.rejectionReason ||
+            'Fotos geradas por IA não são permitidas. Envie uma foto real tirada no local.';
+          return;
+        }
         if (!analysis.isAppropriate) {
           partnerResolveError.value = 'A imagem enviada contém conteúdo impróprio e não pôde ser aceita.';
           return;

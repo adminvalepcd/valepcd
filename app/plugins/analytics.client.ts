@@ -15,6 +15,56 @@ const isAdExcludedRoute = (path: string) => {
   return String(path || '').toLowerCase().includes('/multei/painel')
 }
 
+const isMulteiMapRoute = (path: string) => {
+  return /^(?:\/(?:en|es))?\/multei\/?$/i.test(String(path || '').trim())
+}
+
+const isInsideIframe = () => {
+  try {
+    return typeof window !== 'undefined' && window.self !== window.top
+  } catch {
+    return true
+  }
+}
+
+export type MulteiConsentChoice = 'all' | 'essentials'
+export const MULTEI_CONSENT_COOKIE_NAME = 'multei_consent'
+export const MULTEI_CONSENT_MAX_AGE_SECONDS = 30 * 24 * 60 * 60 // 30 dias (1 mês)
+
+export const getMulteiConsent = (): MulteiConsentChoice | null => {
+  if (typeof document === 'undefined') return null
+  try {
+    const match = document.cookie.match(/(?:^|;\s*)multei_consent=(all|essentials)(?:;|$)/)
+    return match ? (match[1] as MulteiConsentChoice) : null
+  } catch {
+    return null
+  }
+}
+
+export const setMulteiConsent = (choice: MulteiConsentChoice): void => {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return
+  if (choice !== 'all' && choice !== 'essentials') return
+
+  const expiry = new Date(Date.now() + MULTEI_CONSENT_MAX_AGE_SECONDS * 1000)
+  const isSecure =
+    window.location.protocol === 'https:' ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+  const secureAttr = isSecure ? '; Secure' : ''
+
+  document.cookie = `${MULTEI_CONSENT_COOKIE_NAME}=${choice}; Max-Age=${MULTEI_CONSENT_MAX_AGE_SECONDS}; Expires=${expiry.toUTCString()}; Path=/; SameSite=Lax${secureAttr}`
+
+  try {
+    window.localStorage?.removeItem(MULTEI_CONSENT_COOKIE_NAME)
+  } catch {}
+}
+
+export const hasMulteiNonEssentialConsent = () => {
+  if (typeof window === 'undefined') return false
+  if (isInsideIframe()) return true
+  return getMulteiConsent() === 'all'
+}
+
 /**
  * Antes da hidratação do Vue (`vueApp.mount('#__nuxt')`), remove nós injetados por snapshots/proxies
  * (como o Visualizador do AdSense ou widgets externos de uma renderização anterior) dentro de `#__nuxt`,
@@ -70,7 +120,7 @@ const deduplicateMainContentClones = () => {
   }
 }
 
-const ensureAdSenseScriptLoaded = (rawClient: unknown) => {
+export const ensureAdSenseScriptLoaded = (rawClient: unknown) => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return
   const client = String(rawClient || '').trim()
   if (!ADSENSE_CLIENT_PATTERN.test(client)) return
@@ -91,7 +141,8 @@ const ensureAdSenseScriptLoaded = (rawClient: unknown) => {
 export const syncAdSenseSuppressionForPath = (path: string, adsenseClient?: unknown) => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return
 
-  const shouldSuppress = isAdExcludedRoute(path)
+  const awaitingMulteiConsent = isMulteiMapRoute(path) && !hasMulteiNonEssentialConsent()
+  const shouldSuppress = isAdExcludedRoute(path) || awaitingMulteiConsent
   const htmlEl = document.documentElement
   const bodyEl = document.body
 
@@ -165,7 +216,11 @@ export default defineNuxtPlugin((nuxtApp) => {
     // We use nextTick to ensure the DOM (specifically <title>) has been updated by Nuxt before triggering the page_view
     nextTick(() => {
       syncAdSenseSuppressionForPath(to.path, adsenseClient)
-      if (typeof window !== 'undefined' && window.gtag) {
+      if (
+        typeof window !== 'undefined' &&
+        window.gtag &&
+        (!isMulteiMapRoute(to.path) || hasMulteiNonEssentialConsent())
+      ) {
         window.gtag('event', 'page_view', {
           page_title: document.title,
           page_path: to.fullPath,

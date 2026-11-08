@@ -147,6 +147,7 @@
       <!-- Zona Inferior em fluxo normal: Botões Flutuantes (Incluir Ocorrência + Dúvidas?) -->
       <footer
         class="bottom-action-zone"
+        :class="{ 'has-consent-bar': isConsentVisible && !isWaitingForInitialAd && !isAnyModalOpen }"
         :style="bottomActionContainerStyle"
         :inert="isAnyModalOpen || undefined"
         :aria-hidden="isAnyModalOpen ? 'true' : undefined"
@@ -177,6 +178,25 @@
                   <span class="help-menu-icon" aria-hidden="true">📋</span>
                   <span>O que denunciar?</span>
                 </button>
+                <button type="button" class="help-menu-item" role="menuitem" @click="openTermsModal">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="help-menu-svg-icon"
+                    aria-hidden="true"
+                  >
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                  </svg>
+                  <span>Termos e Privacidade</span>
+                </button>
               </div>
             </Transition>
 
@@ -187,6 +207,38 @@
           </div>
         </div>
       </footer>
+
+      <!-- Pop-up / Barra de Consentimento de Cookies do Multei -->
+      <Transition name="multei-consent-slide">
+        <div
+          v-if="isConsentVisible && !isWaitingForInitialAd && !isAnyModalOpen"
+          id="multei-cookie-consent-bar"
+          class="multei-consent-bar"
+          role="region"
+          aria-label="Preferências de cookies e privacidade"
+        >
+          <p class="multei-consent-text">
+            Utilizamos cookies essenciais para o mapa funcionar, e cookies do Google para exibir anúncios e métricas que mantêm o projeto gratuito.
+            Saiba mais nos <button type="button" class="multei-consent-link" @click="openTermsModal">Termos de Uso e Política de Privacidade</button>.
+          </p>
+          <div class="multei-consent-actions">
+            <button
+              type="button"
+              class="btn-multei-consent-essential"
+              @click="acceptOnlyEssentials"
+            >
+              Apenas Essenciais
+            </button>
+            <button
+              type="button"
+              class="btn-multei-consent-all"
+              @click="acceptAll"
+            >
+              Aceitar Todos
+            </button>
+          </div>
+        </div>
+      </Transition>
 
       <!-- Mapa em Tela Cheia (montado após o ciclo inicial de carregamento/anúncio) -->
       <div
@@ -325,6 +377,54 @@
         </div>
       </Transition>
 
+      <!-- Pop-up no Mapa: Termos de Uso e Política de Privacidade Completos -->
+      <Transition name="fade-modal">
+        <div
+          v-if="isTermsModalOpen"
+          class="terms-popup-backdrop"
+          @click.self="closeTermsModal"
+        >
+          <div
+            ref="termsModalRef"
+            class="terms-popup-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="multei-terms-popup-title"
+          >
+            <div class="terms-popup-topbar">
+              <span class="what-to-report-badge">Termos e Privacidade</span>
+              <div class="terms-popup-topbar-actions">
+                <NuxtLink to="/multei/termos" class="terms-popup-page-link">
+                  Abrir página completa
+                </NuxtLink>
+                <button
+                  type="button"
+                  class="what-to-report-close-btn"
+                  aria-label="Fechar janela de termos e privacidade"
+                  @click="closeTermsModal"
+                >
+                  ✕ Fechar
+                </button>
+              </div>
+            </div>
+
+            <div class="terms-popup-scroll-body">
+              <MulteiTermsContent
+                heading-tag="h2"
+                title-id="multei-terms-popup-title"
+                @navigate-map="closeTermsModal"
+              />
+            </div>
+
+            <div class="terms-popup-footer">
+              <button type="button" class="btn btn-primary what-to-report-cta" @click="closeTermsModal">
+                Fechar e voltar ao mapa
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+
       <!-- Modal para Inclusão de Nova Ocorrência com IA Gemini -->
       <MulteiCreateIncidentModal
         v-if="isCreateModalOpen"
@@ -400,7 +500,8 @@
 </template>
 
 <script setup>
-  import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+  import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+  import { useRoute } from 'vue-router';
   import {
     fetchIncidentsByVisibleArea,
     subscribeToMulteiLiveEvents,
@@ -415,6 +516,12 @@
   } from '~/services/geoService';
   import { decodeIncidentShareToken } from '~/services/imageProcessor';
   import { useModalAccessibility } from '~/composables/useModalAccessibility';
+  import {
+    syncAdSenseSuppressionForPath,
+    ensureAdSenseScriptLoaded,
+    getMulteiConsent,
+    setMulteiConsent
+  } from '~/plugins/analytics.client';
 
 definePageMeta({
   layout: false
@@ -443,6 +550,7 @@ useHead({
 });
 
 const config = useRuntimeConfig();
+const route = useRoute();
 const appsScriptUrl = ref(config.public.appsScriptUrl || '');
 
 const isCreateModalOpen = ref(false);
@@ -518,14 +626,21 @@ const handleOpenCreateModal = async () => {
   isCreateModalOpen.value = true;
 };
 
-  // Menu flutuante "Dúvidas?" e modal "O que denunciar?"
+  // Menu flutuante "Dúvidas?" e modais "O que denunciar?" / "Termos e Privacidade"
   const helpMenuRef = ref(null);
   const isHelpMenuOpen = ref(false);
   const isWhatToReportModalOpen = ref(false);
   const whatToReportModalRef = ref(null);
+  const isTermsModalOpen = ref(false);
+  const termsModalRef = ref(null);
 
   const isAnyModalOpen = computed(() =>
-    Boolean(isCreateModalOpen.value || selectedIncident.value || isWhatToReportModalOpen.value)
+    Boolean(
+      isCreateModalOpen.value ||
+      selectedIncident.value ||
+      isWhatToReportModalOpen.value ||
+      isTermsModalOpen.value
+    )
   );
 
   watch(
@@ -550,6 +665,15 @@ const handleOpenCreateModal = async () => {
     }
   });
 
+  useModalAccessibility({
+    modalRef: termsModalRef,
+    isOpen: isTermsModalOpen,
+    onRequestClose: () => {
+      isTermsModalOpen.value = false;
+      return 'closed';
+    }
+  });
+
   const toggleHelpMenu = () => {
     isHelpMenuOpen.value = !isHelpMenuOpen.value;
   };
@@ -557,6 +681,68 @@ const handleOpenCreateModal = async () => {
   const openWhatToReportModal = () => {
     isHelpMenuOpen.value = false;
     isWhatToReportModalOpen.value = true;
+  };
+
+  const openTermsModal = () => {
+    isHelpMenuOpen.value = false;
+    isTermsModalOpen.value = true;
+  };
+
+  const closeTermsModal = () => {
+    isTermsModalOpen.value = false;
+  };
+
+  // Consentimento de Cookies do Multei (Apenas Essenciais vs Aceitar Todos — validade de 1 mês)
+  const isConsentVisible = ref(false);
+
+  const disableNonEssentialCookies = () => {
+    if (typeof window === 'undefined') return;
+    if (window.gtag) {
+      window.gtag('consent', 'update', {
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+        analytics_storage: 'denied'
+      });
+    }
+    syncAdSenseSuppressionForPath(window.location.pathname, config.public.adsenseClient);
+  };
+
+  const enableNonEssentialCookies = (triggerPageView = false) => {
+    if (typeof window === 'undefined') return;
+
+    if (window.gtag) {
+      window.gtag('consent', 'update', {
+        ad_storage: 'granted',
+        ad_user_data: 'granted',
+        ad_personalization: 'granted',
+        analytics_storage: 'granted'
+      });
+
+      if (triggerPageView && typeof document !== 'undefined') {
+        window.gtag('event', 'page_view', {
+          page_title: document.title,
+          page_path: route.fullPath,
+          page_location: window.location.href
+        });
+      }
+    }
+
+    syncAdSenseSuppressionForPath(window.location.pathname, config.public.adsenseClient);
+    ensureAdSenseScriptLoaded(config.public.adsenseClient);
+    scheduleAdOffsetChecks();
+  };
+
+  const acceptOnlyEssentials = () => {
+    setMulteiConsent('essentials');
+    isConsentVisible.value = false;
+    disableNonEssentialCookies();
+  };
+
+  const acceptAll = () => {
+    setMulteiConsent('all');
+    isConsentVisible.value = false;
+    enableNonEssentialCookies(true);
   };
 
   // Estado da Barra de Busca de Endereços
@@ -1227,6 +1413,14 @@ const waitForAdSenseDuringLoadingScreen = () => {
     return Promise.resolve();
   }
 
+  // Se a pessoa ainda não aceitou todos os cookies (ou escolheu apenas essenciais),
+  // o AdSense não será carregado inicialmente — libera o mapa imediatamente.
+  const hasFullConsent = getMulteiConsent() === 'all';
+  if (!hasFullConsent) {
+    isWaitingForInitialAd.value = false;
+    return Promise.resolve();
+  }
+
   // Se o anúncio âncora já existe no DOM (ex: veio da Home), libera o mapa imediatamente
   if (hasAdSenseContainerInDom()) {
     isWaitingForInitialAd.value = false;
@@ -1457,34 +1651,19 @@ const cleanupBottomAdObserver = () => {
 onMounted(async () => {
   setupBottomAdObserver();
 
-  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  if (typeof window !== 'undefined') {
     try {
-      const expiry = new Date();
-      expiry.setDate(expiry.getDate() + 30);
-      document.cookie = `cookie-consent-granted=true; expires=${expiry.toUTCString()}; path=/; SameSite=Lax; Secure`;
-
-      window.dataLayer = window.dataLayer || [];
-      if (window.gtag) {
-        window.gtag('consent', 'update', {
-          ad_storage: 'granted',
-          ad_user_data: 'granted',
-          ad_personalization: 'granted',
-          analytics_storage: 'granted'
-        });
-      }
-      const nowIso = new Date().toISOString();
-      window.dataLayer.push({
-        event: 'consent_loaded',
-        consent_granted: true,
-        timestamp: nowIso
-      });
-      window.dataLayer.push({
-        event: 'cookie_consent_granted',
-        consent_granted: true,
-        consent_type: 'implicit',
-        timestamp: nowIso
-      });
+      window.localStorage?.removeItem('multei_consent');
     } catch {}
+
+    const savedConsent = getMulteiConsent();
+    if (!savedConsent) {
+      isConsentVisible.value = true;
+    } else if (savedConsent === 'all') {
+      enableNonEssentialCookies(false);
+    } else if (savedConsent === 'essentials') {
+      disableNonEssentialCookies();
+    }
   }
 
   if (typeof document !== 'undefined') {
@@ -1517,7 +1696,6 @@ onMounted(async () => {
     });
   }
 
-  const route = useRoute();
   const rawShareToken = typeof route.query?.p === 'string' ? route.query.p : '';
   const decodedShare = rawShareToken ? decodeIncidentShareToken(rawShareToken) : null;
 
@@ -2550,6 +2728,109 @@ onMounted(async () => {
   cursor: pointer;
 }
 
+.help-menu-svg-icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+/* Pop-up no Mapa: Termos de Uso e Política de Privacidade */
+.terms-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 105;
+  background: rgba(15, 23, 42, 0.62);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.terms-popup-card {
+  width: 100%;
+  max-width: 840px;
+  max-height: min(88dvh, 860px);
+  background: #f8fafc;
+  border-radius: 22px;
+  border: 1.5px solid rgba(15, 23, 42, 0.14);
+  box-shadow: 0 24px 55px rgba(15, 23, 42, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.terms-popup-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 1rem 1.35rem;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  flex-shrink: 0;
+}
+
+.terms-popup-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.terms-popup-page-link {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--primary, #86007D);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 0.35rem 0.55rem;
+}
+
+.terms-popup-scroll-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem 1.45rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.terms-popup-footer {
+  padding: 0.95rem 1.35rem;
+  background: #ffffff;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .terms-popup-backdrop {
+    padding: 0.5rem;
+  }
+
+  .terms-popup-card {
+    max-height: 92dvh;
+    border-radius: 18px;
+  }
+
+  .terms-popup-topbar {
+    padding: 0.85rem 1rem;
+  }
+
+  .terms-popup-scroll-body {
+    padding: 1.15rem 1rem;
+  }
+
+  .terms-popup-footer {
+    padding: 0.85rem 1rem;
+  }
+}
+
 .fade-modal-enter-active,
 .fade-modal-leave-active {
   transition: opacity 0.22s ease, transform 0.22s ease;
@@ -2626,6 +2907,9 @@ onMounted(async () => {
   .bottom-action-zone {
     padding: 8px 16px calc(20px + env(safe-area-inset-bottom, 0px));
   }
+  .bottom-action-zone.has-consent-bar {
+    padding-bottom: 10px;
+  }
   .bottom-action-container {
     width: 100%;
     display: flex;
@@ -2649,6 +2933,168 @@ onMounted(async () => {
   }
   .report-summary-body {
     padding: 0 1rem 1rem 1rem;
+  }
+}
+
+/* Barra inferior de consentimento de cookies do Multei (Essenciais vs Aceitar Todos) */
+.bottom-action-zone.has-consent-bar {
+  padding-bottom: 12px;
+}
+
+.multei-consent-bar {
+  position: relative;
+  z-index: 50;
+  flex-shrink: 0;
+  width: 100%;
+  box-sizing: border-box;
+  background: #111827;
+  color: #ffffff;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.35);
+  padding: 1rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  pointer-events: auto;
+}
+
+@media (min-width: 768px) {
+  .multei-consent-bar {
+    flex-direction: row;
+    padding: 1rem 1.5rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    gap: 1.25rem;
+  }
+}
+
+.multei-consent-text {
+  margin: 0;
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: #e5e7eb;
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .multei-consent-text {
+    text-align: left;
+  }
+}
+
+.multei-consent-link {
+  display: inline;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: #60a5fa;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.multei-consent-link:hover {
+  color: #93c5fd;
+}
+
+.multei-consent-link:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.multei-consent-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.btn-multei-consent-essential {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  color: #d1d5db;
+  padding: 0.5rem 1rem;
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.btn-multei-consent-essential:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.btn-multei-consent-all {
+  background: #2563eb;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  color: #ffffff;
+  padding: 0.5rem 1.25rem;
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.btn-multei-consent-all:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.btn-multei-consent-essential:focus-visible,
+.btn-multei-consent-all:focus-visible,
+.multei-consent-link:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+.multei-consent-slide-enter-active,
+.multei-consent-slide-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.multei-consent-slide-enter-from,
+.multei-consent-slide-leave-to {
+  opacity: 0;
+  transform: translateY(100%);
+}
+
+@media (max-width: 640px) {
+  .multei-consent-bar {
+    padding: 0.85rem 1rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+    gap: 0.7rem;
+  }
+  .multei-consent-text {
+    font-size: 0.79rem;
+    line-height: 1.45;
+  }
+  .multei-consent-actions {
+    width: 100%;
+    gap: 0.55rem;
+  }
+  .btn-multei-consent-essential,
+  .btn-multei-consent-all {
+    flex: 1;
+    text-align: center;
+    padding: 0.52rem 0.75rem;
+    font-size: 0.8rem;
   }
 }
 </style>
