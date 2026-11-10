@@ -72,7 +72,8 @@ export function validateStagingImageUrls(
     });
   }
 
-  const expectedPathPrefix = `/v0/b/${encodeURIComponent(cleanBucket)}/o/instagram_staging%2F`;
+  const expectedPrimaryPrefix = `/v0/b/${encodeURIComponent(cleanBucket)}/o/instagram_staging%2F`;
+  const expectedFallbackPrefix = `/v0/b/${encodeURIComponent(cleanBucket)}/o/ocorrencias%2Fig_temp_`;
   const validated: string[] = [];
 
   for (const item of rawUrls) {
@@ -102,7 +103,8 @@ export function validateStagingImageUrls(
 
     const isAllowedFirebaseStaging =
       parsed.hostname === 'firebasestorage.googleapis.com' &&
-      parsed.pathname.startsWith(expectedPathPrefix);
+      (parsed.pathname.startsWith(expectedPrimaryPrefix) ||
+        parsed.pathname.startsWith(expectedFallbackPrefix));
 
     if (!isAllowedFirebaseStaging) {
       throw createError({

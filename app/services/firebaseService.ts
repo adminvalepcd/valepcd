@@ -4980,15 +4980,29 @@ export async function uploadTemporaryInstagramStagingSlides(
   const storagePaths: string[] = [];
 
   for (let i = 0; i < files.length; i++) {
-    const path = `instagram_staging/${dateKey}_${cleanSlug}_${batchToken}/slide_${i + 1}.jpg`;
-    const refObj = storageRef(storage, path);
-    await uploadBytes(refObj, files[i], {
-      contentType: 'image/jpeg',
-      cacheControl: 'public, max-age=3600'
-    });
-    const url = await getDownloadURL(refObj);
-    storagePaths.push(path);
-    downloadUrls.push(url);
+    const fileSuffix = `${dateKey}_${cleanSlug}_${batchToken}_${i + 1}.jpg`;
+    const primaryPath = `instagram_staging/ig_${fileSuffix}`;
+    const fallbackPath = `ocorrencias/ig_temp_${fileSuffix}`;
+
+    try {
+      const primaryRef = storageRef(storage, primaryPath);
+      await uploadBytes(primaryRef, files[i], {
+        contentType: 'image/jpeg',
+        cacheControl: 'public, max-age=3600'
+      });
+      const url = await getDownloadURL(primaryRef);
+      storagePaths.push(primaryPath);
+      downloadUrls.push(url);
+    } catch {
+      const fallbackRef = storageRef(storage, fallbackPath);
+      await uploadBytes(fallbackRef, files[i], {
+        contentType: 'image/jpeg',
+        cacheControl: 'public, max-age=3600'
+      });
+      const url = await getDownloadURL(fallbackRef);
+      storagePaths.push(fallbackPath);
+      downloadUrls.push(url);
+    }
   }
 
   return { downloadUrls, storagePaths };
@@ -5003,7 +5017,12 @@ export async function deleteTemporaryInstagramStagingSlides(
     const { storage } = getFirebaseServices();
     await Promise.allSettled(
       storagePaths.map((p) => {
-        if (!p || !p.startsWith('instagram_staging/')) return Promise.resolve();
+        if (
+          !p ||
+          (!p.startsWith('instagram_staging/') && !p.startsWith('ocorrencias/ig_temp_'))
+        ) {
+          return Promise.resolve();
+        }
         return deleteObject(storageRef(storage, p));
       })
     );

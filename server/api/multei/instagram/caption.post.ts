@@ -163,7 +163,8 @@ Regras obrigatórias:
 2. Destaque a importância da inteligência de dados cívicos para melhorar a acessibilidade urbana.
 3. Convide gestores públicos, prefeituras e cidadãos a conhecerem mais e firmarem parceria gratuita em https://valepcd.com.br/multei/sobre (mencione também que o link está na bio).
 4. Inclua de 5 a 7 hashtags relevantes ao final (#ValePCD #Multei etc.).
-5. Retorne APENAS o texto puro da legenda pronta para postar, sem aspas extras e sem explicações.`;
+5. Retorne APENAS o texto puro da legenda pronta para postar, sem aspas extras e sem explicações.
+6. Seja enxuto em emojis, hashtags (máximo 3), não use jargões de IA como "nao é sobre <algo> é sobre <algo>" "mais que <algo>, é <algo>"`;
 
     for (const model of CAPTION_MODELS) {
       try {
