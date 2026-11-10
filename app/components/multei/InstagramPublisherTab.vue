@@ -370,7 +370,7 @@
                   :disabled="isDiscoveringSocial || (!prefeituraHandleInput.trim() && !transitoHandleInput.trim())"
                   @click="discoverOrValidateHandles(true)"
                 >
-                  ✓ Validar @ na Meta
+                  ✓ Validar @ no Instagram
                 </button>
 
                 <button
@@ -388,7 +388,7 @@
                 </label>
               </div>
 
-              <!-- Card de confirmação retornado pelo Meta business_discovery -->
+              <!-- Card de confirmação do perfil verificado no Instagram -->
               <div v-if="discoveredPrefeituraInfo" class="ig-discovery-result" :class="{ 'is-unverified': !discoveredPrefeituraInfo.verified }">
                 <img
                   v-if="discoveredPrefeituraInfo.profilePictureUrl"
@@ -397,12 +397,12 @@
                   class="ig-discovery-avatar"
                 />
                 <div class="ig-discovery-text">
-                  <strong>
+                  <strong v-if="discoveredPrefeituraInfo.username">
                     @{{ discoveredPrefeituraInfo.username }}
                     <span v-if="discoveredPrefeituraInfo.name">• {{ discoveredPrefeituraInfo.name }}</span>
                   </strong>
                   <p v-if="discoveredPrefeituraInfo.verified">
-                    ✓ Conta profissional pública confirmada na Meta
+                    ✓ Perfil público ativo confirmado no Instagram
                     <span v-if="typeof discoveredPrefeituraInfo.followersCount === 'number'">
                       ({{ discoveredPrefeituraInfo.followersCount.toLocaleString('pt-BR') }} seguidores)
                     </span>
@@ -410,6 +410,9 @@
                   <p v-else>{{ discoveredPrefeituraInfo.reason }}</p>
                   <p v-if="discoveredPrefeituraInfo.biography" class="ig-discovery-bio">
                     {{ discoveredPrefeituraInfo.biography }}
+                  </p>
+                  <p v-if="discoveredPrefeituraInfo.metaTokenExpired" class="ig-token-warn">
+                    ⚠️ Atenção: o <code>NUXT_IG_ACCESS_TOKEN</code> atual expirou na Meta (código 190). Renove o token antes de clicar em Publicar.
                   </p>
                 </div>
               </div>
@@ -428,10 +431,16 @@
                 <button
                   type="button"
                   class="ig-btn-secondary"
-                  :disabled="isGeneratingCaption"
+                  :disabled="isGeneratingCaption || isRenderingSlides || renderedSlides.length === 0"
                   @click="generateCityCaption(true)"
                 >
-                  {{ isGeneratingCaption ? 'Gerando...' : '✨ Gerar nova variação' }}
+                  {{
+                    isGeneratingCaption
+                      ? 'Gerando...'
+                      : hasGeneratedCityCaption
+                        ? '✨ Regerar'
+                        : '✨ Gerar'
+                  }}
                 </button>
               </div>
 
@@ -440,7 +449,7 @@
                 rows="9"
                 maxlength="2200"
                 class="ig-caption-textarea"
-                placeholder="A legenda personalizada será gerada aqui..."
+                placeholder="Clique em 'Gerar' após a prévia das imagens ficar pronta, ou escreva sua legenda..."
               ></textarea>
               <div class="ig-caption-footer-meta">
                 <span>{{ cityCaptionText.length }} / 2200 caracteres</span>
@@ -595,10 +604,16 @@
             <button
               type="button"
               class="ig-btn-secondary"
-              :disabled="isGeneratingReportCaption || isLoadingReport"
+              :disabled="isGeneratingReportCaption || isLoadingReport || isRenderingReportCard || !reportCardFile"
               @click="generateReportCaption"
             >
-              {{ isGeneratingReportCaption ? 'Gerando...' : '✨ Gerar nova variação' }}
+              {{
+                isGeneratingReportCaption
+                  ? 'Gerando...'
+                  : hasGeneratedReportCaption
+                    ? '✨ Regerar'
+                    : '✨ Gerar'
+              }}
             </button>
           </div>
 
@@ -607,7 +622,7 @@
             rows="11"
             maxlength="2200"
             class="ig-caption-textarea"
-            placeholder="A legenda institucional do relatório será gerada aqui..."
+            placeholder="Clique em 'Gerar' após a arte do relatório ficar pronta, ou escreva sua legenda..."
           ></textarea>
           <div class="ig-caption-footer-meta">
             <span>{{ reportCaptionText.length }} / 2200 caracteres</span>
@@ -691,6 +706,8 @@ interface DiscoveredSocialPreview {
   followersCount?: number;
   profilePictureUrl?: string;
   reason?: string;
+  metaTokenExpired?: boolean;
+  verificationSource?: 'meta_graph' | 'instagram_public';
 }
 
 const subMode = ref<'city_daily' | 'general_report'>('city_daily');
@@ -755,6 +772,7 @@ const reportStats = ref<InstagramPeriodReportData>({
 });
 const reportCardFile = ref<File | null>(null);
 const reportPreviewUrl = ref('');
+const isRenderingReportCard = ref(false);
 const reportCaptionText = ref('');
 const isGeneratingReportCaption = ref(false);
 const confirmingReportPublish = ref(false);
@@ -776,6 +794,9 @@ const renderedSlides = computed<File[]>(() => {
     .map((s) => slotFiles.value[s.item.id])
     .filter((f): f is File => Boolean(f));
 });
+
+const hasGeneratedCityCaption = computed<boolean>(() => Boolean(cityCaptionText.value.trim()));
+const hasGeneratedReportCaption = computed<boolean>(() => Boolean(reportCaptionText.value.trim()));
 
 function getIncludedIndex(itemId: string): number {
   return includedSlots.value.findIndex((s) => s.item.id === itemId);
@@ -1008,9 +1029,6 @@ async function saveHandlesForCity(): Promise<void> {
     draft.citySocial = saved;
     prefeituraHandleInput.value = saved.instagramPrefeitura;
     transitoHandleInput.value = saved.instagramTransito || '';
-
-    // Atualiza legenda caso ainda não contenha o @ salvo
-    await generateCityCaption(true);
   } catch (err: any) {
     feedbackBanner.value = {
       type: 'error',
@@ -1024,7 +1042,7 @@ async function saveHandlesForCity(): Promise<void> {
 
 async function generateCityCaption(forceNewVariation = false): Promise<void> {
   const draft = activeCityDraft.value;
-  if (!draft) return;
+  if (!draft || isRenderingSlides.value || renderedSlides.value.length === 0) return;
 
   const cacheKey = `${draft.dateKey}_${draft.cityKey}`;
   if (!forceNewVariation && captionCacheByCity.has(cacheKey)) {
@@ -1079,13 +1097,12 @@ async function selectCityDraft(cityKey: string): Promise<void> {
   prefeituraHandleInput.value = draft.citySocial?.instagramPrefeitura || '';
   transitoHandleInput.value = draft.citySocial?.instagramTransito || '';
 
-  if (draft.selectedItems.length > 0) {
-    void renderActiveCitySlides();
+  const cacheKey = `${draft.dateKey}_${draft.cityKey}`;
+  cityCaptionText.value = captionCacheByCity.get(cacheKey) || '';
 
-    if (!draft.citySocial?.instagramPrefeitura) {
-      await discoverOrValidateHandles(false);
-    }
-    await generateCityCaption(false);
+  if (draft.selectedItems.length > 0) {
+    revokeAllSlidePreviewUrls();
+    void renderActiveCitySlides();
   } else {
     revokeAllSlidePreviewUrls();
     cityCaptionText.value = '';
@@ -1269,6 +1286,7 @@ async function handleCustomReportDatesChange(): Promise<void> {
 }
 
 async function renderGeneralReportCardNow(): Promise<void> {
+  isRenderingReportCard.value = true;
   try {
     const file = await generateInstagramGeneralReportFile({
       title: reportTitleText.value || 'Essa semana no Multei',
@@ -1283,10 +1301,15 @@ async function renderGeneralReportCardNow(): Promise<void> {
     }
     reportCardFile.value = file;
     reportPreviewUrl.value = URL.createObjectURL(file);
-  } catch {}
+  } catch {
+    reportCardFile.value = null;
+  } finally {
+    isRenderingReportCard.value = false;
+  }
 }
 
 function scheduleRenderGeneralReportCard(): void {
+  isRenderingReportCard.value = true;
   if (reportRenderDebounceTimer) clearTimeout(reportRenderDebounceTimer);
   reportRenderDebounceTimer = setTimeout(() => {
     void renderGeneralReportCardNow();
@@ -1294,6 +1317,7 @@ function scheduleRenderGeneralReportCard(): void {
 }
 
 async function generateReportCaption(): Promise<void> {
+  if (!reportCardFile.value || isRenderingReportCard.value || isLoadingReport.value) return;
   isGeneratingReportCaption.value = true;
   try {
     const periodLabel =
@@ -1331,13 +1355,14 @@ async function generateReportCaption(): Promise<void> {
 async function refreshGeneralReportData(): Promise<void> {
   isLoadingReport.value = true;
   confirmingReportPublish.value = false;
+  reportCardFile.value = null;
+  reportCaptionText.value = '';
   try {
     reportStats.value = await fetchInstagramGeneralReportForPeriod(
       reportStartDate.value,
       reportEndDate.value
     );
     await renderGeneralReportCardNow();
-    await generateReportCaption();
   } catch (err: any) {
     feedbackBanner.value = {
       type: 'error',

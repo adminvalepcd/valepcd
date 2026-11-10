@@ -12,18 +12,83 @@ import {
 } from '../../../utils/instagramGraph';
 
 const DISCOVERY_MODELS = [
-  'gemini-flash-latest',
+  'gemini-3.8-flash',
   'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
   'gemini-3.1-flash-lite',
   'gemini-flash-lite-latest'
 ];
 
-function buildCitySlug(text: string): string {
+const STOPWORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'e']);
+
+function normalizeAsciiLower(text: string): string {
   return String(text || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
+    .trim();
+}
+
+function buildDeterministicMunicipalCandidates(cidade: string, estado: string): string[] {
+  const norm = normalizeAsciiLower(cidade);
+  const words = norm
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w && !STOPWORDS.has(w));
+  const fullSlug = words.join('');
+  const rawSlug = norm.replace(/[^a-z0-9]/g, '');
+  const ufLower = String(estado || '').toLowerCase();
+
+  // Sigla de cidades compostas (ex.: "Belo Horizonte" -> "bh", "Juiz de Fora" -> "jf", "Porto Alegre" -> "poa")
+  const initials = words.length >= 2 ? words.map((w) => w[0]).join('') : '';
+
+  const candidates: string[] = [];
+  if (initials.length >= 2) {
+    candidates.push(
+      `prefeitura${initials}`,
+      `pref${initials}`,
+      `p${initials}`,
+      `prefeiturade${initials}`
+    );
+  }
+  if (rawSlug) {
+    candidates.push(
+      `prefeitura${rawSlug}`,
+      `prefeiturade${rawSlug}`,
+      `pref${rawSlug}`,
+      `prefeitura.${rawSlug}`,
+      `prefeitura_${rawSlug}`,
+      `prefeitura${rawSlug}${ufLower}`
+    );
+  }
+  if (fullSlug && fullSlug !== rawSlug) {
+    candidates.push(`prefeitura${fullSlug}`, `prefeiturade${fullSlug}`, `pref${fullSlug}`);
+  }
+
+  return Array.from(new Set(candidates.map(sanitizeInstagramHandle).filter(Boolean)));
+}
+
+function scoreVerifiedPrefeituraProfile(
+  profile: InstagramDiscoveredProfile,
+  cidade: string
+): number {
+  if (!profile.verified) return -1;
+  const hay = normalizeAsciiLower(`${profile.name || ''} ${profile.biography || ''}`);
+  const cityNorm = normalizeAsciiLower(cidade);
+  const words = cityNorm.split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+
+  let score = 10;
+  if (hay.includes('prefeitura') || hay.includes('municipio') || hay.includes('municipal')) {
+    score += 40;
+  }
+  if (cityNorm && hay.includes(cityNorm)) {
+    score += 35;
+  } else if (words.length > 0 && words.every((w) => hay.includes(w))) {
+    score += 25;
+  }
+  if (typeof profile.followersCount === 'number' && profile.followersCount >= 1000) {
+    score += 15;
+  }
+  return score;
 }
 
 async function suggestHandlesWithGemini(
@@ -37,39 +102,25 @@ async function suggestHandlesWithGemini(
   }
 
   const ai = new GoogleGenAI({ apiKey: cleanKey });
-  const prompt = `Identifique o perfil oficial público no Instagram da Prefeitura Municipal de "${cidade}" (${estado}, Brasil) e, se existir um perfil próprio, da secretaria ou autarquia municipal de trânsito/mobilidade urbana dessa cidade.
-Responda APENAS um objeto JSON válido (sem markdown) no formato:
-{"prefeitura": ["arroba1", "arroba2"], "transito": ["arroba_transito1"]}
-Regras:
-- Inclua somente o nome de usuário sem "@" (apenas letras, números, ponto ou underline).
-- Se não tiver certeza do órgão de trânsito, retorne lista vazia em "transito".`;
+  const prompt = `Liste os usernames mais prováveis do perfil oficial público no Instagram da Prefeitura Municipal de "${cidade}" (${estado}, Brasil) e, se existir perfil próprio conhecido, do órgão/autarquia municipal de trânsito dessa cidade.
+Inclua variações reais comuns no Brasil (por exemplo, siglas como prefeiturabh, prefsp, prefcuritiba, prefpoa, prefeituracontagem, etc.).
+Responda APENAS um JSON válido no formato:
+{"prefeitura": ["op1", "op2", "op3", "op4"], "transito": ["op_transito1", "op_transito2"]}
+Regras: apenas usernames sem "@", sem URLs e sem explicações.`;
 
   for (const model of DISCOVERY_MODELS) {
     try {
-      let responseText = '';
-      try {
-        const groundedRes = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            tools: [{ googleSearch: {} }],
-            temperature: 0.1
-          }
-        });
-        responseText = String(groundedRes.text || '').trim();
-      } catch {
-        const plainRes = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            temperature: 0.1
-          }
-        });
-        responseText = String(plainRes.text || '').trim();
-      }
-
+      const res = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          temperature: 0.1
+        }
+      });
+      const responseText = String(res.text || '').trim();
       if (!responseText) continue;
+
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) continue;
 
@@ -140,61 +191,52 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // Modo 2: Descoberta automática assistida (Gemini + confirmação oficial na Meta business_discovery)
-  const slug = buildCitySlug(cidade);
+  // Modo 2: Descoberta automática verificando existência real de cada candidato no Instagram
+  const deterministicCandidates = buildDeterministicMunicipalCandidates(cidade, estado);
   const aiSuggestions = await suggestHandlesWithGemini(
     String(runtimeConfig.geminiServerApiKey || runtimeConfig.public?.geminiApiKey || ''),
     cidade,
     estado
   );
 
-  const fallbackPrefCandidates = slug
-    ? [
-        `prefeitura${slug}`,
-        `prefeiturade${slug}`,
-        `pref${slug}`,
-        `prefeitura.${slug}`,
-        `pm${slug}`
-      ]
-        .map(sanitizeInstagramHandle)
-        .filter(Boolean)
-    : [];
-
   const uniquePrefCandidates = Array.from(
-    new Set([...aiSuggestions.prefeituraCandidates, ...fallbackPrefCandidates])
-  ).slice(0, 5);
+    new Set([...deterministicCandidates.slice(0, 3), ...aiSuggestions.prefeituraCandidates, ...deterministicCandidates])
+  ).slice(0, 8);
 
-  let verifiedPrefeitura: InstagramDiscoveredProfile | null = null;
-  for (const candidate of uniquePrefCandidates) {
-    const discovered = await discoverInstagramBusinessProfile(candidate, igConfig);
-    if (discovered.verified) {
-      verifiedPrefeitura = discovered;
-      break;
-    }
-  }
+  const checkedPrefProfiles = await Promise.all(
+    uniquePrefCandidates.map((cand) => discoverInstagramBusinessProfile(cand, igConfig))
+  );
+
+  const validScored = checkedPrefProfiles
+    .filter((p) => p.verified)
+    .map((p) => ({ profile: p, score: scoreVerifiedPrefeituraProfile(p, cidade) }))
+    .filter((entry) => entry.score >= 35)
+    .sort((a, b) => b.score - a.score);
+
+  const verifiedPrefeitura = validScored[0]?.profile || null;
+  const anyTokenExpired = checkedPrefProfiles.some((p) => p.metaTokenExpired);
 
   let verifiedTransito: InstagramDiscoveredProfile | null = null;
-  const uniqueTransitoCandidates = Array.from(new Set(aiSuggestions.transitoCandidates)).slice(0, 3);
-  for (const candidate of uniqueTransitoCandidates) {
-    if (verifiedPrefeitura && candidate === verifiedPrefeitura.username) continue;
-    const discovered = await discoverInstagramBusinessProfile(candidate, igConfig);
-    if (discovered.verified) {
-      verifiedTransito = discovered;
-      break;
-    }
+  const uniqueTransitoCandidates = Array.from(new Set(aiSuggestions.transitoCandidates)).slice(0, 4);
+  if (uniqueTransitoCandidates.length > 0) {
+    const checkedTransito = await Promise.all(
+      uniqueTransitoCandidates
+        .filter((c) => !verifiedPrefeitura || c !== verifiedPrefeitura.username)
+        .map((cand) => discoverInstagramBusinessProfile(cand, igConfig))
+    );
+    verifiedTransito = checkedTransito.find((t) => t.verified) || null;
   }
 
   return {
     ok: true,
     prefeitura:
-      verifiedPrefeitura ||
-      (uniquePrefCandidates[0]
-        ? {
-            verified: false,
-            username: uniquePrefCandidates[0],
-            reason: 'Sugestão automática não confirmada na Meta — revise o @ antes de salvar.'
-          }
-        : null),
+      verifiedPrefeitura || {
+        verified: false,
+        username: '',
+        metaTokenExpired: anyTokenExpired,
+        reason:
+          'Não foi possível confirmar automaticamente o @ oficial desta prefeitura — digite o @ acima e clique em Validar.'
+      },
     transito: verifiedTransito
   };
 });
