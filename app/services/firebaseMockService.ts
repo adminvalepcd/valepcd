@@ -2137,16 +2137,18 @@ function normalizeCityKey(raw?: string): string {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
-export async function mockFetchPartnerIncidentsFromFirebase(options: {
-  cidade?: string;
-  estado?: string;
-  center?: { latitude: number; longitude: number } | null;
-  radiusKm?: number;
-}): Promise<ReportedIncident[]> {
+export async function mockFetchPartnerIncidentsFromFirebase(
+  options: {
+    cidade?: string;
+    estado?: string;
+    center?: { latitude: number; longitude: number } | null;
+    radiusKm?: number;
+  } = {}
+): Promise<ReportedIncident[]> {
   const store = getMockStore();
-  const targetCityKey = normalizeCityKey(options.cidade);
-  const targetStateKey = normalizeState(options.estado || '').toUpperCase();
-  const radiusMeters = (options.radiusKm ?? 5) * 1000;
+  const targetCityKey = normalizeCityKey(options?.cidade);
+  const targetStateKey = normalizeState(options?.estado || '').toUpperCase();
+  const radiusMeters = (options?.radiusKm ?? 5) * 1000;
 
   const results: ReportedIncident[] = [];
   for (const [docId, rawData] of Object.entries(store.ocorrencias)) {

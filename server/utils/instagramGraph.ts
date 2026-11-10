@@ -1,0 +1,459 @@
+const IG_HANDLE_REGEX = /^[a-zA-Z0-9._]{1,30}$/;
+const GRAPH_VERSION_REGEX = /^v\d{1,2}\.\d$/;
+const IG_NUMERIC_ID_REGEX = /^\d{8,30}$/;
+
+export interface InstagramUserTagInput {
+  username: string;
+  x?: number;
+  y?: number;
+}
+
+export interface InstagramDiscoveredProfile {
+  verified: boolean;
+  username: string;
+  name?: string;
+  biography?: string;
+  followersCount?: number;
+  profilePictureUrl?: string;
+  reason?: string;
+}
+
+export interface InstagramPublishInput {
+  imageUrls: string[];
+  caption: string;
+  userTags?: InstagramUserTagInput[];
+}
+
+export interface InstagramPublishResult {
+  mediaId: string;
+  permalink: string;
+  tagsApplied: boolean;
+}
+
+export interface InstagramServerConfig {
+  igUserId: string;
+  igAccessToken: string;
+  igGraphVersion: string;
+  firebaseStorageBucket: string;
+  allowLocalMockUrls?: boolean;
+}
+
+export function sanitizeInstagramHandle(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  const cleaned = raw.trim().replace(/^@+/, '').trim();
+  if (!IG_HANDLE_REGEX.test(cleaned)) return '';
+  return cleaned.toLowerCase();
+}
+
+export function sanitizeInstagramCaption(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  const cleaned = raw.replace(/\u0000/g, '').trim();
+  if (!cleaned) return '';
+  return cleaned.length > 2200 ? cleaned.slice(0, 2200) : cleaned;
+}
+
+export function validateStagingImageUrls(
+  rawUrls: unknown,
+  allowedBucket: string,
+  allowLocalMockUrls = false
+): string[] {
+  if (!Array.isArray(rawUrls) || rawUrls.length < 1 || rawUrls.length > 9) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'A publicação deve conter entre 1 e 9 imagens.'
+    });
+  }
+
+  const cleanBucket = String(allowedBucket || '').trim();
+  if (!cleanBucket && !allowLocalMockUrls) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Bucket do Firebase Storage não configurado no servidor.'
+    });
+  }
+
+  const expectedPathPrefix = `/v0/b/${encodeURIComponent(cleanBucket)}/o/instagram_staging%2F`;
+  const validated: string[] = [];
+
+  for (const item of rawUrls) {
+    if (typeof item !== 'string' || item.length > 2048) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'URL de imagem inválida para publicação.'
+      });
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(item);
+    } catch {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Formato de URL de imagem inválido.'
+      });
+    }
+
+    if (parsed.protocol !== 'https:') {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'A Meta Graph API exige URLs públicas com protocolo HTTPS.'
+      });
+    }
+
+    const isAllowedFirebaseStaging =
+      parsed.hostname === 'firebasestorage.googleapis.com' &&
+      parsed.pathname.startsWith(expectedPathPrefix);
+
+    if (!isAllowedFirebaseStaging) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'URL de imagem fora do repositório temporário autorizado do Multei.'
+      });
+    }
+
+    validated.push(parsed.toString());
+  }
+
+  return validated;
+}
+
+function resolveGraphBaseUrl(config: InstagramServerConfig): {
+  baseUrl: string;
+  igUserId: string;
+  accessToken: string;
+} {
+  const igUserId = String(config.igUserId || '').trim();
+  const accessToken = String(config.igAccessToken || '').trim();
+  const rawVersion = String(config.igGraphVersion || 'v27.0').trim();
+  const version = GRAPH_VERSION_REGEX.test(rawVersion) ? rawVersion : 'v27.0';
+
+  if (!IG_NUMERIC_ID_REGEX.test(igUserId) || !accessToken) {
+    throw createError({
+      statusCode: 500,
+      statusMessage:
+        'Credenciais da API do Instagram (NUXT_IG_USER_ID / NUXT_IG_ACCESS_TOKEN) não configuradas no servidor.'
+    });
+  }
+
+  return {
+    baseUrl: `https://graph.facebook.com/${version}`,
+    igUserId,
+    accessToken
+  };
+}
+
+export async function discoverInstagramBusinessProfile(
+  rawUsername: string,
+  config: InstagramServerConfig
+): Promise<InstagramDiscoveredProfile> {
+  const username = sanitizeInstagramHandle(rawUsername);
+  if (!username) {
+    return {
+      verified: false,
+      username: '',
+      reason: 'Informe um @ de Instagram válido.'
+    };
+  }
+
+  const { baseUrl, igUserId, accessToken } = resolveGraphBaseUrl(config);
+  const fieldsParam = `business_discovery.username(${username}){id,username,name,biography,followers_count,profile_picture_url}`;
+  const url = `${baseUrl}/${encodeURIComponent(igUserId)}?fields=${encodeURIComponent(fieldsParam)}`;
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/json'
+    }
+  });
+
+  const payload = (await res.json().catch(() => ({}))) as Record<string, any>;
+  if (!res.ok || !payload?.business_discovery) {
+    return {
+      verified: false,
+      username,
+      reason:
+        'Perfil não localizado como conta profissional pública na Meta (verifique a grafia do @).'
+    };
+  }
+
+  const bd = payload.business_discovery;
+  return {
+    verified: true,
+    username: sanitizeInstagramHandle(bd.username || username) || username,
+    name: bd.name ? String(bd.name).trim() : undefined,
+    biography: bd.biography ? String(bd.biography).trim().slice(0, 260) : undefined,
+    followersCount: typeof bd.followers_count === 'number' ? bd.followers_count : undefined,
+    profilePictureUrl:
+      typeof bd.profile_picture_url === 'string' && bd.profile_picture_url.startsWith('https://')
+        ? bd.profile_picture_url
+        : undefined
+  };
+}
+
+function normalizeUserTags(rawTags?: InstagramUserTagInput[]): Array<{ username: string; x: number; y: number }> {
+  if (!Array.isArray(rawTags) || rawTags.length === 0) return [];
+  const seen = new Set<string>();
+  const normalized: Array<{ username: string; x: number; y: number }> = [];
+
+  for (const tag of rawTags) {
+    const handle = sanitizeInstagramHandle(tag?.username);
+    if (!handle || seen.has(handle)) continue;
+    seen.add(handle);
+
+    const idx = normalized.length;
+    const x =
+      typeof tag?.x === 'number' && tag.x >= 0.05 && tag.x <= 0.95
+        ? Number(tag.x.toFixed(2))
+        : idx === 0
+          ? 0.35
+          : 0.65;
+    const y =
+      typeof tag?.y === 'number' && tag.y >= 0.05 && tag.y <= 0.95
+        ? Number(tag.y.toFixed(2))
+        : 0.88;
+
+    normalized.push({ username: handle, x, y });
+    if (normalized.length >= 3) break;
+  }
+
+  return normalized;
+}
+
+async function sleepMs(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForContainerReady(
+  baseUrl: string,
+  containerId: string,
+  accessToken: string,
+  maxAttempts = 18
+): Promise<void> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const url = `${baseUrl}/${encodeURIComponent(containerId)}?fields=status_code,status`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json'
+      }
+    });
+
+    if (!res.ok) {
+      await sleepMs(1200);
+      continue;
+    }
+
+    const data = (await res.json().catch(() => ({}))) as Record<string, any>;
+    const statusCode = String(data?.status_code || '').toUpperCase();
+
+    if (!statusCode || statusCode === 'FINISHED' || statusCode === 'PUBLISHED') {
+      return;
+    }
+
+    if (statusCode === 'ERROR' || statusCode === 'EXPIRED') {
+      throw createError({
+        statusCode: 502,
+        statusMessage: 'A Meta recusou o processamento de uma das imagens do post.'
+      });
+    }
+
+    await sleepMs(1500);
+  }
+
+  throw createError({
+    statusCode: 504,
+    statusMessage: 'Tempo limite excedido aguardando o processamento da mídia no Instagram.'
+  });
+}
+
+async function createMediaContainerRequest(
+  baseUrl: string,
+  igUserId: string,
+  accessToken: string,
+  bodyParams: Record<string, string | boolean>
+): Promise<{ ok: boolean; id?: string; errorMessage?: string }> {
+  const form = new URLSearchParams();
+  for (const [k, v] of Object.entries(bodyParams)) {
+    form.set(k, String(v));
+  }
+
+  const res = await fetch(`${baseUrl}/${encodeURIComponent(igUserId)}/media`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json'
+    },
+    body: form.toString()
+  });
+
+  const data = (await res.json().catch(() => ({}))) as Record<string, any>;
+  if (!res.ok || !data?.id) {
+    const metaMsg = String(data?.error?.error_user_msg || data?.error?.message || '').slice(0, 180);
+    return { ok: false, errorMessage: metaMsg || 'Falha ao criar container de mídia na Meta.' };
+  }
+
+  return { ok: true, id: String(data.id) };
+}
+
+export async function publishToInstagramGraph(
+  input: InstagramPublishInput,
+  config: InstagramServerConfig
+): Promise<InstagramPublishResult> {
+  const imageUrls = validateStagingImageUrls(
+    input.imageUrls,
+    config.firebaseStorageBucket,
+    Boolean(config.allowLocalMockUrls)
+  );
+  const caption = sanitizeInstagramCaption(input.caption);
+  if (!caption) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'A legenda da publicação não pode estar vazia.'
+    });
+  }
+
+  const { baseUrl, igUserId, accessToken } = resolveGraphBaseUrl(config);
+  const userTags = normalizeUserTags(input.userTags);
+  let tagsApplied = userTags.length > 0;
+
+  let publishableContainerId = '';
+
+  if (imageUrls.length === 1) {
+    // Publicação de imagem única (IMAGE)
+    const singleParams: Record<string, string | boolean> = {
+      image_url: imageUrls[0],
+      caption
+    };
+    if (userTags.length > 0) {
+      singleParams.user_tags = JSON.stringify(userTags);
+    }
+
+    let created = await createMediaContainerRequest(baseUrl, igUserId, accessToken, singleParams);
+    if (!created.ok && userTags.length > 0) {
+      // Fallback automático caso o perfil público marcado tenha restringido marcações em fotos
+      tagsApplied = false;
+      delete singleParams.user_tags;
+      created = await createMediaContainerRequest(baseUrl, igUserId, accessToken, singleParams);
+    }
+
+    if (!created.ok || !created.id) {
+      throw createError({
+        statusCode: 502,
+        statusMessage: created.errorMessage || 'Não foi possível preparar a imagem no Instagram.'
+      });
+    }
+
+    publishableContainerId = created.id;
+    await waitForContainerReady(baseUrl, publishableContainerId, accessToken);
+  } else {
+    // Publicação de Carrossel (2 a 9 imagens — CAROUSEL)
+    const childIds: string[] = [];
+
+    for (let i = 0; i < imageUrls.length; i++) {
+      const childParams: Record<string, string | boolean> = {
+        image_url: imageUrls[i],
+        is_carousel_item: true
+      };
+      if (tagsApplied && userTags.length > 0) {
+        childParams.user_tags = JSON.stringify(userTags);
+      }
+
+      let childCreated = await createMediaContainerRequest(baseUrl, igUserId, accessToken, childParams);
+      if (!childCreated.ok && tagsApplied && userTags.length > 0) {
+        tagsApplied = false;
+        delete childParams.user_tags;
+        childCreated = await createMediaContainerRequest(baseUrl, igUserId, accessToken, childParams);
+      }
+
+      if (!childCreated.ok || !childCreated.id) {
+        throw createError({
+          statusCode: 502,
+          statusMessage:
+            childCreated.errorMessage || `Falha ao enviar o slide ${i + 1} para o Instagram.`
+        });
+      }
+
+      childIds.push(childCreated.id);
+    }
+
+    for (const childId of childIds) {
+      await waitForContainerReady(baseUrl, childId, accessToken);
+    }
+
+    const carouselCreated = await createMediaContainerRequest(baseUrl, igUserId, accessToken, {
+      media_type: 'CAROUSEL',
+      children: childIds.join(','),
+      caption
+    });
+
+    if (!carouselCreated.ok || !carouselCreated.id) {
+      throw createError({
+        statusCode: 502,
+        statusMessage:
+          carouselCreated.errorMessage || 'Falha ao agrupar o carrossel no Instagram.'
+      });
+    }
+
+    publishableContainerId = carouselCreated.id;
+    await waitForContainerReady(baseUrl, publishableContainerId, accessToken);
+  }
+
+  // Dispara `media_publish`
+  const publishForm = new URLSearchParams();
+  publishForm.set('creation_id', publishableContainerId);
+
+  const publishRes = await fetch(`${baseUrl}/${encodeURIComponent(igUserId)}/media_publish`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json'
+    },
+    body: publishForm.toString()
+  });
+
+  const publishData = (await publishRes.json().catch(() => ({}))) as Record<string, any>;
+  if (!publishRes.ok || !publishData?.id) {
+    const metaErr = String(
+      publishData?.error?.error_user_msg || publishData?.error?.message || ''
+    ).slice(0, 180);
+    throw createError({
+      statusCode: 502,
+      statusMessage: metaErr || 'Não foi possível concluir a publicação no Instagram.'
+    });
+  }
+
+  const mediaId = String(publishData.id);
+  let permalink = 'https://www.instagram.com/pcdvale/';
+
+  try {
+    const permalinkRes = await fetch(
+      `${baseUrl}/${encodeURIComponent(mediaId)}?fields=id,permalink`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json'
+        }
+      }
+    );
+    if (permalinkRes.ok) {
+      const permalinkJson = (await permalinkRes.json().catch(() => ({}))) as Record<string, any>;
+      if (
+        typeof permalinkJson?.permalink === 'string' &&
+        permalinkJson.permalink.startsWith('https://')
+      ) {
+        permalink = permalinkJson.permalink;
+      }
+    }
+  } catch {}
+
+  return {
+    mediaId,
+    permalink,
+    tagsApplied
+  };
+}

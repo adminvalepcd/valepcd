@@ -246,6 +246,19 @@
           <span>Gestão de Usuários</span>
           <span v-if="panelUsers.length > 0" class="module-tab-badge">{{ panelUsers.length }}</span>
         </button>
+
+        <button
+          v-if="isAdminRole"
+          type="button"
+          role="tab"
+          :aria-selected="adminMainSection === 'instagram'"
+          class="admin-module-tab-btn"
+          :class="{ 'is-active': adminMainSection === 'instagram' }"
+          @click="switchAdminMainSection('instagram')"
+        >
+          <span aria-hidden="true">📸</span>
+          <span>Publicações Instagram</span>
+        </button>
       </div>
 
       <!-- ABA 1 (EXCLUSIVA ADMIN): AVERIGUAÇÃO DE OCORRÊNCIAS REPORTADAS -->
@@ -2302,6 +2315,11 @@
           </main>
         </div>
       </div>
+
+      <!-- ABA 5 (EXCLUSIVA ADMIN): PUBLICAÇÕES NO INSTAGRAM (FASE 1 POR CIDADE & FASE 2 RELATÓRIO) -->
+      <div v-else-if="isAdminRole && adminMainSection === 'instagram'" class="instagram-management-section">
+        <InstagramPublisherTab :admin-email="userProfile?.email || ''" />
+      </div>
     </section>
 
     <!-- Câmera ao vivo para foto de resolução na aba Denúncias -->
@@ -2420,6 +2438,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import type { ReportedIncident } from '~/types';
+import InstagramPublisherTab from '~/components/multei/InstagramPublisherTab.vue';
 import { useModalAccessibility } from '~/composables/useModalAccessibility';
 import { requestUserLocation, normalizeState } from '~/services/geoService';
 import {
@@ -2511,7 +2530,7 @@ const clearLoginError = () => {
   }
 };
 
-const adminMainSection = ref<'ocorrencias' | 'denuncias' | 'resolucoes' | 'usuarios'>('ocorrencias');
+const adminMainSection = ref<'ocorrencias' | 'denuncias' | 'resolucoes' | 'usuarios' | 'instagram'>('ocorrencias');
 
 const allReports = ref<ReportedIncidentPanelItem[]>([]);
 const isLoadingReports = ref(false);
@@ -3636,7 +3655,7 @@ const announceSr = (msg: string) => {
 };
 
 const switchAdminMainSection = async (
-  section: 'ocorrencias' | 'denuncias' | 'resolucoes' | 'usuarios'
+  section: 'ocorrencias' | 'denuncias' | 'resolucoes' | 'usuarios' | 'instagram'
 ) => {
   if (!isAdminRole.value && section !== 'denuncias' && section !== 'resolucoes') {
     adminMainSection.value = 'denuncias';

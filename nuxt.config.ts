@@ -180,6 +180,10 @@ export default defineNuxtConfig({
     }
   },
   runtimeConfig: {
+    igUserId: process.env.NUXT_IG_USER_ID || process.env.IG_USER_ID || '',
+    igAccessToken: process.env.NUXT_IG_ACCESS_TOKEN || process.env.IG_ACCESS_TOKEN || '',
+    igGraphVersion: process.env.NUXT_IG_GRAPH_VERSION || 'v27.0',
+    geminiServerApiKey: process.env.GEMINI_API_KEY || process.env.NUXT_PUBLIC_GEMINI_API_KEY || '',
     public: {
       googleMapsApiKey: process.env.NUXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyBE9MtDA7cziFHANDknpjvgP5jkAvXyguU',
       geminiApiKey: process.env.NUXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '',

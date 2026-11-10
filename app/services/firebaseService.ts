@@ -26,6 +26,7 @@ import {
   uploadBytes,
   getDownloadURL,
   getBlob,
+  deleteObject,
   type FirebaseStorage
 } from 'firebase/storage';
 import {
@@ -4663,6 +4664,972 @@ export async function reviewResolvedIncidentInFirebase(params: {
     observacao_admin: observacaoAdmin.trim()
   };
 }
+
+// ============================================================================
+// PUBLICAÇÕES INSTAGRAM (EXCLUSIVO ADMIN — FASE 1 POR CIDADE & FASE 2 RELATÓRIO)
+// ============================================================================
+
+export const MULTEI_CITY_SOCIALS_COLLECTION = 'multei_city_socials';
+export const MULTEI_INSTAGRAM_POSTS_COLLECTION = 'multei_instagram_posts';
+
+export interface MulteiCitySocialProfile {
+  id: string;
+  cidade: string;
+  estado: string;
+  instagramPrefeitura: string;
+  instagramTransito?: string;
+  prefeituraName?: string;
+  prefeituraFollowers?: number;
+  prefeituraPicUrl?: string;
+  transitoName?: string;
+  verificadoPorAdmin: boolean;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+export interface InstagramDraftCandidateItem {
+  id: string;
+  ocorrenciaId: string;
+  category: 'resolvido' | 'transito' | 'mobilidade';
+  cidade: string;
+  estado: string;
+  rua: string;
+  bairro: string;
+  natureza: string;
+  verificacao: string;
+  photoUrl: string;
+  resolvedPhotoUrl?: string;
+  timestampMs: number;
+}
+
+export interface InstagramPublishedPostRecord {
+  id: string;
+  dateKey: string;
+  mode: 'city_daily' | 'general_report';
+  cidade?: string;
+  estado?: string;
+  itemIds: string[];
+  instagramMediaId: string;
+  permalink: string;
+  caption: string;
+  publishedAt: string;
+  publishedBy: string;
+}
+
+export interface InstagramDailyCityDraft {
+  cityKey: string;
+  cidade: string;
+  estado: string;
+  dateKey: string;
+  selectedItems: InstagramDraftCandidateItem[];
+  poolResolvidos: InstagramDraftCandidateItem[];
+  poolTransito: InstagramDraftCandidateItem[];
+  poolMobilidade: InstagramDraftCandidateItem[];
+  totalDia: number;
+  resolvidosDia: number;
+  transitoDia: number;
+  mobilidadeDia: number;
+  bairrosDia: string[];
+  citySocial: MulteiCitySocialProfile | null;
+  publishedTodayPosts: InstagramPublishedPostRecord[];
+}
+
+export interface InstagramPeriodReportData {
+  totalGeral: number;
+  cidadesCount: number;
+  infracoesTransito: number;
+  mobilidadeUrbana: number;
+  resolvidos: number;
+  topCities: string[];
+}
+
+const mockCitySocialsMemory = new Map<string, MulteiCitySocialProfile>();
+const mockInstagramPostsMemory: InstagramPublishedPostRecord[] = [];
+
+const brazilDateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
+
+export function getBrazilDateKey(input: number | string | Date = Date.now()): string {
+  const d = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(d.getTime())) {
+    return brazilDateKeyFormatter.format(new Date());
+  }
+  return brazilDateKeyFormatter.format(d);
+}
+
+export function buildMulteiCitySocialDocId(cidade: string, estado: string): string {
+  const uf = String(estado || 'BR')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, '')
+    .slice(0, 2) || 'BR';
+  const slug = String(cidade || 'cidade')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+  return `${uf}_${slug || 'cidade'}`;
+}
+
+function parseFlexibleDocTimestampMs(raw: any): number {
+  if (!raw) return 0;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw?.toMillis === 'function') {
+    const ms = Number(raw.toMillis());
+    if (Number.isFinite(ms)) return ms;
+  }
+  if (typeof raw?.seconds === 'number') {
+    return raw.seconds * 1000;
+  }
+  const str = String(raw).trim();
+  if (!str) return 0;
+
+  const brMatch = str.match(
+    /^(\d{2})\/(\d{2})\/(\d{4})(?:[,\s]+(\d{2}):(\d{2})(?::(\d{2}))?)?$/
+  );
+  if (brMatch) {
+    const [, dd, mm, yyyy, hh = '12', min = '00', ss = '00'] = brMatch;
+    const parsed = new Date(`${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}-03:00`).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  const direct = new Date(str).getTime();
+  return Number.isFinite(direct) ? direct : 0;
+}
+
+function secureRandomUint32(): number {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    return arr[0];
+  }
+  return Date.now() >>> 0;
+}
+
+function secureShuffleCopy<T>(items: T[]): T[] {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = secureRandomUint32() % (i + 1);
+    const tmp = copy[i];
+    copy[i] = copy[j];
+    copy[j] = tmp;
+  }
+  return copy;
+}
+
+function generateSecureHexToken(byteLen = 8): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(byteLen);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  return String(Date.now());
+}
+
+export async function getCurrentMulteiAdminIdToken(): Promise<string> {
+  if (isFirebaseMockEnabled()) {
+    return 'mock-admin-token';
+  }
+  const { auth } = getFirebaseServices();
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('Sessão administrativa expirada. Faça login novamente no painel.');
+  }
+  return await user.getIdToken();
+}
+
+export async function saveMulteiCitySocialProfile(input: {
+  cidade: string;
+  estado: string;
+  instagramPrefeitura: string;
+  instagramTransito?: string;
+  prefeituraName?: string;
+  prefeituraFollowers?: number;
+  prefeituraPicUrl?: string;
+  transitoName?: string;
+  updatedBy?: string;
+}): Promise<MulteiCitySocialProfile> {
+  const docId = buildMulteiCitySocialDocId(input.cidade, input.estado);
+  const cleanPref = String(input.instagramPrefeitura || '')
+    .trim()
+    .replace(/^@+/, '')
+    .toLowerCase();
+  const cleanTransito = String(input.instagramTransito || '')
+    .trim()
+    .replace(/^@+/, '')
+    .toLowerCase();
+
+  const record: MulteiCitySocialProfile = {
+    id: docId,
+    cidade: String(input.cidade || '').trim(),
+    estado: String(input.estado || '').trim().toUpperCase(),
+    instagramPrefeitura: cleanPref,
+    instagramTransito: cleanTransito || undefined,
+    prefeituraName: input.prefeituraName ? String(input.prefeituraName).trim() : undefined,
+    prefeituraFollowers:
+      typeof input.prefeituraFollowers === 'number' ? input.prefeituraFollowers : undefined,
+    prefeituraPicUrl: input.prefeituraPicUrl ? String(input.prefeituraPicUrl).trim() : undefined,
+    transitoName: input.transitoName ? String(input.transitoName).trim() : undefined,
+    verificadoPorAdmin: true,
+    updatedAt: new Date().toISOString(),
+    updatedBy: input.updatedBy ? String(input.updatedBy).trim() : undefined
+  };
+
+  if (isFirebaseMockEnabled()) {
+    mockCitySocialsMemory.set(docId, record);
+    return record;
+  }
+
+  const { db } = getFirebaseServices();
+  const payload: Record<string, any> = {
+    id: record.id,
+    cidade: record.cidade,
+    estado: record.estado,
+    instagramPrefeitura: record.instagramPrefeitura,
+    instagramTransito: record.instagramTransito || '',
+    verificadoPorAdmin: true,
+    updatedAt: record.updatedAt
+  };
+  if (record.prefeituraName !== undefined) payload.prefeituraName = record.prefeituraName;
+  if (record.prefeituraFollowers !== undefined) {
+    payload.prefeituraFollowers = record.prefeituraFollowers;
+  }
+  if (record.prefeituraPicUrl !== undefined) payload.prefeituraPicUrl = record.prefeituraPicUrl;
+  if (record.transitoName !== undefined) payload.transitoName = record.transitoName;
+  if (record.updatedBy !== undefined) payload.updatedBy = record.updatedBy;
+
+  await setDoc(doc(db, MULTEI_CITY_SOCIALS_COLLECTION, docId), payload, { merge: true });
+  return record;
+}
+
+export async function saveMulteiInstagramPublishedPost(input: {
+  dateKey: string;
+  mode: 'city_daily' | 'general_report';
+  cidade?: string;
+  estado?: string;
+  itemIds: string[];
+  instagramMediaId: string;
+  permalink: string;
+  caption: string;
+  publishedBy: string;
+}): Promise<InstagramPublishedPostRecord> {
+  const publishedAt = new Date().toISOString();
+
+  if (isFirebaseMockEnabled()) {
+    const rec: InstagramPublishedPostRecord = {
+      id: `mock_ig_${generateSecureHexToken(6)}`,
+      dateKey: input.dateKey,
+      mode: input.mode,
+      cidade: input.cidade,
+      estado: input.estado,
+      itemIds: [...input.itemIds],
+      instagramMediaId: input.instagramMediaId,
+      permalink: input.permalink,
+      caption: input.caption,
+      publishedAt,
+      publishedBy: input.publishedBy
+    };
+    mockInstagramPostsMemory.unshift(rec);
+    return rec;
+  }
+
+  const { db } = getFirebaseServices();
+  const newRef = doc(collection(db, MULTEI_INSTAGRAM_POSTS_COLLECTION));
+  const record: InstagramPublishedPostRecord = {
+    id: newRef.id,
+    dateKey: input.dateKey,
+    mode: input.mode,
+    cidade: input.cidade || '',
+    estado: input.estado || '',
+    itemIds: [...input.itemIds],
+    instagramMediaId: input.instagramMediaId,
+    permalink: input.permalink,
+    caption: input.caption,
+    publishedAt,
+    publishedBy: input.publishedBy
+  };
+
+  await setDoc(newRef, record);
+  return record;
+}
+
+export async function uploadTemporaryInstagramStagingSlides(
+  files: File[],
+  slugPrefix: string
+): Promise<{ downloadUrls: string[]; storagePaths: string[] }> {
+  const cleanSlug = String(slugPrefix || 'post')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .slice(0, 40);
+
+  const dateKey = getBrazilDateKey();
+  const batchToken = generateSecureHexToken(8);
+  const { storage } = getFirebaseServices();
+
+  const downloadUrls: string[] = [];
+  const storagePaths: string[] = [];
+
+  for (let i = 0; i < files.length; i++) {
+    const path = `instagram_staging/${dateKey}_${cleanSlug}_${batchToken}/slide_${i + 1}.jpg`;
+    const refObj = storageRef(storage, path);
+    await uploadBytes(refObj, files[i], {
+      contentType: 'image/jpeg',
+      cacheControl: 'public, max-age=3600'
+    });
+    const url = await getDownloadURL(refObj);
+    storagePaths.push(path);
+    downloadUrls.push(url);
+  }
+
+  return { downloadUrls, storagePaths };
+}
+
+export async function deleteTemporaryInstagramStagingSlides(
+  storagePaths: string[]
+): Promise<void> {
+  if (!Array.isArray(storagePaths) || storagePaths.length === 0) return;
+
+  try {
+    const { storage } = getFirebaseServices();
+    await Promise.allSettled(
+      storagePaths.map((p) => {
+        if (!p || !p.startsWith('instagram_staging/')) return Promise.resolve();
+        return deleteObject(storageRef(storage, p));
+      })
+    );
+  } catch {}
+}
+
+/**
+ * Monta os rascunhos diários por cidade para a janela de hoje (`00:00:00` até `23:59:59`, horário de Brasília),
+ * com prioridade: até 3 Problemas Resolvidos -> até 3 Infrações de Trânsito -> até 3 Mobilidade Urbana.
+ */
+export async function fetchInstagramDailyDraftsForAdmin(): Promise<{
+  todayDateKey: string;
+  drafts: InstagramDailyCityDraft[];
+}> {
+  const todayDateKey = getBrazilDateKey();
+
+  if (isFirebaseMockEnabled()) {
+    const [partnerList, resolvedList, reportList] = await Promise.all([
+      mockFetchPartnerIncidentsFromFirebase({}),
+      mockFetchResolvedIncidentsForPanel(),
+      mockFetchReportedIncidentsForPanel()
+    ]);
+
+    const pendingReportIds = new Set(
+      reportList.filter((r) => !r.revisada).map((r) => r.ocorrenciaId || r.id)
+    );
+
+    const publishedToday = mockInstagramPostsMemory.filter(
+      (p) => p.dateKey === todayDateKey && p.mode === 'city_daily'
+    );
+    const alreadyPublishedItemIds = new Set<string>();
+    for (const p of publishedToday) {
+      for (const id of p.itemIds) alreadyPublishedItemIds.add(id);
+    }
+
+    // Em modo mock local (`npm run dev`), caso os mocks fixos de BH tenham data anterior,
+    // permite visualizar a amostra de BH como "hoje" para testes visuais no painel.
+    const hasAnyMockItemToday =
+      partnerList.some((oc) => {
+        const ts = parseFlexibleDocTimestampMs(oc.timestamp);
+        return ts > 0 && getBrazilDateKey(ts) === todayDateKey;
+      }) ||
+      resolvedList.some((r) => {
+        const ts = parseFlexibleDocTimestampMs(r.data_revisao || r.data);
+        return ts > 0 && getBrazilDateKey(ts) === todayDateKey;
+      });
+
+    const byCity = new Map<
+      string,
+      {
+        cidade: string;
+        estado: string;
+        resolvidos: InstagramDraftCandidateItem[];
+        transito: InstagramDraftCandidateItem[];
+        mobilidade: InstagramDraftCandidateItem[];
+        bairros: Set<string>;
+      }
+    >();
+
+    const ensureBucket = (cidadeRaw: string, estadoRaw: string) => {
+      const cidade = String(cidadeRaw || '').trim();
+      const estado = normalizeState(String(estadoRaw || '').trim()).toUpperCase();
+      if (!cidade || !estado) return null;
+      const key = buildMulteiCitySocialDocId(cidade, estado);
+      if (!byCity.has(key)) {
+        byCity.set(key, {
+          cidade,
+          estado,
+          resolvidos: [],
+          transito: [],
+          mobilidade: [],
+          bairros: new Set()
+        });
+      }
+      return { key, bucket: byCity.get(key)! };
+    };
+
+    const resolvedOcIdsToday = new Set<string>();
+    for (const res of resolvedList) {
+      if (res.resultado_revisao === 'improcedente' || res.status === 'improcedente') continue;
+      const isApproved =
+        res.resultado_revisao === 'procedente' ||
+        res.status === 'procedente' ||
+        res.status === 'resolvido';
+      if (!isApproved) continue;
+      const ts = parseFlexibleDocTimestampMs(res.data_revisao || res.data);
+      if (!ts || (hasAnyMockItemToday && getBrazilDateKey(ts) !== todayDateKey)) continue;
+      if (!res.ocorrenciaFotoUrl || !res.fotoUrl) continue;
+      const entry = ensureBucket(res.cidade, res.estado);
+      if (!entry) continue;
+      const itemId = `res_${res.id}`;
+      resolvedOcIdsToday.add(res.ocorrenciaId || res.id);
+      if (res.bairro) entry.bucket.bairros.add(res.bairro);
+      if (!alreadyPublishedItemIds.has(itemId)) {
+        entry.bucket.resolvidos.push({
+          id: itemId,
+          ocorrenciaId: res.ocorrenciaId || res.id,
+          category: 'resolvido',
+          cidade: entry.bucket.cidade,
+          estado: entry.bucket.estado,
+          rua: res.rua || '',
+          bairro: res.bairro || '',
+          natureza: 'urbana',
+          verificacao: '',
+          photoUrl: res.ocorrenciaFotoUrl,
+          resolvedPhotoUrl: res.fotoUrl,
+          timestampMs: ts
+        });
+      }
+    }
+
+    for (const oc of partnerList) {
+      const id = String(oc.id || '').trim();
+      if (!id || oc.ativo === false || oc.possivel_duplicidade || oc.possivel_credencial) continue;
+      if (pendingReportIds.has(id) || resolvedOcIdsToday.has(id)) continue;
+      const ts = parseFlexibleDocTimestampMs(oc.timestamp);
+      if (!ts || (hasAnyMockItemToday && getBrazilDateKey(ts) !== todayDateKey)) continue;
+      const photo = String(oc.fotoUrl || oc.maskedImageUrl || '').trim();
+      if (!photo) continue;
+      const entry = ensureBucket(oc.cidade || '', oc.estado || '');
+      if (!entry) continue;
+      if (oc.bairro) entry.bucket.bairros.add(oc.bairro);
+      if (alreadyPublishedItemIds.has(id)) continue;
+
+      const isUrban = String(oc.natureza || '').toLowerCase() === 'urbana';
+      const candidate: InstagramDraftCandidateItem = {
+        id,
+        ocorrenciaId: id,
+        category: isUrban ? 'mobilidade' : 'transito',
+        cidade: entry.bucket.cidade,
+        estado: entry.bucket.estado,
+        rua: oc.rua || '',
+        bairro: oc.bairro || '',
+        natureza: oc.natureza || 'infracao_veicular',
+        verificacao: oc.verificacao || '',
+        photoUrl: photo,
+        timestampMs: ts
+      };
+      if (isUrban) entry.bucket.mobilidade.push(candidate);
+      else entry.bucket.transito.push(candidate);
+    }
+
+    const drafts: InstagramDailyCityDraft[] = [];
+    for (const [cityKey, b] of byCity.entries()) {
+      const poolRes = secureShuffleCopy(b.resolvidos);
+      const poolTra = secureShuffleCopy(b.transito);
+      const poolMob = secureShuffleCopy(b.mobilidade);
+      const selected = [
+        ...poolRes.slice(0, 3),
+        ...poolTra.slice(0, 3),
+        ...poolMob.slice(0, 3)
+      ];
+      const cityPublished = publishedToday.filter(
+        (p) => buildMulteiCitySocialDocId(p.cidade || '', p.estado || '') === cityKey
+      );
+      if (selected.length === 0 && cityPublished.length === 0) continue;
+
+      drafts.push({
+        cityKey,
+        cidade: b.cidade,
+        estado: b.estado,
+        dateKey: todayDateKey,
+        selectedItems: selected,
+        poolResolvidos: poolRes,
+        poolTransito: poolTra,
+        poolMobilidade: poolMob,
+        totalDia: poolRes.length + poolTra.length + poolMob.length,
+        resolvidosDia: poolRes.length,
+        transitoDia: poolTra.length,
+        mobilidadeDia: poolMob.length,
+        bairrosDia: Array.from(b.bairros),
+        citySocial: mockCitySocialsMemory.get(cityKey) || null,
+        publishedTodayPosts: cityPublished
+      });
+    }
+
+    drafts.sort((a, b) => b.resolvidosDia - a.resolvidosDia || b.totalDia - a.totalDia);
+    return { todayDateKey, drafts };
+  }
+
+  const { db } = getFirebaseServices();
+  const [ocorrenciasSnap, resolvidosSnap, reportadasSnap, socialsSnap, postsSnap] =
+    await Promise.all([
+      getDocs(collection(db, OCORRENCIAS_COLLECTION)),
+      getDocs(collection(db, RESOLVIDOS_COLLECTION)),
+      getDocs(collection(db, REPORTADAS_COLLECTION)).catch(() => null),
+      getDocs(collection(db, MULTEI_CITY_SOCIALS_COLLECTION)).catch(() => null),
+      getDocs(
+        query(collection(db, MULTEI_INSTAGRAM_POSTS_COLLECTION), where('dateKey', '==', todayDateKey))
+      ).catch(() => null)
+    ]);
+
+  const pendingReportedOcorrenciaIds = new Set<string>();
+  if (reportadasSnap) {
+    reportadasSnap.forEach((docSnap) => {
+      const d = docSnap.data() || {};
+      const revisada = Boolean(
+        d.revisada === true ||
+          d.resultado_revisao === 'procedente' ||
+          d.resultado_revisao === 'improcedente' ||
+          d.resultado_revisao === 'nao_duplicidade'
+      );
+      if (!revisada) {
+        const ocId = String(d.ocorrenciaId || docSnap.id || '').trim();
+        if (ocId) pendingReportedOcorrenciaIds.add(ocId);
+      }
+    });
+  }
+
+  const socialsMap = new Map<string, MulteiCitySocialProfile>();
+  if (socialsSnap) {
+    socialsSnap.forEach((docSnap) => {
+      const d = docSnap.data() || {};
+      const id = docSnap.id;
+      socialsMap.set(id, {
+        id,
+        cidade: String(d.cidade || '').trim(),
+        estado: String(d.estado || '').trim().toUpperCase(),
+        instagramPrefeitura: String(d.instagramPrefeitura || '').trim().replace(/^@+/, ''),
+        instagramTransito: d.instagramTransito
+          ? String(d.instagramTransito).trim().replace(/^@+/, '')
+          : undefined,
+        prefeituraName: d.prefeituraName ? String(d.prefeituraName) : undefined,
+        prefeituraFollowers:
+          typeof d.prefeituraFollowers === 'number' ? d.prefeituraFollowers : undefined,
+        prefeituraPicUrl: d.prefeituraPicUrl ? String(d.prefeituraPicUrl) : undefined,
+        transitoName: d.transitoName ? String(d.transitoName) : undefined,
+        verificadoPorAdmin: Boolean(d.verificadoPorAdmin !== false),
+        updatedAt: String(d.updatedAt || ''),
+        updatedBy: d.updatedBy ? String(d.updatedBy) : undefined
+      });
+    });
+  }
+
+  const publishedTodayPosts: InstagramPublishedPostRecord[] = [];
+  const alreadyPublishedIds = new Set<string>();
+  if (postsSnap) {
+    postsSnap.forEach((docSnap) => {
+      const d = docSnap.data() || {};
+      if (d.mode && d.mode !== 'city_daily') return;
+      const itemIds = Array.isArray(d.itemIds) ? d.itemIds.map(String) : [];
+      for (const id of itemIds) alreadyPublishedIds.add(id);
+      publishedTodayPosts.push({
+        id: docSnap.id,
+        dateKey: String(d.dateKey || todayDateKey),
+        mode: 'city_daily',
+        cidade: String(d.cidade || ''),
+        estado: String(d.estado || ''),
+        itemIds,
+        instagramMediaId: String(d.instagramMediaId || ''),
+        permalink: String(d.permalink || 'https://www.instagram.com/pcdvale/'),
+        caption: String(d.caption || ''),
+        publishedAt: String(d.publishedAt || ''),
+        publishedBy: String(d.publishedBy || '')
+      });
+    });
+  }
+
+  const ocorrenciasById = new Map<string, Record<string, any>>();
+  ocorrenciasSnap.forEach((docSnap) => {
+    ocorrenciasById.set(docSnap.id, docSnap.data() || {});
+  });
+
+  const cityBuckets = new Map<
+    string,
+    {
+      cidade: string;
+      estado: string;
+      resolvidos: InstagramDraftCandidateItem[];
+      transito: InstagramDraftCandidateItem[];
+      mobilidade: InstagramDraftCandidateItem[];
+      bairros: Set<string>;
+    }
+  >();
+
+  const getOrCreateBucket = (cidadeRaw: string, estadoRaw: string) => {
+    const cidade = String(cidadeRaw || '').trim();
+    const estado = normalizeState(String(estadoRaw || '').trim()).toUpperCase();
+    if (!cidade || !/^[A-Z]{2}$/.test(estado)) return null;
+    const key = buildMulteiCitySocialDocId(cidade, estado);
+    if (!cityBuckets.has(key)) {
+      cityBuckets.set(key, {
+        cidade,
+        estado,
+        resolvidos: [],
+        transito: [],
+        mobilidade: [],
+        bairros: new Set()
+      });
+    }
+    return { key, bucket: cityBuckets.get(key)! };
+  };
+
+  // Garante que cidades já publicadas hoje continuem aparecendo na aba até 23:59
+  for (const post of publishedTodayPosts) {
+    if (post.cidade && post.estado) {
+      getOrCreateBucket(post.cidade, post.estado);
+    }
+  }
+
+  const resolvedOcorrenciaIdsToday = new Set<string>();
+
+  // 1. Prioridade #1: Problemas Resolvidos aprovados hoje (00:00 até agora)
+  resolvidosSnap.forEach((docSnap) => {
+    const d = docSnap.data() || {};
+    const statusRaw = String(d.status || '').trim().toLowerCase();
+    const resultadoRaw = String(d.resultado_revisao || '').trim().toLowerCase();
+    if (statusRaw === 'improcedente' || resultadoRaw === 'improcedente') return;
+
+    const isApproved =
+      resultadoRaw === 'procedente' || statusRaw === 'procedente' || statusRaw === 'resolvido';
+    if (!isApproved) return;
+
+    const ts = parseFlexibleDocTimestampMs(d.data_revisao || d.data);
+    if (!ts || getBrazilDateKey(ts) !== todayDateKey) return;
+
+    const ocorrenciaId = String(d.ocorrenciaId || docSnap.id || '').trim();
+    const parentOc = ocorrenciasById.get(ocorrenciaId) || {};
+
+    const beforeUrl = String(
+      d.ocorrenciaFotoUrl || parentOc.fotoUrl || parentOc.foto || parentOc.image || ''
+    ).trim();
+    const afterUrl = String(d.fotoUrl || d.foto_resolucao || d.foto || '').trim();
+    if (!beforeUrl || !afterUrl) return;
+
+    const cidade = String(d.cidade || parentOc.cidade || '').trim();
+    const estado = String(d.estado || parentOc.estado || '').trim();
+    const rua = String(d.rua || parentOc.rua || '').trim();
+    const bairro = String(d.bairro || parentOc.bairro || '').trim();
+
+    const entry = getOrCreateBucket(cidade, estado);
+    if (!entry) return;
+
+    resolvedOcorrenciaIdsToday.add(ocorrenciaId);
+    if (bairro) entry.bucket.bairros.add(bairro);
+
+    const candidateId = `res_${docSnap.id}`;
+    if (!alreadyPublishedIds.has(candidateId) && !alreadyPublishedIds.has(ocorrenciaId)) {
+      entry.bucket.resolvidos.push({
+        id: candidateId,
+        ocorrenciaId,
+        category: 'resolvido',
+        cidade: entry.bucket.cidade,
+        estado: entry.bucket.estado,
+        rua,
+        bairro,
+        natureza: 'urbana',
+        verificacao: '',
+        photoUrl: beforeUrl,
+        resolvedPhotoUrl: afterUrl,
+        timestampMs: ts
+      });
+    }
+  });
+
+  // 2. Prioridade #2 (Trânsito) e #3 (Mobilidade Urbana) ativas registradas hoje (00:00 até agora)
+  ocorrenciasSnap.forEach((docSnap) => {
+    const id = docSnap.id;
+    const d = docSnap.data() || {};
+
+    const isAtivo =
+      d.ativo !== undefined && d.ativo !== ''
+        ? d.ativo === true || String(d.ativo).toLowerCase() === 'true'
+        : true;
+    if (!isAtivo) return;
+
+    const isDuplicidade = Boolean(
+      d.possivel_duplicidade === true || String(d.possivel_duplicidade).toLowerCase() === 'true'
+    );
+    const isPossivelCredencial = Boolean(
+      d.possivel_credencial === true || String(d.possivel_credencial).toLowerCase() === 'true'
+    );
+    if (isDuplicidade || isPossivelCredencial) return;
+    if (pendingReportedOcorrenciaIds.has(id) || resolvedOcorrenciaIdsToday.has(id)) return;
+
+    const statusRes = String(d.status_resolucao || '').toLowerCase();
+    if (d.resolvido === true || statusRes === 'resolvido') return;
+
+    const ts = parseFlexibleDocTimestampMs(d.data || d.timestamp || d.createdAt);
+    if (!ts || getBrazilDateKey(ts) !== todayDateKey) return;
+
+    const photoUrl = String(d.fotoUrl || d.foto || d.image || '').trim();
+    if (!photoUrl) return;
+
+    const cidade = String(d.cidade || '').trim();
+    const estado = String(d.estado || '').trim();
+    const rua = String(d.rua || '').trim();
+    const bairro = String(d.bairro || '').trim();
+
+    const entry = getOrCreateBucket(cidade, estado);
+    if (!entry) return;
+    if (bairro) entry.bucket.bairros.add(bairro);
+    if (alreadyPublishedIds.has(id)) return;
+
+    const natureza = String(d.natureza || 'infracao_veicular').trim();
+    const isUrban = natureza.toLowerCase() === 'urbana';
+    const candidate: InstagramDraftCandidateItem = {
+      id,
+      ocorrenciaId: id,
+      category: isUrban ? 'mobilidade' : 'transito',
+      cidade: entry.bucket.cidade,
+      estado: entry.bucket.estado,
+      rua,
+      bairro,
+      natureza,
+      verificacao: String(d.verificacao || '').trim(),
+      photoUrl,
+      timestampMs: ts
+    };
+
+    if (isUrban) {
+      entry.bucket.mobilidade.push(candidate);
+    } else {
+      entry.bucket.transito.push(candidate);
+    }
+  });
+
+  const drafts: InstagramDailyCityDraft[] = [];
+  for (const [cityKey, b] of cityBuckets.entries()) {
+    const poolRes = secureShuffleCopy(b.resolvidos);
+    const poolTra = secureShuffleCopy(b.transito);
+    const poolMob = secureShuffleCopy(b.mobilidade);
+
+    const selectedItems = [
+      ...poolRes.slice(0, 3),
+      ...poolTra.slice(0, 3),
+      ...poolMob.slice(0, 3)
+    ];
+
+    const cityPosts = publishedTodayPosts.filter(
+      (p) => buildMulteiCitySocialDocId(p.cidade || '', p.estado || '') === cityKey
+    );
+
+    if (selectedItems.length === 0 && cityPosts.length === 0) continue;
+
+    drafts.push({
+      cityKey,
+      cidade: b.cidade,
+      estado: b.estado,
+      dateKey: todayDateKey,
+      selectedItems,
+      poolResolvidos: poolRes,
+      poolTransito: poolTra,
+      poolMobilidade: poolMob,
+      totalDia: poolRes.length + poolTra.length + poolMob.length,
+      resolvidosDia: poolRes.length,
+      transitoDia: poolTra.length,
+      mobilidadeDia: poolMob.length,
+      bairrosDia: Array.from(b.bairros),
+      citySocial: socialsMap.get(cityKey) || null,
+      publishedTodayPosts: cityPosts
+    });
+  }
+
+  drafts.sort(
+    (a, b) =>
+      b.selectedItems.length - a.selectedItems.length ||
+      b.resolvidosDia - a.resolvidosDia ||
+      b.totalDia - a.totalDia ||
+      a.cidade.localeCompare(b.cidade, 'pt-BR')
+  );
+
+  return { todayDateKey, drafts };
+}
+
+/**
+ * Calcula os indicadores consolidados do Multei para qualquer intervalo `[startDateKey, endDateKey]` (`YYYY-MM-DD`)
+ * selecionado pelo Administrador na Fase 2 (Relatório Geral).
+ */
+export async function fetchInstagramGeneralReportForPeriod(
+  startDateKey?: string,
+  endDateKey?: string
+): Promise<InstagramPeriodReportData> {
+  const minKey = startDateKey && /^\d{4}-\d{2}-\d{2}$/.test(startDateKey) ? startDateKey : '';
+  const maxKey = endDateKey && /^\d{4}-\d{2}-\d{2}$/.test(endDateKey) ? endDateKey : '';
+
+  const isWithinPeriod = (tsMs: number): boolean => {
+    if (!minKey && !maxKey) return true;
+    if (!tsMs) return false;
+    const key = getBrazilDateKey(tsMs);
+    if (minKey && key < minKey) return false;
+    if (maxKey && key > maxKey) return false;
+    return true;
+  };
+
+  if (isFirebaseMockEnabled()) {
+    const [partnerList, resolvedList] = await Promise.all([
+      mockFetchPartnerIncidentsFromFirebase({}),
+      mockFetchResolvedIncidentsForPanel()
+    ]);
+
+    let infracoesTransito = 0;
+    let mobilidadeUrbana = 0;
+    const cityCounts = new Map<string, number>();
+    const resolvedIds = new Set<string>();
+
+    for (const oc of partnerList) {
+      if (oc.ativo === false || oc.possivel_duplicidade) continue;
+      const ts = parseFlexibleDocTimestampMs(oc.timestamp);
+      if (!isWithinPeriod(ts)) continue;
+
+      if (String(oc.natureza || '').toLowerCase() === 'urbana') mobilidadeUrbana++;
+      else infracoesTransito++;
+
+      const c = String(oc.cidade || '').trim();
+      const uf = normalizeState(String(oc.estado || '').trim()).toUpperCase();
+      if (c) {
+        const label = uf ? `${c} - ${uf}` : c;
+        cityCounts.set(label, (cityCounts.get(label) || 0) + 1);
+      }
+    }
+
+    for (const r of resolvedList) {
+      if (r.resultado_revisao === 'improcedente' || r.status === 'improcedente') continue;
+      const isApproved =
+        r.resultado_revisao === 'procedente' ||
+        r.status === 'procedente' ||
+        r.status === 'resolvido';
+      if (!isApproved) continue;
+      const ts = parseFlexibleDocTimestampMs(r.data_revisao || r.data);
+      if (!isWithinPeriod(ts)) continue;
+      resolvedIds.add(r.ocorrenciaId || r.id);
+    }
+
+    const topCities = Array.from(cityCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name]) => name);
+
+    return {
+      totalGeral: infracoesTransito + mobilidadeUrbana,
+      cidadesCount: cityCounts.size,
+      infracoesTransito,
+      mobilidadeUrbana,
+      resolvidos: resolvedIds.size,
+      topCities
+    };
+  }
+
+  const { db } = getFirebaseServices();
+  const [ocorrenciasSnap, resolvidosSnap] = await Promise.all([
+    getDocs(collection(db, OCORRENCIAS_COLLECTION)),
+    getDocs(collection(db, RESOLVIDOS_COLLECTION))
+  ]);
+
+  let infracoesTransito = 0;
+  let mobilidadeUrbana = 0;
+  const cityCounts = new Map<string, number>();
+  const resolvedIds = new Set<string>();
+
+  ocorrenciasSnap.forEach((docSnap) => {
+    const d = docSnap.data() || {};
+    const isAtivo =
+      d.ativo !== undefined && d.ativo !== ''
+        ? d.ativo === true || String(d.ativo).toLowerCase() === 'true'
+        : true;
+    if (!isAtivo) return;
+
+    const isDuplicidade = Boolean(
+      d.possivel_duplicidade === true || String(d.possivel_duplicidade).toLowerCase() === 'true'
+    );
+    if (isDuplicidade) return;
+
+    const ts = parseFlexibleDocTimestampMs(d.data || d.timestamp || d.createdAt);
+    if (!isWithinPeriod(ts)) return;
+
+    if (String(d.natureza || '').toLowerCase() === 'urbana') {
+      mobilidadeUrbana++;
+    } else {
+      infracoesTransito++;
+    }
+
+    const c = String(d.cidade || '').trim();
+    const uf = normalizeState(String(d.estado || '').trim()).toUpperCase();
+    if (c) {
+      const label = uf ? `${c} - ${uf}` : c;
+      cityCounts.set(label, (cityCounts.get(label) || 0) + 1);
+    }
+
+    const statusRes = String(d.status_resolucao || '').toLowerCase();
+    const isResolvidoOc = Boolean(
+      (d.resolvido === true ||
+        String(d.resolvido).toLowerCase() === 'true' ||
+        statusRes === 'resolvido') &&
+        statusRes !== 'improcedente'
+    );
+    if (isResolvidoOc) {
+      const resTs = parseFlexibleDocTimestampMs(d.data_resolucao || d.data || d.timestamp);
+      if (isWithinPeriod(resTs || ts)) {
+        resolvedIds.add(docSnap.id);
+      }
+    }
+  });
+
+  resolvidosSnap.forEach((docSnap) => {
+    const d = docSnap.data() || {};
+    const statusRaw = String(d.status || '').toLowerCase();
+    const resultadoRaw = String(d.resultado_revisao || '').toLowerCase();
+    if (statusRaw === 'improcedente' || resultadoRaw === 'improcedente') return;
+
+    const isApproved =
+      resultadoRaw === 'procedente' || statusRaw === 'procedente' || statusRaw === 'resolvido';
+    if (!isApproved) return;
+
+    const ts = parseFlexibleDocTimestampMs(d.data_revisao || d.data);
+    if (!isWithinPeriod(ts)) return;
+
+    const key = String(d.ocorrenciaId || docSnap.id || '').trim();
+    if (key) resolvedIds.add(key);
+  });
+
+  const topCities = Array.from(cityCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name]) => name);
+
+  return {
+    totalGeral: infracoesTransito + mobilidadeUrbana,
+    cidadesCount: cityCounts.size,
+    infracoesTransito,
+    mobilidadeUrbana,
+    resolvidos: resolvedIds.size,
+    topCities
+  };
+}
+
 
 
 
