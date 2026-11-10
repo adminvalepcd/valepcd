@@ -20,14 +20,19 @@ export interface InstagramDiscoveredProfile {
   verificationSource?: 'meta_graph' | 'instagram_public';
 }
 
+export type InstagramPlacement = 'feed' | 'stories';
+
 export interface InstagramPublishInput {
   imageUrls: string[];
   caption: string;
+  placement?: InstagramPlacement;
   userTags?: InstagramUserTagInput[];
+  perSlideUserTags?: InstagramUserTagInput[][];
 }
 
 export interface InstagramPublishResult {
   mediaId: string;
+  mediaIds?: string[];
   permalink: string;
   tagsApplied: boolean;
 }
@@ -309,7 +314,9 @@ export async function discoverInstagramBusinessProfile(
   };
 }
 
-function normalizeUserTags(rawTags?: InstagramUserTagInput[]): Array<{ username: string; x: number; y: number }> {
+function normalizeUserTags(
+  rawTags?: InstagramUserTagInput[]
+): Array<{ username: string; x: number; y: number }> {
   if (!Array.isArray(rawTags) || rawTags.length === 0) return [];
   const seen = new Set<string>();
   const normalized: Array<{ username: string; x: number; y: number }> = [];
@@ -321,18 +328,18 @@ function normalizeUserTags(rawTags?: InstagramUserTagInput[]): Array<{ username:
 
     const idx = normalized.length;
     const x =
-      typeof tag?.x === 'number' && tag.x >= 0.05 && tag.x <= 0.95
-        ? Number(tag.x.toFixed(2))
+      typeof tag?.x === 'number' && tag.x >= 0.04 && tag.x <= 0.96
+        ? Number(tag.x.toFixed(3))
         : idx === 0
           ? 0.35
           : 0.65;
     const y =
-      typeof tag?.y === 'number' && tag.y >= 0.05 && tag.y <= 0.95
-        ? Number(tag.y.toFixed(2))
+      typeof tag?.y === 'number' && tag.y >= 0.04 && tag.y <= 0.96
+        ? Number(tag.y.toFixed(3))
         : 0.88;
 
     normalized.push({ username: handle, x, y });
-    if (normalized.length >= 3) break;
+    if (normalized.length >= 5) break;
   }
 
   return normalized;
@@ -391,7 +398,7 @@ async function createMediaContainerRequest(
   igUserId: string,
   accessToken: string,
   bodyParams: Record<string, string | boolean>
-): Promise<{ ok: boolean; id?: string; errorMessage?: string }> {
+): Promise<{ ok: boolean; id?: string; errorMessage?: string; errorCode?: number }> {
   const form = new URLSearchParams();
   for (const [k, v] of Object.entries(bodyParams)) {
     form.set(k, String(v));
@@ -409,18 +416,88 @@ async function createMediaContainerRequest(
 
   const data = (await res.json().catch(() => ({}))) as Record<string, any>;
   if (!res.ok || !data?.id) {
-    if (Number(data?.error?.code) === 190) {
+    const errCode = Number(data?.error?.code || 0);
+    if (errCode === 190) {
       return {
         ok: false,
+        errorCode: 190,
         errorMessage:
-          'O Token de Acesso da Meta (NUXT_IG_ACCESS_TOKEN) expirou. Gere o token estendido (60 dias) no Meta Developers e atualize no .env / Vercel.'
+          'O Token de Acesso da Meta (NUXT_IG_ACCESS_TOKEN) expirou. Gere o token permanente da página no Meta Developers e atualize no .env / Vercel.'
       };
     }
     const metaMsg = String(data?.error?.error_user_msg || data?.error?.message || '').slice(0, 180);
-    return { ok: false, errorMessage: metaMsg || 'Falha ao criar container de mídia na Meta.' };
+    return {
+      ok: false,
+      errorCode: errCode || undefined,
+      errorMessage: metaMsg || 'Falha ao criar container de mídia na Meta.'
+    };
   }
 
   return { ok: true, id: String(data.id) };
+}
+
+async function publishReadyMediaContainer(
+  baseUrl: string,
+  igUserId: string,
+  accessToken: string,
+  creationId: string
+): Promise<string> {
+  const publishForm = new URLSearchParams();
+  publishForm.set('creation_id', creationId);
+
+  const publishRes = await fetch(`${baseUrl}/${encodeURIComponent(igUserId)}/media_publish`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json'
+    },
+    body: publishForm.toString()
+  });
+
+  const publishData = (await publishRes.json().catch(() => ({}))) as Record<string, any>;
+  if (!publishRes.ok || !publishData?.id) {
+    const metaErr = String(
+      publishData?.error?.error_user_msg || publishData?.error?.message || ''
+    ).slice(0, 180);
+    throw createError({
+      statusCode: 502,
+      statusMessage: metaErr || 'Não foi possível concluir a publicação no Instagram.'
+    });
+  }
+
+  return String(publishData.id);
+}
+
+async function fetchMediaPermalinkOrDefault(
+  baseUrl: string,
+  mediaId: string,
+  accessToken: string,
+  fallbackUrl: string
+): Promise<string> {
+  try {
+    const permalinkRes = await fetch(
+      `${baseUrl}/${encodeURIComponent(mediaId)}?fields=id,permalink`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json'
+        }
+      }
+    );
+    if (permalinkRes.ok) {
+      const permalinkJson = (await permalinkRes.json().catch(() => ({}))) as Record<string, any>;
+      if (
+        typeof permalinkJson?.permalink === 'string' &&
+        permalinkJson.permalink.startsWith('https://')
+      ) {
+        return permalinkJson.permalink;
+      }
+    }
+  } catch {}
+
+  return fallbackUrl;
 }
 
 export async function publishToInstagramGraph(
@@ -432,18 +509,89 @@ export async function publishToInstagramGraph(
     config.firebaseStorageBucket,
     Boolean(config.allowLocalMockUrls)
   );
+
+  const placement: InstagramPlacement = input.placement === 'stories' ? 'stories' : 'feed';
   const caption = sanitizeInstagramCaption(input.caption);
-  if (!caption) {
+  if (placement === 'feed' && !caption) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'A legenda da publicação não pode estar vazia.'
+      statusMessage: 'A legenda da publicação no Feed não pode estar vazia.'
     });
   }
 
   const { baseUrl, igUserId, accessToken } = resolveGraphBaseUrl(config);
   const userTags = normalizeUserTags(input.userTags);
-  let tagsApplied = userTags.length > 0;
 
+  // =========================================================================
+  // MODO STORIES (`media_type=STORIES` — 1 a 9 stories sequenciais 9:16)
+  // =========================================================================
+  if (placement === 'stories') {
+    const publishedIds: string[] = [];
+    let anyTagsRequested = false;
+    let storyTagsApplied = true;
+
+    for (let i = 0; i < imageUrls.length; i++) {
+      const rawSlideTags =
+        Array.isArray(input.perSlideUserTags) && Array.isArray(input.perSlideUserTags[i])
+          ? input.perSlideUserTags[i]
+          : input.userTags;
+      const slideTags = normalizeUserTags(rawSlideTags);
+
+      const storyParams: Record<string, string | boolean> = {
+        media_type: 'STORIES',
+        image_url: imageUrls[i]
+      };
+      if (storyTagsApplied && slideTags.length > 0) {
+        anyTagsRequested = true;
+        storyParams.user_tags = JSON.stringify(slideTags);
+      }
+
+      let created = await createMediaContainerRequest(baseUrl, igUserId, accessToken, storyParams);
+      if (!created.ok && created.errorCode !== 190 && storyParams.user_tags) {
+        // Fallback automático sem user_tags caso algum @ público bloqueie marcações em Stories
+        storyTagsApplied = false;
+        delete storyParams.user_tags;
+        created = await createMediaContainerRequest(baseUrl, igUserId, accessToken, storyParams);
+      }
+
+      if (!created.ok || !created.id) {
+        throw createError({
+          statusCode: 502,
+          statusMessage:
+            created.errorMessage || `Não foi possível preparar o Story ${i + 1} no Instagram.`
+        });
+      }
+
+      await waitForContainerReady(baseUrl, created.id, accessToken);
+      const publishedStoryId = await publishReadyMediaContainer(
+        baseUrl,
+        igUserId,
+        accessToken,
+        created.id
+      );
+      publishedIds.push(publishedStoryId);
+    }
+
+    const firstId = publishedIds[0];
+    const permalink = await fetchMediaPermalinkOrDefault(
+      baseUrl,
+      firstId,
+      accessToken,
+      'https://www.instagram.com/pcdvale/'
+    );
+
+    return {
+      mediaId: firstId,
+      mediaIds: publishedIds,
+      permalink,
+      tagsApplied: anyTagsRequested && storyTagsApplied
+    };
+  }
+
+  // =========================================================================
+  // MODO FEED (`IMAGE` única ou `CAROUSEL` de 2 a 9 imagens 4:5)
+  // =========================================================================
+  let tagsApplied = userTags.length > 0;
   let publishableContainerId = '';
 
   if (imageUrls.length === 1) {
@@ -457,7 +605,7 @@ export async function publishToInstagramGraph(
     }
 
     let created = await createMediaContainerRequest(baseUrl, igUserId, accessToken, singleParams);
-    if (!created.ok && userTags.length > 0) {
+    if (!created.ok && created.errorCode !== 190 && userTags.length > 0) {
       // Fallback automático caso o perfil público marcado tenha restringido marcações em fotos
       tagsApplied = false;
       delete singleParams.user_tags;
@@ -487,7 +635,7 @@ export async function publishToInstagramGraph(
       }
 
       let childCreated = await createMediaContainerRequest(baseUrl, igUserId, accessToken, childParams);
-      if (!childCreated.ok && tagsApplied && userTags.length > 0) {
+      if (!childCreated.ok && childCreated.errorCode !== 190 && tagsApplied && userTags.length > 0) {
         tagsApplied = false;
         delete childParams.user_tags;
         childCreated = await createMediaContainerRequest(baseUrl, igUserId, accessToken, childParams);
@@ -526,58 +674,22 @@ export async function publishToInstagramGraph(
     await waitForContainerReady(baseUrl, publishableContainerId, accessToken);
   }
 
-  // Dispara `media_publish`
-  const publishForm = new URLSearchParams();
-  publishForm.set('creation_id', publishableContainerId);
-
-  const publishRes = await fetch(`${baseUrl}/${encodeURIComponent(igUserId)}/media_publish`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json'
-    },
-    body: publishForm.toString()
-  });
-
-  const publishData = (await publishRes.json().catch(() => ({}))) as Record<string, any>;
-  if (!publishRes.ok || !publishData?.id) {
-    const metaErr = String(
-      publishData?.error?.error_user_msg || publishData?.error?.message || ''
-    ).slice(0, 180);
-    throw createError({
-      statusCode: 502,
-      statusMessage: metaErr || 'Não foi possível concluir a publicação no Instagram.'
-    });
-  }
-
-  const mediaId = String(publishData.id);
-  let permalink = 'https://www.instagram.com/pcdvale/';
-
-  try {
-    const permalinkRes = await fetch(
-      `${baseUrl}/${encodeURIComponent(mediaId)}?fields=id,permalink`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: 'application/json'
-        }
-      }
-    );
-    if (permalinkRes.ok) {
-      const permalinkJson = (await permalinkRes.json().catch(() => ({}))) as Record<string, any>;
-      if (
-        typeof permalinkJson?.permalink === 'string' &&
-        permalinkJson.permalink.startsWith('https://')
-      ) {
-        permalink = permalinkJson.permalink;
-      }
-    }
-  } catch {}
+  const mediaId = await publishReadyMediaContainer(
+    baseUrl,
+    igUserId,
+    accessToken,
+    publishableContainerId
+  );
+  const permalink = await fetchMediaPermalinkOrDefault(
+    baseUrl,
+    mediaId,
+    accessToken,
+    'https://www.instagram.com/pcdvale/'
+  );
 
   return {
     mediaId,
+    mediaIds: [mediaId],
     permalink,
     tagsApplied
   };

@@ -160,9 +160,12 @@
               <strong>✅ Esta cidade já teve publicação realizada hoje:</strong>
               <ul class="ig-published-links">
                 <li v-for="post in activeCityDraft.publishedTodayPosts" :key="post.id">
-                  <span>Às {{ formatTimeBr(post.publishedAt) }} ({{ post.itemIds.length }} slide(s)) — </span>
+                  <span>
+                    {{ post.mode === 'city_story' ? '📲 Stories' : '🖼️ Feed' }} às
+                    {{ formatTimeBr(post.publishedAt) }} ({{ post.itemIds.length }} slide(s)) —
+                  </span>
                   <a :href="post.permalink" target="_blank" rel="noopener noreferrer">
-                    Ver post no Instagram ↗
+                    Abrir no Instagram ↗
                   </a>
                 </li>
               </ul>
@@ -170,40 +173,61 @@
           </div>
 
           <div v-if="curatedSlots.length === 0" class="ig-empty-box">
-            <p class="ig-empty-title">Todas as ocorrências de hoje nesta cidade já foram publicadas!</p>
+            <p class="ig-empty-title">Todas as ocorrências de hoje nesta cidade já foram publicadas no Feed!</p>
             <p class="ig-empty-desc">
               Se entrarem novos registros até as 23:59, eles aparecerão aqui sem repetir fotos anteriores.
             </p>
           </div>
 
           <template v-else>
-            <!-- 1. Prévia dos Slides (1080x1350) e Curadoria (1 a 9 fotos) -->
+            <!-- 1. Prévia dos Slides (Feed 4:5 ou Stories 9:16) e Curadoria (1 a 9 fotos) -->
             <div class="ig-panel-card">
               <div class="ig-card-header-flex">
                 <div>
                   <h3 class="ig-card-title">
                     1. Prévia do Post — {{ activeCityDraft.cidade }}/{{ activeCityDraft.estado }}
-                    ({{ includedSlidesCount }} {{ includedSlidesCount === 1 ? 'imagem única' : 'slides no carrossel' }})
+                    ({{ includedSlidesCount }} {{ includedSlidesCount === 1 ? 'arte' : 'slides' }})
                   </h3>
                   <p class="ig-card-helper">
-                    Prioridade automática: até 3 Resolvidos → até 3 Trânsito → até 3 Mobilidade. Desmarque ou defina qual vai na capa (1ª foto).
+                    Prioridade automática: até 3 Resolvidos → até 3 Trânsito → até 3 Mobilidade. Alterne entre <strong>Feed (4:5)</strong> e <strong>Stories (9:16)</strong> para conferir o ajuste da foto e a marcação discreta logo abaixo.
                   </p>
                 </div>
 
                 <div class="ig-header-actions">
+                  <div class="ig-format-toggle" role="group" aria-label="Formato da prévia">
+                    <button
+                      type="button"
+                      class="ig-format-btn"
+                      :class="{ 'is-active': cityPreviewFormat === 'feed' }"
+                      @click="switchCityPreviewFormat('feed')"
+                    >
+                      🖼️ Feed (4:5)
+                    </button>
+                    <button
+                      type="button"
+                      class="ig-format-btn"
+                      :class="{ 'is-active': cityPreviewFormat === 'stories' }"
+                      @click="switchCityPreviewFormat('stories')"
+                    >
+                      📲 Stories (9:16)
+                    </button>
+                  </div>
+
                   <button
                     type="button"
                     class="ig-btn-secondary"
-                    :disabled="isRenderingSlides || renderedSlides.length === 0"
+                    :disabled="isRenderingSlides || activeCityRenderedSlides.length === 0"
                     @click="downloadAllRenderedSlides"
                   >
-                    ⬇️ Baixar {{ renderedSlides.length }} arte(s)
+                    ⬇️ Baixar {{ activeCityRenderedSlides.length }}
+                    {{ cityPreviewFormat === 'stories' ? 'Story(ies)' : 'arte(s)' }}
                   </button>
                 </div>
               </div>
 
               <div v-if="isRenderingSlides" class="ig-rendering-indicator">
-                Gerando prévia dos templates 1080×1350...
+                Gerando prévia dos templates
+                {{ cityPreviewFormat === 'stories' ? '1080×1920 (Stories 9:16)' : '1080×1350 (Feed 4:5)' }}...
               </div>
 
               <div class="ig-slides-grid">
@@ -213,10 +237,13 @@
                   class="ig-slide-card"
                   :class="{ 'is-excluded': !slot.included, 'is-cover': getIncludedIndex(slot.item.id) === 0 }"
                 >
-                  <div class="ig-slide-preview-wrap">
+                  <div
+                    class="ig-slide-preview-wrap"
+                    :class="{ 'is-story-ratio': cityPreviewFormat === 'stories' }"
+                  >
                     <img
-                      v-if="slotPreviewUrls[slot.item.id]"
-                      :src="slotPreviewUrls[slot.item.id]"
+                      v-if="activeCityPreviewUrls[slot.item.id]"
+                      :src="activeCityPreviewUrls[slot.item.id]"
                       :alt="`Prévia do slide ${idx + 1} em ${activeCityDraft.cidade}`"
                       class="ig-slide-img"
                     />
@@ -292,7 +319,7 @@
                     </button>
 
                     <button
-                      v-if="slotFiles[slot.item.id]"
+                      v-if="activeCityFilesMap[slot.item.id]"
                       type="button"
                       class="ig-mini-btn"
                       title="Baixar este card JPEG"
@@ -310,10 +337,10 @@
               <div class="ig-card-header-flex">
                 <div>
                   <h3 class="ig-card-title">
-                    2. Poder Público Local (@ para menção e marcação)
+                    2. Poder Público Local (@ para menção e marcação no Feed / Stories)
                   </h3>
                   <p class="ig-card-helper">
-                    Salvo na coleção <code>multei_city_socials</code> para reutilização automática nas próximas publicações de {{ activeCityDraft.cidade }}.
+                    Salvo na coleção <code>multei_city_socials</code>. Nos Stories, reduz um pouco a foto e posiciona o <code>@</code> discreto logo abaixo do quadro.
                   </p>
                 </div>
 
@@ -334,6 +361,7 @@
                       class="ig-input"
                       placeholder="ex: prefeiturabh"
                       maxlength="30"
+                      @input="handleCityHandlesChanged"
                     />
                   </div>
                 </div>
@@ -349,6 +377,7 @@
                       class="ig-input"
                       placeholder="ex: bhtransoficial"
                       maxlength="30"
+                      @input="handleCityHandlesChanged"
                     />
                   </div>
                 </div>
@@ -383,8 +412,12 @@
                 </button>
 
                 <label class="ig-check-label ig-tag-toggle">
-                  <input v-model="tagProfilesOnPhotos" type="checkbox" />
-                  <span>Marcar @ também sobre as fotos (<code>user_tags</code>)</span>
+                  <input
+                    v-model="tagProfilesOnPhotos"
+                    type="checkbox"
+                    @change="handleCityHandlesChanged"
+                  />
+                  <span>Marcar @ nas fotos e nos Stories (<code>user_tags</code>)</span>
                 </label>
               </div>
 
@@ -418,20 +451,20 @@
               </div>
             </div>
 
-            <!-- 3. Legenda Dinâmica (Gemini) + Botão de Publicação -->
+            <!-- 3. Legenda Dinâmica (Gemini) + Botões de Publicação (Stories / Feed / Ambos) -->
             <div class="ig-panel-card">
               <div class="ig-card-header-flex">
                 <div>
-                  <h3 class="ig-card-title">3. Legenda Personalizada (Gemini IA)</h3>
+                  <h3 class="ig-card-title">3. Legenda do Feed (Gemini IA) e Publicação</h3>
                   <p class="ig-card-helper">
-                    Texto inédito cobrando posicionamento do poder público e convidando para reunião de parceria gratuita de dados.
+                    Obrigatória apenas para o <strong>Feed</strong>. Se for publicar somente nos <strong>Stories</strong>, não precisa gerar legenda.
                   </p>
                 </div>
 
                 <button
                   type="button"
                   class="ig-btn-secondary"
-                  :disabled="isGeneratingCaption || isRenderingSlides || renderedSlides.length === 0"
+                  :disabled="isGeneratingCaption || isRenderingSlides || activeCityRenderedSlides.length === 0"
                   @click="generateCityCaption(true)"
                 >
                   {{
@@ -449,7 +482,7 @@
                 rows="9"
                 maxlength="2200"
                 class="ig-caption-textarea"
-                placeholder="Clique em 'Gerar' após a prévia das imagens ficar pronta, ou escreva sua legenda..."
+                placeholder="Para publicar no Feed, clique em 'Gerar' após a prévia das imagens ficar pronta (opcional para Stories)..."
               ></textarea>
               <div class="ig-caption-footer-meta">
                 <span>{{ cityCaptionText.length }} / 2200 caracteres</span>
@@ -459,18 +492,36 @@
               <div v-if="!confirmingCityPublish" class="ig-publish-bar">
                 <button
                   type="button"
+                  class="ig-btn-story"
+                  :disabled="isPublishing || isRenderingSlides || includedSlidesCount < 1"
+                  @click="promptCityPublish('stories')"
+                >
+                  📲 Publicar nos Stories ({{ includedSlidesCount }})
+                </button>
+
+                <button
+                  type="button"
                   class="ig-btn-primary"
                   :disabled="isPublishing || isRenderingSlides || includedSlidesCount < 1 || !cityCaptionText.trim()"
-                  @click="confirmingCityPublish = true"
+                  @click="promptCityPublish('feed')"
                 >
-                  🚀 Aprovar e Publicar {{ activeCityDraft.cidade }}/{{ activeCityDraft.estado }} no Instagram
+                  🚀 Publicar no Feed
+                </button>
+
+                <button
+                  type="button"
+                  class="ig-btn-both"
+                  :disabled="isPublishing || isRenderingSlides || includedSlidesCount < 1 || !cityCaptionText.trim()"
+                  @click="promptCityPublish('both')"
+                >
+                  ✨ Publicar Feed + Stories
                 </button>
               </div>
 
               <div v-else class="ig-confirm-box">
                 <p>
-                  Confirmar publicação imediata em <strong>@pcdvale</strong> com
-                  <strong>{{ includedSlidesCount }} {{ includedSlidesCount === 1 ? 'imagem' : 'imagens em carrossel' }}</strong>
+                  Confirmar publicação imediata em <strong>@pcdvale</strong> ({{ cityPublishTargetLabel }}) com
+                  <strong>{{ includedSlidesCount }} {{ includedSlidesCount === 1 ? 'arte' : 'slides' }}</strong>
                   para <strong>{{ activeCityDraft.cidade }} - {{ activeCityDraft.estado }}</strong>?
                 </p>
                 <div class="ig-confirm-actions">
@@ -507,7 +558,7 @@
           <div>
             <h2 class="ig-card-title">Configurar Período do Relatório Institucional</h2>
             <p class="ig-card-helper">
-              Escolha o período livremente. O card verde de <strong>Problemas Resolvidos</strong> entra automaticamente sempre que houver pelo menos 1 solução aprovada no intervalo.
+              Escolha o período livremente. Nos <strong>Stories (9:16)</strong>, se informar algum <code>@</code>, a marcação discreta entra logo abaixo do card de Problemas Resolvidos (ou abaixo da linha Trânsito/Mobilidade quando não houver resolvidos).
             </p>
           </div>
         </div>
@@ -560,31 +611,62 @@
               @input="scheduleRenderGeneralReportCard"
             />
           </div>
+
+          <div class="ig-field">
+            <label for="ig-rep-story-tags" class="ig-label">@ para marcar nos Stories (opcional)</label>
+            <input
+              id="ig-rep-story-tags"
+              v-model="reportStoryHandlesInput"
+              type="text"
+              maxlength="95"
+              class="ig-input is-standalone"
+              placeholder="Ex: prefeiturabh, bhtransoficial"
+              @input="scheduleRenderGeneralReportCard"
+            />
+          </div>
         </div>
       </div>
 
       <div class="ig-report-workspace-grid">
-        <!-- Prévia da Arte 1080x1350 da Fase 2 -->
+        <!-- Prévia da Arte (Feed 4:5 ou Stories 9:16) da Fase 2 -->
         <div class="ig-panel-card ig-report-preview-card">
           <div class="ig-card-header-flex">
-            <h3 class="ig-card-title">Prévia da Arte (4:5 Feed)</h3>
+            <div class="ig-format-toggle" role="group" aria-label="Formato da arte do relatório">
+              <button
+                type="button"
+                class="ig-format-btn"
+                :class="{ 'is-active': reportPreviewFormat === 'feed' }"
+                @click="switchReportPreviewFormat('feed')"
+              >
+                🖼️ Feed (4:5)
+              </button>
+              <button
+                type="button"
+                class="ig-format-btn"
+                :class="{ 'is-active': reportPreviewFormat === 'stories' }"
+                @click="switchReportPreviewFormat('stories')"
+              >
+                📲 Stories (9:16)
+              </button>
+            </div>
+
             <button
               type="button"
               class="ig-btn-secondary"
-              :disabled="!reportCardFile || isLoadingReport"
+              :disabled="!activeReportFile || isLoadingReport || isRenderingReportCard"
               @click="downloadReportCard"
             >
-              ⬇️ Baixar Arte
+              ⬇️ Baixar {{ reportPreviewFormat === 'stories' ? 'Story' : 'Arte' }}
             </button>
           </div>
 
-          <div v-if="isLoadingReport" class="ig-rendering-indicator">
-            Calculando indicadores do período...
+          <div v-if="isLoadingReport || isRenderingReportCard" class="ig-rendering-indicator">
+            {{ isLoadingReport ? 'Calculando indicadores do período...' : 'Atualizando prévia da arte...' }}
           </div>
 
-          <div v-else-if="reportPreviewUrl" class="ig-report-img-holder">
+          <div v-if="activeReportPreviewUrl" class="ig-report-img-holder">
             <img
-              :src="reportPreviewUrl"
+              :src="activeReportPreviewUrl"
               alt="Prévia do card de Relatório Geral do Multei"
               class="ig-report-preview-img"
             />
@@ -595,16 +677,16 @@
         <div class="ig-panel-card">
           <div class="ig-card-header-flex">
             <div>
-              <h3 class="ig-card-title">Legenda do Relatório (link p/ /multei/sobre)</h3>
+              <h3 class="ig-card-title">Legenda do Feed (link p/ /multei/sobre) e Publicação</h3>
               <p class="ig-card-helper">
-                Direciona gestores e público para <code>https://valepcd.com.br/multei/sobre</code>.
+                Direciona para <code>https://valepcd.com.br/multei/sobre</code>. Para publicar apenas nos <strong>Stories</strong>, não é necessário gerar legenda.
               </p>
             </div>
 
             <button
               type="button"
               class="ig-btn-secondary"
-              :disabled="isGeneratingReportCaption || isLoadingReport || isRenderingReportCard || !reportCardFile"
+              :disabled="isGeneratingReportCaption || isLoadingReport || isRenderingReportCard || !activeReportFile"
               @click="generateReportCaption"
             >
               {{
@@ -622,7 +704,7 @@
             rows="11"
             maxlength="2200"
             class="ig-caption-textarea"
-            placeholder="Clique em 'Gerar' após a arte do relatório ficar pronta, ou escreva sua legenda..."
+            placeholder="Para publicar no Feed, clique em 'Gerar' após a arte ficar pronta (opcional para Stories)..."
           ></textarea>
           <div class="ig-caption-footer-meta">
             <span>{{ reportCaptionText.length }} / 2200 caracteres</span>
@@ -631,17 +713,35 @@
           <div v-if="!confirmingReportPublish" class="ig-publish-bar">
             <button
               type="button"
-              class="ig-btn-primary"
-              :disabled="isPublishing || !reportCardFile || !reportCaptionText.trim() || reportStats.totalGeral <= 0"
-              @click="confirmingReportPublish = true"
+              class="ig-btn-story"
+              :disabled="isPublishing || isLoadingReport || isRenderingReportCard || !activeReportFile || reportStats.totalGeral <= 0"
+              @click="promptReportPublish('stories')"
             >
-              🚀 Publicar Relatório no Instagram (@pcdvale)
+              📲 Publicar nos Stories
+            </button>
+
+            <button
+              type="button"
+              class="ig-btn-primary"
+              :disabled="isPublishing || isLoadingReport || isRenderingReportCard || !activeReportFile || !reportCaptionText.trim() || reportStats.totalGeral <= 0"
+              @click="promptReportPublish('feed')"
+            >
+              🚀 Publicar no Feed
+            </button>
+
+            <button
+              type="button"
+              class="ig-btn-both"
+              :disabled="isPublishing || isLoadingReport || isRenderingReportCard || !activeReportFile || !reportCaptionText.trim() || reportStats.totalGeral <= 0"
+              @click="promptReportPublish('both')"
+            >
+              ✨ Publicar Feed + Stories
             </button>
           </div>
 
           <div v-else class="ig-confirm-box">
             <p>
-              Confirmar publicação imediata deste <strong>Relatório Geral</strong> no Feed de <strong>@pcdvale</strong>?
+              Confirmar publicação imediata deste <strong>Relatório Geral</strong> ({{ reportPublishTargetLabel }}) em <strong>@pcdvale</strong>?
             </p>
             <div class="ig-confirm-actions">
               <button
@@ -686,12 +786,18 @@ import {
 import {
   generateInstagramCarouselSlideFile,
   generateInstagramGeneralReportFile,
-  downloadGeneratedCardFile
+  generateInstagramStorySlideWithTags,
+  generateInstagramGeneralReportStoryWithTags,
+  downloadGeneratedCardFile,
+  type InstagramStoryUserTagPoint
 } from '~/services/imageProcessor';
 
 const props = defineProps<{
   adminEmail: string;
 }>();
+
+type PublishTargetMode = 'feed' | 'stories' | 'both';
+type PreviewFormatMode = 'feed' | 'stories';
 
 interface CuratedSlideSlot {
   item: InstagramDraftCandidateItem;
@@ -724,12 +830,19 @@ const todayDateKey = ref<string>(getBrazilDateKey());
 const isLoadingDaily = ref(false);
 const dailyDrafts = ref<InstagramDailyCityDraft[]>([]);
 const selectedCityKey = ref<string>('');
+const cityPreviewFormat = ref<PreviewFormatMode>('feed');
 
 const curatedSlots = ref<CuratedSlideSlot[]>([]);
-const slotFiles = ref<Record<string, File>>({});
-const slotPreviewUrls = ref<Record<string, string>>({});
+const slotFeedFiles = ref<Record<string, File>>({});
+const slotFeedPreviewUrls = ref<Record<string, string>>({});
+const slotStoryFiles = ref<Record<string, File>>({});
+const slotStoryPreviewUrls = ref<Record<string, string>>({});
+const slotStoryUserTags = ref<Record<string, InstagramStoryUserTagPoint[]>>({});
+const storySlidesDirty = ref(true);
+const feedSlidesDirty = ref(true);
 const isRenderingSlides = ref(false);
 let slideRenderSeq = 0;
+let cityStoryDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 const prefeituraHandleInput = ref('');
 const transitoHandleInput = ref('');
@@ -744,6 +857,7 @@ const captionCacheByCity = new Map<string, string>();
 let captionVariationCounter = 1;
 
 const confirmingCityPublish = ref(false);
+const pendingCityPublishTarget = ref<PublishTargetMode>('feed');
 const isPublishing = ref(false);
 const publishStepLabel = ref('Publicando...');
 
@@ -758,9 +872,11 @@ const reportPresets: Array<{ id: ReportPresetId; label: string }> = [
 ];
 
 const activeReportPreset = ref<ReportPresetId>('last7');
+const reportPreviewFormat = ref<PreviewFormatMode>('feed');
 const reportStartDate = ref('');
 const reportEndDate = ref('');
 const reportTitleText = ref('Essa semana no Multei');
+const reportStoryHandlesInput = ref('');
 const isLoadingReport = ref(false);
 const reportStats = ref<InstagramPeriodReportData>({
   totalGeral: 0,
@@ -770,12 +886,16 @@ const reportStats = ref<InstagramPeriodReportData>({
   resolvidos: 0,
   topCities: []
 });
-const reportCardFile = ref<File | null>(null);
-const reportPreviewUrl = ref('');
+const reportFeedFile = ref<File | null>(null);
+const reportFeedPreviewUrl = ref('');
+const reportStoryFile = ref<File | null>(null);
+const reportStoryPreviewUrl = ref('');
+const reportStoryUserTags = ref<InstagramStoryUserTagPoint[]>([]);
 const isRenderingReportCard = ref(false);
 const reportCaptionText = ref('');
 const isGeneratingReportCaption = ref(false);
 const confirmingReportPublish = ref(false);
+const pendingReportPublishTarget = ref<PublishTargetMode>('feed');
 let reportRenderDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let midnightRolloverTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -789,14 +909,45 @@ const includedSlots = computed<CuratedSlideSlot[]>(() => {
 
 const includedSlidesCount = computed<number>(() => includedSlots.value.length);
 
-const renderedSlides = computed<File[]>(() => {
-  return includedSlots.value
-    .map((s) => slotFiles.value[s.item.id])
-    .filter((f): f is File => Boolean(f));
+const activeCityFilesMap = computed<Record<string, File>>(() => {
+  return cityPreviewFormat.value === 'stories' ? slotStoryFiles.value : slotFeedFiles.value;
+});
+
+const activeCityPreviewUrls = computed<Record<string, string>>(() => {
+  return cityPreviewFormat.value === 'stories'
+    ? slotStoryPreviewUrls.value
+    : slotFeedPreviewUrls.value;
+});
+
+const activeCityRenderedSlides = computed<File[]>(() => {
+  const map = activeCityFilesMap.value;
+  return includedSlots.value.map((s) => map[s.item.id]).filter((f): f is File => Boolean(f));
+});
+
+const activeReportFile = computed<File | null>(() => {
+  return reportPreviewFormat.value === 'stories' ? reportStoryFile.value : reportFeedFile.value;
+});
+
+const activeReportPreviewUrl = computed<string>(() => {
+  return reportPreviewFormat.value === 'stories'
+    ? reportStoryPreviewUrl.value
+    : reportFeedPreviewUrl.value;
 });
 
 const hasGeneratedCityCaption = computed<boolean>(() => Boolean(cityCaptionText.value.trim()));
 const hasGeneratedReportCaption = computed<boolean>(() => Boolean(reportCaptionText.value.trim()));
+
+const cityPublishTargetLabel = computed<string>(() => {
+  if (pendingCityPublishTarget.value === 'stories') return 'Stories 9:16';
+  if (pendingCityPublishTarget.value === 'both') return 'Feed 4:5 + Stories 9:16';
+  return 'Feed 4:5';
+});
+
+const reportPublishTargetLabel = computed<string>(() => {
+  if (pendingReportPublishTarget.value === 'stories') return 'Stories 9:16';
+  if (pendingReportPublishTarget.value === 'both') return 'Feed 4:5 + Stories 9:16';
+  return 'Feed 4:5';
+});
 
 function getIncludedIndex(itemId: string): number {
   return includedSlots.value.findIndex((s) => s.item.id === itemId);
@@ -819,17 +970,43 @@ function formatTimeBr(iso: string): string {
   });
 }
 
-function revokeAllSlidePreviewUrls(): void {
-  for (const url of Object.values(slotPreviewUrls.value)) {
+function getActiveCityStoryHandles(): string[] {
+  if (!tagProfilesOnPhotos.value) return [];
+  return [prefeituraHandleInput.value, transitoHandleInput.value]
+    .map((h) => h.trim())
+    .filter(Boolean);
+}
+
+function parseReportStoryHandles(): string[] {
+  const raw = reportStoryHandlesInput.value.trim();
+  if (!raw) return [];
+  return raw
+    .split(/[\s,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function revokeUrlRecord(record: Record<string, string>): void {
+  for (const url of Object.values(record)) {
     if (url && url.startsWith('blob:')) {
       URL.revokeObjectURL(url);
     }
   }
-  slotPreviewUrls.value = {};
-  slotFiles.value = {};
 }
 
-async function renderActiveCitySlides(): Promise<void> {
+function revokeAllSlidePreviewUrls(): void {
+  revokeUrlRecord(slotFeedPreviewUrls.value);
+  revokeUrlRecord(slotStoryPreviewUrls.value);
+  slotFeedPreviewUrls.value = {};
+  slotFeedFiles.value = {};
+  slotStoryPreviewUrls.value = {};
+  slotStoryFiles.value = {};
+  slotStoryUserTags.value = {};
+  feedSlidesDirty.value = true;
+  storySlidesDirty.value = true;
+}
+
+async function renderCityFormatSlides(format: PreviewFormatMode): Promise<void> {
   const draft = activeCityDraft.value;
   if (!draft) return;
 
@@ -839,43 +1016,111 @@ async function renderActiveCitySlides(): Promise<void> {
   try {
     const activeIncluded = curatedSlots.value.filter((s) => s.included);
     const total = activeIncluded.length;
-    const nextFiles: Record<string, File> = {};
-    const nextUrls: Record<string, string> = {};
 
-    for (let i = 0; i < activeIncluded.length; i++) {
-      if (seq !== slideRenderSeq) return;
-      const item = activeIncluded[i].item;
-      const file = await generateInstagramCarouselSlideFile({
-        slideIndex: i,
-        totalSlides: total,
-        cidade: draft.cidade,
-        estado: draft.estado,
-        rua: item.rua,
-        bairro: item.bairro,
-        natureza: item.natureza,
-        verificacao: item.verificacao,
-        isResolved: item.category === 'resolvido',
-        photoUrl: item.photoUrl,
-        resolvedPhotoUrl: item.resolvedPhotoUrl
-      });
-      nextFiles[item.id] = file;
-      nextUrls[item.id] = URL.createObjectURL(file);
+    if (format === 'feed') {
+      const nextFiles: Record<string, File> = {};
+      const nextUrls: Record<string, string> = {};
+
+      for (let i = 0; i < activeIncluded.length; i++) {
+        if (seq !== slideRenderSeq) return;
+        const item = activeIncluded[i].item;
+        const file = await generateInstagramCarouselSlideFile({
+          slideIndex: i,
+          totalSlides: total,
+          cidade: draft.cidade,
+          estado: draft.estado,
+          rua: item.rua,
+          bairro: item.bairro,
+          natureza: item.natureza,
+          verificacao: item.verificacao,
+          isResolved: item.category === 'resolvido',
+          photoUrl: item.photoUrl,
+          resolvedPhotoUrl: item.resolvedPhotoUrl
+        });
+        nextFiles[item.id] = file;
+        nextUrls[item.id] = URL.createObjectURL(file);
+      }
+
+      if (seq !== slideRenderSeq) {
+        revokeUrlRecord(nextUrls);
+        return;
+      }
+
+      revokeUrlRecord(slotFeedPreviewUrls.value);
+      slotFeedFiles.value = nextFiles;
+      slotFeedPreviewUrls.value = nextUrls;
+      feedSlidesDirty.value = false;
+    } else {
+      const nextFiles: Record<string, File> = {};
+      const nextUrls: Record<string, string> = {};
+      const nextTags: Record<string, InstagramStoryUserTagPoint[]> = {};
+      const handles = getActiveCityStoryHandles();
+
+      for (let i = 0; i < activeIncluded.length; i++) {
+        if (seq !== slideRenderSeq) return;
+        const item = activeIncluded[i].item;
+        const generated = await generateInstagramStorySlideWithTags({
+          slideIndex: i,
+          totalSlides: total,
+          cidade: draft.cidade,
+          estado: draft.estado,
+          rua: item.rua,
+          bairro: item.bairro,
+          natureza: item.natureza,
+          verificacao: item.verificacao,
+          isResolved: item.category === 'resolvido',
+          photoUrl: item.photoUrl,
+          resolvedPhotoUrl: item.resolvedPhotoUrl,
+          tagHandles: handles
+        });
+        nextFiles[item.id] = generated.file;
+        nextUrls[item.id] = URL.createObjectURL(generated.file);
+        nextTags[item.id] = generated.userTags;
+      }
+
+      if (seq !== slideRenderSeq) {
+        revokeUrlRecord(nextUrls);
+        return;
+      }
+
+      revokeUrlRecord(slotStoryPreviewUrls.value);
+      slotStoryFiles.value = nextFiles;
+      slotStoryPreviewUrls.value = nextUrls;
+      slotStoryUserTags.value = nextTags;
+      storySlidesDirty.value = false;
     }
-
-    if (seq !== slideRenderSeq) {
-      for (const u of Object.values(nextUrls)) URL.revokeObjectURL(u);
-      return;
-    }
-
-    revokeAllSlidePreviewUrls();
-    slotFiles.value = nextFiles;
-    slotPreviewUrls.value = nextUrls;
   } catch {
     // Mantém foto bruta no card caso alguma imagem falhe ao renderizar
   } finally {
     if (seq === slideRenderSeq) {
       isRenderingSlides.value = false;
     }
+  }
+}
+
+async function renderActiveCitySlides(): Promise<void> {
+  feedSlidesDirty.value = true;
+  storySlidesDirty.value = true;
+  await renderCityFormatSlides(cityPreviewFormat.value);
+}
+
+async function switchCityPreviewFormat(nextFormat: PreviewFormatMode): Promise<void> {
+  if (cityPreviewFormat.value === nextFormat) return;
+  cityPreviewFormat.value = nextFormat;
+  if (nextFormat === 'stories' && storySlidesDirty.value) {
+    await renderCityFormatSlides('stories');
+  } else if (nextFormat === 'feed' && feedSlidesDirty.value) {
+    await renderCityFormatSlides('feed');
+  }
+}
+
+function handleCityHandlesChanged(): void {
+  storySlidesDirty.value = true;
+  if (cityPreviewFormat.value === 'stories') {
+    if (cityStoryDebounceTimer) clearTimeout(cityStoryDebounceTimer);
+    cityStoryDebounceTimer = setTimeout(() => {
+      void renderCityFormatSlides('stories');
+    }, 280);
   }
 }
 
@@ -912,7 +1157,6 @@ async function swapSlotWithAnotherFromPool(slotIdx: number): Promise<void> {
   if (available.length === 0) return;
 
   const replacement = available[0];
-  // Rotaciona o pool para permitir novos cliques em "Outra"
   const idxInPool = pool.findIndex((p) => p.id === replacement.id);
   if (idxInPool >= 0) {
     pool.splice(idxInPool, 1);
@@ -944,12 +1188,12 @@ async function promoteSlideToCover(slotIdx: number): Promise<void> {
 }
 
 function downloadSingleSlide(itemId: string): void {
-  const file = slotFiles.value[itemId];
+  const file = activeCityFilesMap.value[itemId];
   if (file) downloadGeneratedCardFile(file);
 }
 
 function downloadAllRenderedSlides(): void {
-  renderedSlides.value.forEach((file, idx) => {
+  activeCityRenderedSlides.value.forEach((file, idx) => {
     setTimeout(() => downloadGeneratedCardFile(file), idx * 220);
   });
 }
@@ -987,14 +1231,20 @@ async function discoverOrValidateHandles(useManualInputs: boolean): Promise<void
       manualTransito: useManualInputs ? transitoHandleInput.value : ''
     });
 
+    let changed = false;
     if (res.prefeitura) {
       discoveredPrefeituraInfo.value = res.prefeitura;
       if (res.prefeitura.username && !useManualInputs) {
         prefeituraHandleInput.value = res.prefeitura.username;
+        changed = true;
       }
     }
     if (res.transito?.username && !useManualInputs && !transitoHandleInput.value) {
       transitoHandleInput.value = res.transito.username;
+      changed = true;
+    }
+    if (changed) {
+      handleCityHandlesChanged();
     }
   } catch (err: any) {
     feedbackBanner.value = {
@@ -1029,6 +1279,7 @@ async function saveHandlesForCity(): Promise<void> {
     draft.citySocial = saved;
     prefeituraHandleInput.value = saved.instagramPrefeitura;
     transitoHandleInput.value = saved.instagramTransito || '';
+    handleCityHandlesChanged();
   } catch (err: any) {
     feedbackBanner.value = {
       type: 'error',
@@ -1042,7 +1293,7 @@ async function saveHandlesForCity(): Promise<void> {
 
 async function generateCityCaption(forceNewVariation = false): Promise<void> {
   const draft = activeCityDraft.value;
-  if (!draft || isRenderingSlides.value || renderedSlides.value.length === 0) return;
+  if (!draft || isRenderingSlides.value || activeCityRenderedSlides.value.length === 0) return;
 
   const cacheKey = `${draft.dateKey}_${draft.cityKey}`;
   if (!forceNewVariation && captionCacheByCity.has(cacheKey)) {
@@ -1102,7 +1353,7 @@ async function selectCityDraft(cityKey: string): Promise<void> {
 
   if (draft.selectedItems.length > 0) {
     revokeAllSlidePreviewUrls();
-    void renderActiveCitySlides();
+    void renderCityFormatSlides(cityPreviewFormat.value);
   } else {
     revokeAllSlidePreviewUrls();
     cityCaptionText.value = '';
@@ -1136,24 +1387,24 @@ async function loadDailyDrafts(): Promise<void> {
   }
 }
 
+function promptCityPublish(target: PublishTargetMode): void {
+  pendingCityPublishTarget.value = target;
+  confirmingCityPublish.value = true;
+}
+
 async function executeCityPublish(): Promise<void> {
   const draft = activeCityDraft.value;
+  const target = pendingCityPublishTarget.value;
   if (!draft || includedSlidesCount.value < 1 || isPublishing.value) return;
+  if ((target === 'feed' || target === 'both') && !cityCaptionText.value.trim()) return;
 
   isPublishing.value = true;
   publishStepLabel.value = 'Preparando imagens...';
   feedbackBanner.value = null;
-  let uploadedStagingPaths: string[] = [];
+  const uploadedStagingPaths: string[] = [];
 
   try {
-    // 1. Garante que os arquivos JPEG 1080x1350 mais recentes estejam renderizados
-    await renderActiveCitySlides();
-    const filesToUpload = renderedSlides.value;
-    if (filesToUpload.length < 1) {
-      throw new Error('Nenhuma imagem pronta para envio ao Instagram.');
-    }
-
-    // 2. Salva o @ da prefeitura na coleção para próximas publicações (se informado)
+    // 1. Salva o @ da prefeitura na coleção para próximas publicações (se informado)
     if (prefeituraHandleInput.value.trim()) {
       try {
         const savedSocial = await saveMulteiCitySocialProfile({
@@ -1170,57 +1421,131 @@ async function executeCityPublish(): Promise<void> {
       } catch {}
     }
 
-    // 3. Sobe temporariamente os slides no Firebase Storage (`instagram_staging/...`)
-    publishStepLabel.value = `Enviando ${filesToUpload.length} slide(s)...`;
-    const staging = await uploadTemporaryInstagramStagingSlides(
-      filesToUpload,
-      `${draft.estado}_${draft.cidade}`
-    );
-    uploadedStagingPaths = staging.storagePaths;
+    const publishedIds = includedSlots.value.map((s) => s.item.id);
+    let lastPermalink = 'https://www.instagram.com/pcdvale/';
 
-    // 4. Publica via rota administrativa segura na Meta Graph API
-    publishStepLabel.value = 'Publicando no Instagram...';
-    const userTags: Array<{ username: string; x: number; y: number }> = [];
-    if (tagProfilesOnPhotos.value) {
-      if (prefeituraHandleInput.value.trim()) {
-        userTags.push({ username: prefeituraHandleInput.value.trim(), x: 0.35, y: 0.88 });
+    // 2. Publicação no FEED (4:5 — 1080x1350)
+    if (target === 'feed' || target === 'both') {
+      if (feedSlidesDirty.value) {
+        await renderCityFormatSlides('feed');
       }
-      if (transitoHandleInput.value.trim()) {
-        userTags.push({ username: transitoHandleInput.value.trim(), x: 0.65, y: 0.88 });
+      const feedFiles = includedSlots.value
+        .map((s) => slotFeedFiles.value[s.item.id])
+        .filter((f): f is File => Boolean(f));
+      if (feedFiles.length < 1) {
+        throw new Error('Nenhuma arte 4:5 pronta para publicação no Feed.');
       }
+
+      publishStepLabel.value = `Enviando ${feedFiles.length} slide(s) do Feed...`;
+      const feedStaging = await uploadTemporaryInstagramStagingSlides(
+        feedFiles,
+        `feed_${draft.estado}_${draft.cidade}`
+      );
+      uploadedStagingPaths.push(...feedStaging.storagePaths);
+
+      publishStepLabel.value = 'Publicando no Feed (@pcdvale)...';
+      const feedUserTags: Array<{ username: string; x: number; y: number }> = [];
+      if (tagProfilesOnPhotos.value) {
+        if (prefeituraHandleInput.value.trim()) {
+          feedUserTags.push({ username: prefeituraHandleInput.value.trim(), x: 0.35, y: 0.88 });
+        }
+        if (transitoHandleInput.value.trim()) {
+          feedUserTags.push({ username: transitoHandleInput.value.trim(), x: 0.65, y: 0.88 });
+        }
+      }
+
+      const feedRes = await callAdminInstagramApi<{
+        ok: boolean;
+        mediaId: string;
+        permalink: string;
+        tagsApplied: boolean;
+      }>('/api/multei/instagram/publish', {
+        placement: 'feed',
+        imageUrls: feedStaging.downloadUrls,
+        caption: cityCaptionText.value,
+        userTags: feedUserTags
+      });
+
+      lastPermalink = feedRes.permalink || lastPermalink;
+
+      await saveMulteiInstagramPublishedPost({
+        dateKey: draft.dateKey,
+        mode: 'city_daily',
+        cidade: draft.cidade,
+        estado: draft.estado,
+        itemIds: publishedIds,
+        instagramMediaId: feedRes.mediaId,
+        permalink: feedRes.permalink,
+        caption: cityCaptionText.value,
+        publishedBy: props.adminEmail
+      });
     }
 
-    const pubRes = await callAdminInstagramApi<{
-      ok: boolean;
-      mediaId: string;
-      permalink: string;
-      tagsApplied: boolean;
-    }>('/api/multei/instagram/publish', {
-      imageUrls: staging.downloadUrls,
-      caption: cityCaptionText.value,
-      userTags
-    });
+    // 3. Publicação nos STORIES (9:16 — 1080x1920)
+    if (target === 'stories' || target === 'both') {
+      if (storySlidesDirty.value) {
+        await renderCityFormatSlides('stories');
+      }
+      const storyFiles = includedSlots.value
+        .map((s) => slotStoryFiles.value[s.item.id])
+        .filter((f): f is File => Boolean(f));
+      if (storyFiles.length < 1) {
+        throw new Error('Nenhuma arte 9:16 pronta para publicação nos Stories.');
+      }
 
-    // 5. Registra publicação em `multei_instagram_posts`
-    const publishedIds = includedSlots.value.map((s) => s.item.id);
-    await saveMulteiInstagramPublishedPost({
-      dateKey: draft.dateKey,
-      mode: 'city_daily',
-      cidade: draft.cidade,
-      estado: draft.estado,
-      itemIds: publishedIds,
-      instagramMediaId: pubRes.mediaId,
-      permalink: pubRes.permalink,
-      caption: cityCaptionText.value,
-      publishedBy: props.adminEmail
-    });
+      const perSlideUserTags = includedSlots.value.map(
+        (s) => slotStoryUserTags.value[s.item.id] || []
+      );
+
+      publishStepLabel.value = `Enviando ${storyFiles.length} Story(ies)...`;
+      const storyStaging = await uploadTemporaryInstagramStagingSlides(
+        storyFiles,
+        `story_${draft.estado}_${draft.cidade}`
+      );
+      uploadedStagingPaths.push(...storyStaging.storagePaths);
+
+      publishStepLabel.value = 'Publicando nos Stories (@pcdvale)...';
+      const storyRes = await callAdminInstagramApi<{
+        ok: boolean;
+        mediaId: string;
+        mediaIds?: string[];
+        permalink: string;
+        tagsApplied: boolean;
+      }>('/api/multei/instagram/publish', {
+        placement: 'stories',
+        imageUrls: storyStaging.downloadUrls,
+        caption: '',
+        perSlideUserTags
+      });
+
+      if (target === 'stories' && storyRes.permalink) {
+        lastPermalink = storyRes.permalink;
+      }
+
+      await saveMulteiInstagramPublishedPost({
+        dateKey: draft.dateKey,
+        mode: 'city_story',
+        cidade: draft.cidade,
+        estado: draft.estado,
+        itemIds: publishedIds,
+        instagramMediaId: storyRes.mediaId,
+        permalink: storyRes.permalink,
+        caption: '',
+        publishedBy: props.adminEmail
+      });
+    }
 
     confirmingCityPublish.value = false;
     feedbackBanner.value = {
       type: 'success',
       title: `Publicado com sucesso: ${draft.cidade} - ${draft.estado}!`,
-      message: `${filesToUpload.length} ${filesToUpload.length === 1 ? 'imagem publicada' : 'slides publicados em carrossel'} na conta oficial @pcdvale.`,
-      permalink: pubRes.permalink
+      message:
+        target === 'both'
+          ? `Publicado no Feed e nos Stories (${publishedIds.length} slide(s)) na conta oficial @pcdvale.`
+          : target === 'stories'
+            ? `${publishedIds.length} Story(ies) publicado(s) na conta oficial @pcdvale.`
+            : `${publishedIds.length} ${publishedIds.length === 1 ? 'imagem publicada' : 'slides publicados em carrossel'} no Feed de @pcdvale.`,
+      permalink: lastPermalink
     };
 
     await loadDailyDrafts();
@@ -1288,21 +1613,39 @@ async function handleCustomReportDatesChange(): Promise<void> {
 async function renderGeneralReportCardNow(): Promise<void> {
   isRenderingReportCard.value = true;
   try {
-    const file = await generateInstagramGeneralReportFile({
+    const baseOpts = {
       title: reportTitleText.value || 'Essa semana no Multei',
       totalGeral: reportStats.value.totalGeral,
       cidadesCount: reportStats.value.cidadesCount,
       infracoesTransito: reportStats.value.infracoesTransito,
       mobilidadeUrbana: reportStats.value.mobilidadeUrbana,
       resolvidos: reportStats.value.resolvidos
-    });
-    if (reportPreviewUrl.value && reportPreviewUrl.value.startsWith('blob:')) {
-      URL.revokeObjectURL(reportPreviewUrl.value);
+    };
+
+    const [feedFile, storyBuilt] = await Promise.all([
+      generateInstagramGeneralReportFile(baseOpts),
+      generateInstagramGeneralReportStoryWithTags({
+        ...baseOpts,
+        tagHandles: parseReportStoryHandles()
+      })
+    ]);
+
+    if (reportFeedPreviewUrl.value && reportFeedPreviewUrl.value.startsWith('blob:')) {
+      URL.revokeObjectURL(reportFeedPreviewUrl.value);
     }
-    reportCardFile.value = file;
-    reportPreviewUrl.value = URL.createObjectURL(file);
+    if (reportStoryPreviewUrl.value && reportStoryPreviewUrl.value.startsWith('blob:')) {
+      URL.revokeObjectURL(reportStoryPreviewUrl.value);
+    }
+
+    reportFeedFile.value = feedFile;
+    reportFeedPreviewUrl.value = URL.createObjectURL(feedFile);
+
+    reportStoryFile.value = storyBuilt.file;
+    reportStoryPreviewUrl.value = URL.createObjectURL(storyBuilt.file);
+    reportStoryUserTags.value = storyBuilt.userTags;
   } catch {
-    reportCardFile.value = null;
+    reportFeedFile.value = null;
+    reportStoryFile.value = null;
   } finally {
     isRenderingReportCard.value = false;
   }
@@ -1316,8 +1659,12 @@ function scheduleRenderGeneralReportCard(): void {
   }, 250);
 }
 
+function switchReportPreviewFormat(nextFormat: PreviewFormatMode): void {
+  reportPreviewFormat.value = nextFormat;
+}
+
 async function generateReportCaption(): Promise<void> {
-  if (!reportCardFile.value || isRenderingReportCard.value || isLoadingReport.value) return;
+  if (!activeReportFile.value || isRenderingReportCard.value || isLoadingReport.value) return;
   isGeneratingReportCaption.value = true;
   try {
     const periodLabel =
@@ -1355,7 +1702,8 @@ async function generateReportCaption(): Promise<void> {
 async function refreshGeneralReportData(): Promise<void> {
   isLoadingReport.value = true;
   confirmingReportPublish.value = false;
-  reportCardFile.value = null;
+  reportFeedFile.value = null;
+  reportStoryFile.value = null;
   reportCaptionText.value = '';
   try {
     reportStats.value = await fetchInstagramGeneralReportForPeriod(
@@ -1375,55 +1723,117 @@ async function refreshGeneralReportData(): Promise<void> {
 }
 
 function downloadReportCard(): void {
-  if (reportCardFile.value) {
-    downloadGeneratedCardFile(reportCardFile.value);
+  if (activeReportFile.value) {
+    downloadGeneratedCardFile(activeReportFile.value);
   }
 }
 
+function promptReportPublish(target: PublishTargetMode): void {
+  pendingReportPublishTarget.value = target;
+  confirmingReportPublish.value = true;
+}
+
 async function executeReportPublish(): Promise<void> {
-  if (!reportCardFile.value || isPublishing.value) return;
+  const target = pendingReportPublishTarget.value;
+  if (isPublishing.value) return;
+  if ((target === 'feed' || target === 'both') && !reportCaptionText.value.trim()) return;
 
   isPublishing.value = true;
-  publishStepLabel.value = 'Enviando arte do relatório...';
+  publishStepLabel.value = 'Preparando arte do relatório...';
   feedbackBanner.value = null;
-  let stagingPaths: string[] = [];
+  const stagingPaths: string[] = [];
 
   try {
     await renderGeneralReportCardNow();
-    if (!reportCardFile.value) {
-      throw new Error('Arte do relatório indisponível.');
+    let lastPermalink = 'https://www.instagram.com/pcdvale/';
+
+    if (target === 'feed' || target === 'both') {
+      if (!reportFeedFile.value) {
+        throw new Error('Arte 4:5 do relatório indisponível.');
+      }
+
+      publishStepLabel.value = 'Enviando arte do Feed...';
+      const feedStaging = await uploadTemporaryInstagramStagingSlides(
+        [reportFeedFile.value],
+        'relatorio_feed'
+      );
+      stagingPaths.push(...feedStaging.storagePaths);
+
+      publishStepLabel.value = 'Publicando relatório no Feed...';
+      const feedRes = await callAdminInstagramApi<{
+        ok: boolean;
+        mediaId: string;
+        permalink: string;
+      }>('/api/multei/instagram/publish', {
+        placement: 'feed',
+        imageUrls: feedStaging.downloadUrls,
+        caption: reportCaptionText.value,
+        userTags: []
+      });
+
+      lastPermalink = feedRes.permalink || lastPermalink;
+
+      await saveMulteiInstagramPublishedPost({
+        dateKey: getBrazilDateKey(),
+        mode: 'general_report',
+        itemIds: [],
+        instagramMediaId: feedRes.mediaId,
+        permalink: feedRes.permalink,
+        caption: reportCaptionText.value,
+        publishedBy: props.adminEmail
+      });
     }
 
-    const staging = await uploadTemporaryInstagramStagingSlides([reportCardFile.value], 'relatorio');
-    stagingPaths = staging.storagePaths;
+    if (target === 'stories' || target === 'both') {
+      if (!reportStoryFile.value) {
+        throw new Error('Arte 9:16 do Story do relatório indisponível.');
+      }
 
-    publishStepLabel.value = 'Publicando no Instagram...';
-    const pubRes = await callAdminInstagramApi<{
-      ok: boolean;
-      mediaId: string;
-      permalink: string;
-    }>('/api/multei/instagram/publish', {
-      imageUrls: staging.downloadUrls,
-      caption: reportCaptionText.value,
-      userTags: []
-    });
+      publishStepLabel.value = 'Enviando Story do relatório...';
+      const storyStaging = await uploadTemporaryInstagramStagingSlides(
+        [reportStoryFile.value],
+        'relatorio_story'
+      );
+      stagingPaths.push(...storyStaging.storagePaths);
 
-    await saveMulteiInstagramPublishedPost({
-      dateKey: getBrazilDateKey(),
-      mode: 'general_report',
-      itemIds: [],
-      instagramMediaId: pubRes.mediaId,
-      permalink: pubRes.permalink,
-      caption: reportCaptionText.value,
-      publishedBy: props.adminEmail
-    });
+      publishStepLabel.value = 'Publicando relatório nos Stories...';
+      const storyRes = await callAdminInstagramApi<{
+        ok: boolean;
+        mediaId: string;
+        permalink: string;
+      }>('/api/multei/instagram/publish', {
+        placement: 'stories',
+        imageUrls: storyStaging.downloadUrls,
+        caption: '',
+        userTags: reportStoryUserTags.value
+      });
+
+      if (target === 'stories' && storyRes.permalink) {
+        lastPermalink = storyRes.permalink;
+      }
+
+      await saveMulteiInstagramPublishedPost({
+        dateKey: getBrazilDateKey(),
+        mode: 'general_report_story',
+        itemIds: [],
+        instagramMediaId: storyRes.mediaId,
+        permalink: storyRes.permalink,
+        caption: '',
+        publishedBy: props.adminEmail
+      });
+    }
 
     confirmingReportPublish.value = false;
     feedbackBanner.value = {
       type: 'success',
       title: 'Relatório Geral publicado com sucesso!',
-      message: 'A arte institucional já está disponível no Feed de @pcdvale.',
-      permalink: pubRes.permalink
+      message:
+        target === 'both'
+          ? 'A arte institucional já está disponível no Feed e nos Stories de @pcdvale.'
+          : target === 'stories'
+            ? 'O Story institucional já está disponível em @pcdvale.'
+            : 'A arte institucional já está disponível no Feed de @pcdvale.',
+      permalink: lastPermalink
     };
   } catch (err: any) {
     feedbackBanner.value = {
@@ -1442,7 +1852,7 @@ async function executeReportPublish(): Promise<void> {
 
 async function switchSubMode(nextMode: 'city_daily' | 'general_report'): Promise<void> {
   subMode.value = nextMode;
-  if (nextMode === 'general_report' && !reportPreviewUrl.value) {
+  if (nextMode === 'general_report' && !reportFeedPreviewUrl.value) {
     await applyReportPreset('last7');
   }
 }
@@ -1462,9 +1872,13 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   revokeAllSlidePreviewUrls();
-  if (reportPreviewUrl.value && reportPreviewUrl.value.startsWith('blob:')) {
-    URL.revokeObjectURL(reportPreviewUrl.value);
+  if (reportFeedPreviewUrl.value && reportFeedPreviewUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(reportFeedPreviewUrl.value);
   }
+  if (reportStoryPreviewUrl.value && reportStoryPreviewUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(reportStoryPreviewUrl.value);
+  }
+  if (cityStoryDebounceTimer) clearTimeout(cityStoryDebounceTimer);
   if (reportRenderDebounceTimer) clearTimeout(reportRenderDebounceTimer);
   if (midnightRolloverTimer) clearInterval(midnightRolloverTimer);
 });
@@ -1857,11 +2271,50 @@ onBeforeUnmount(() => {
   opacity: 0.52;
 }
 
+.ig-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.ig-format-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.22rem;
+  background: var(--pp-surface-alt);
+  border: 1px solid var(--pp-border);
+  border-radius: 10px;
+}
+
+.ig-format-btn {
+  padding: 0.42rem 0.72rem;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--pp-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ig-format-btn.is-active {
+  background: #86007d;
+  color: #ffffff;
+  border-color: #86007d;
+}
+
 .ig-slide-preview-wrap {
   position: relative;
   aspect-ratio: 4 / 5;
   background: #0f172a;
   overflow: hidden;
+  transition: aspect-ratio 0.18s ease;
+}
+
+.ig-slide-preview-wrap.is-story-ratio {
+  aspect-ratio: 9 / 16;
 }
 
 .ig-slide-img {
@@ -2083,7 +2536,9 @@ onBeforeUnmount(() => {
 .ig-publish-bar {
   margin-top: 1rem;
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 0.65rem;
 }
 
 .ig-confirm-box {
@@ -2106,23 +2561,50 @@ onBeforeUnmount(() => {
   gap: 0.65rem;
 }
 
-.ig-btn-primary {
-  padding: 0.72rem 1.35rem;
+.ig-btn-primary,
+.ig-btn-story,
+.ig-btn-both {
+  padding: 0.72rem 1.25rem;
   border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.ig-btn-primary {
   border: none;
   background: #86007d;
   color: #ffffff;
-  font-weight: 700;
-  font-size: 0.92rem;
-  cursor: pointer;
-  transition: background 0.16s ease, opacity 0.16s ease;
 }
 
 .ig-btn-primary:hover:not(:disabled) {
   background: #6e0066;
 }
 
+.ig-btn-story {
+  border: 1.5px solid #86007d;
+  background: var(--pp-surface-alt);
+  color: var(--pp-text-primary);
+}
+
+.ig-btn-story:hover:not(:disabled) {
+  background: rgba(134, 0, 125, 0.1);
+}
+
+.ig-btn-both {
+  border: none;
+  background: linear-gradient(135deg, #86007d 0%, #4c1d95 100%);
+  color: #ffffff;
+}
+
+.ig-btn-both:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
 .ig-btn-primary:disabled,
+.ig-btn-story:disabled,
+.ig-btn-both:disabled,
 .ig-btn-secondary:disabled {
   opacity: 0.55;
   cursor: not-allowed;

@@ -28,12 +28,18 @@ export default defineEventHandler(async (event) => {
   };
 
   const rawTags = Array.isArray(body.userTags) ? (body.userTags as InstagramUserTagInput[]) : [];
+  const rawPerSlideTags = Array.isArray(body.perSlideUserTags)
+    ? (body.perSlideUserTags as InstagramUserTagInput[][])
+    : undefined;
+  const placement = body.placement === 'stories' ? 'stories' : 'feed';
 
   const result = await publishToInstagramGraph(
     {
       imageUrls: Array.isArray(body.imageUrls) ? (body.imageUrls as string[]) : [],
       caption: typeof body.caption === 'string' ? body.caption : '',
-      userTags: rawTags
+      placement,
+      userTags: rawTags,
+      perSlideUserTags: rawPerSlideTags
     },
     igConfig
   );
@@ -41,6 +47,7 @@ export default defineEventHandler(async (event) => {
   return {
     ok: true,
     mediaId: result.mediaId,
+    mediaIds: result.mediaIds || [result.mediaId],
     permalink: result.permalink,
     tagsApplied: result.tagsApplied
   };

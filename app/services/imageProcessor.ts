@@ -2020,3 +2020,751 @@ export async function generateInstagramGeneralReportFile(
     type: 'image/jpeg'
   });
 }
+
+export interface InstagramStoryUserTagPoint {
+  username: string;
+  x: number;
+  y: number;
+}
+
+export interface InstagramStorySlideOptions extends InstagramCarouselSlideOptions {
+  tagHandles?: string[];
+}
+
+export interface InstagramGeneralReportStoryOptions extends InstagramGeneralReportCardOptions {
+  tagHandles?: string[];
+}
+
+function sanitizeStoryTagHandles(rawHandles?: string[]): string[] {
+  if (!Array.isArray(rawHandles) || rawHandles.length === 0) return [];
+  const seen = new Set<string>();
+  const valid: string[] = [];
+
+  for (const entry of rawHandles) {
+    const pieces = String(entry || '')
+      .split(/[\s,;]+/)
+      .map((s) => s.trim().replace(/^@+/, '').toLowerCase())
+      .filter(Boolean);
+    for (const h of pieces) {
+      if (!/^[a-z0-9._]{1,30}$/.test(h) || seen.has(h)) continue;
+      seen.add(h);
+      valid.push(h);
+      if (valid.length >= 4) return valid;
+    }
+  }
+
+  return valid;
+}
+
+/**
+ * Desenha pílulas discretas de `@perfil` em linha única, ajustando automaticamente o tamanho
+ * da fonte (22px -> 14px) para que nunca haja quebra ou sobreposição, e retorna as coordenadas
+ * normalizadas `(x, y)` exatas (0.0..1.0) para o campo `user_tags` da Meta Graph API.
+ */
+function drawDiscreetStoryMentionPills(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  centerY: number,
+  rawHandles: string[] | undefined,
+  fontStack: string
+): InstagramStoryUserTagPoint[] {
+  const handles = sanitizeStoryTagHandles(rawHandles);
+  if (handles.length === 0) return [];
+
+  const maxRowWidth = W - 112; // 968px livres
+  const pillGap = 12;
+  let fontPx = 22;
+  let padX = 18;
+  let labels = handles.map((h) => `@${h}`);
+  let pillWidths: number[] = [];
+
+  while (fontPx >= 14) {
+    padX = Math.max(12, Math.round(fontPx * 0.8));
+    ctx.font = `600 ${fontPx}px ${fontStack}`;
+    pillWidths = labels.map((lbl) => Math.ceil(ctx.measureText(lbl).width) + padX * 2);
+    const totalW =
+      pillWidths.reduce((acc, w) => acc + w, 0) + pillGap * Math.max(0, handles.length - 1);
+    if (totalW <= maxRowWidth) break;
+    fontPx -= 1;
+  }
+
+  if (fontPx < 14) {
+    fontPx = 14;
+    padX = 12;
+    ctx.font = `600 ${fontPx}px ${fontStack}`;
+    const maxSinglePillW = Math.floor(
+      (maxRowWidth - pillGap * Math.max(0, handles.length - 1)) / handles.length
+    );
+    labels = labels.map((lbl) => {
+      let truncated = lbl;
+      while (
+        truncated.length > 4 &&
+        Math.ceil(ctx.measureText(`${truncated}…`).width) + padX * 2 > maxSinglePillW
+      ) {
+        truncated = truncated.slice(0, -1);
+      }
+      return truncated === lbl ? lbl : `${truncated}…`;
+    });
+    pillWidths = labels.map((lbl) => Math.ceil(ctx.measureText(lbl).width) + padX * 2);
+  }
+
+  const pillH = Math.max(34, Math.round(fontPx * 1.68));
+  const totalRowW =
+    pillWidths.reduce((acc, w) => acc + w, 0) + pillGap * Math.max(0, handles.length - 1);
+  let cursorX = (W - totalRowW) / 2;
+  const pillY = centerY - pillH / 2;
+
+  const tagPoints: InstagramStoryUserTagPoint[] = [];
+
+  for (let i = 0; i < handles.length; i++) {
+    const pw = pillWidths[i];
+    drawRoundedRectPath(ctx, cursorX, pillY, pw, pillH, pillH / 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fill();
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = 'rgba(134, 0, 125, 0.22)';
+    ctx.stroke();
+
+    ctx.font = `600 ${fontPx}px ${fontStack}`;
+    ctx.fillStyle = '#581c87';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(labels[i], cursorX + pw / 2, centerY + 1);
+
+    const normX = Math.min(0.95, Math.max(0.05, Number(((cursorX + pw / 2) / W).toFixed(3))));
+    const normY = Math.min(0.95, Math.max(0.05, Number((centerY / H).toFixed(3))));
+    tagPoints.push({
+      username: handles[i],
+      x: normX,
+      y: normY
+    });
+
+    cursorX += pw + pillGap;
+  }
+
+  return tagPoints;
+}
+
+function drawInstagramStoryPurpleFooter(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  BODY_H: number,
+  FOOTER_H: number,
+  fontStack: string,
+  ctaLabel: string,
+  ctaUrl: string
+): void {
+  const footerGrad = ctx.createLinearGradient(0, BODY_H, W, H);
+  footerGrad.addColorStop(0, '#86007D');
+  footerGrad.addColorStop(1, '#6e0066');
+  ctx.fillStyle = footerGrad;
+  ctx.fillRect(0, BODY_H, W, FOOTER_H);
+
+  ctx.font = `700 33px ${fontStack}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(ctaLabel, W / 2, BODY_H + 62);
+
+  ctx.font = `800 33px ${fontStack}`;
+  const ctaUrlW = ctx.measureText(ctaUrl).width;
+  const ctaPillW = Math.min(W - 96, ctaUrlW + 74);
+  const ctaPillH = 66;
+  const ctaPillX = (W - ctaPillW) / 2;
+  const ctaPillY = BODY_H + 88;
+
+  drawRoundedRectPath(ctx, ctaPillX, ctaPillY, ctaPillW, ctaPillH, 33);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  ctx.fillStyle = '#86007D';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(ctaUrl, W / 2, ctaPillY + ctaPillH / 2 + 1);
+}
+
+/**
+ * Gera um slide `1080x1920` (proporção oficial 9:16 de Instagram Stories) para a Fase 1 (Cidades de Hoje).
+ * Quando há `@` para marcar, reduz levemente a altura do quadro da foto e posiciona a marcação
+ * discreta imediatamente abaixo da foto, retornando também as coordenadas `userTags`.
+ */
+export async function generateInstagramStorySlideWithTags(
+  options: InstagramStorySlideOptions
+): Promise<{ file: File; userTags: InstagramStoryUserTagPoint[] }> {
+  const W = 1080;
+  const H = 1920;
+  const FOOTER_H = 260;
+  const BODY_H = H - FOOTER_H; // 1660
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Contexto 2D indisponível para renderizar o Story do Instagram.');
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  const fontStack = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  // Respeita a área superior nativa de avatar/barras do Instagram Stories (~110px)
+  drawInstagramFeedBackgroundAndTopPill(ctx, W, BODY_H, fontStack, 112);
+
+  const headline = getShareHeadlineInfo({
+    isResolved: options.isResolved,
+    natureza: options.natureza,
+    verificacao: options.verificacao
+  });
+
+  const cleanRua = String(options.rua || '').trim();
+  const cleanBairro = String(options.bairro || '').trim();
+  const cleanCidade = String(options.cidade || 'Cidade').trim();
+  const cleanEstado = String(options.estado || '').trim().toUpperCase();
+  const cityLabel = cleanEstado ? `${cleanCidade} - ${cleanEstado}` : cleanCidade;
+
+  const streetParts = [cleanRua, cleanBairro].filter(Boolean);
+  const streetNeighborhoodLine =
+    streetParts.length > 0 ? streetParts.join(' - ') : 'Local registrado no Multei';
+
+  const isCoverSlide = options.slideIndex === 0;
+  let cardY = 416;
+
+  if (isCoverSlide) {
+    if (options.isResolved) {
+      const kickerText = '✨ A transformação acontece em:';
+      ctx.font = `700 28px ${fontStack}`;
+      const kickerW = Math.min(W - 100, ctx.measureText(kickerText).width + 64);
+      const kickerH = 52;
+      const kickerX = (W - kickerW) / 2;
+      const kickerY = 178;
+
+      drawRoundedRectPath(ctx, kickerX, kickerY, kickerW, kickerH, 26);
+      ctx.fillStyle = '#86007D';
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(kickerText, W / 2, kickerY + kickerH / 2 + 1);
+
+      const cityDisplay = `📍 ${cityLabel}`;
+      const cityFontPx = fitSingleLineFontSize(ctx, cityDisplay, 800, fontStack, 58, 36, 940);
+      ctx.font = `800 ${cityFontPx}px ${fontStack}`;
+      ctx.fillStyle = '#070b19';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(cityDisplay, W / 2, 300);
+
+      ctx.font = `600 30px ${fontStack}`;
+      ctx.fillStyle = '#0f172a';
+      ctx.fillText('Problema de Mobilidade Resolvido', W / 2, 348);
+
+      ctx.font = `500 27px ${fontStack}`;
+      ctx.fillStyle = '#334155';
+      const addrLines = wrapCanvasText(ctx, streetNeighborhoodLine, 920, 1);
+      if (addrLines[0]) {
+        ctx.fillText(addrLines[0], W / 2, 388);
+      }
+
+      cardY = 418;
+    } else {
+      ctx.font = `700 38px ${fontStack}`;
+      ctx.fillStyle = '#5b4b7a';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText('Hoje em:', W / 2, 214);
+
+      const cityDisplay = `📍 ${cityLabel}`;
+      const cityFontPx = fitSingleLineFontSize(ctx, cityDisplay, 800, fontStack, 58, 36, 940);
+      ctx.font = `800 ${cityFontPx}px ${fontStack}`;
+      ctx.fillStyle = '#070b19';
+      ctx.fillText(cityDisplay, W / 2, 286);
+
+      ctx.font = `600 30px ${fontStack}`;
+      ctx.fillStyle = '#0f172a';
+      ctx.fillText(headline.shareTitlePlain, W / 2, 336);
+
+      ctx.font = `500 27px ${fontStack}`;
+      ctx.fillStyle = '#334155';
+      const addrLines = wrapCanvasText(ctx, streetNeighborhoodLine, 920, 1);
+      if (addrLines[0]) {
+        ctx.fillText(addrLines[0], W / 2, 376);
+      }
+
+      cardY = 408;
+    }
+  } else {
+    ctx.font = `800 54px ${fontStack}`;
+    ctx.fillStyle = '#070b19';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(headline.line1, W / 2, 228);
+
+    const line2W = ctx.measureText(headline.line2).width;
+    const badgeSize = 42;
+    const badgeGap = 14;
+    const totalLine2W = line2W + badgeGap + badgeSize;
+    const line2StartX = (W - totalLine2W) / 2;
+    const line2BaselineY = 294;
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#070b19';
+    ctx.fillText(headline.line2, line2StartX, line2BaselineY);
+
+    const badgeX = line2StartX + line2W + badgeGap;
+    const badgeY = line2BaselineY - badgeSize + 4;
+    drawRoundedRectPath(ctx, badgeX, badgeY, badgeSize, badgeSize, 11);
+    ctx.fillStyle = headline.badgeBg;
+    ctx.fill();
+
+    ctx.font = `700 25px ${fontStack}`;
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(headline.badgeIcon, badgeX + badgeSize / 2, badgeY + badgeSize / 2 + 1);
+
+    const fullInternalLoc = `📍 ${streetNeighborhoodLine} • ${cityLabel}`;
+    ctx.font = `600 28px ${fontStack}`;
+    ctx.fillStyle = '#1e293b';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    const locLines = wrapCanvasText(ctx, fullInternalLoc, 930, 2);
+    let locY = 348;
+    for (const l of locLines) {
+      ctx.fillText(l, W / 2, locY);
+      locY += 36;
+    }
+
+    cardY = locLines.length > 1 ? 414 : 384;
+  }
+
+  const sanitizedHandles = sanitizeStoryTagHandles(options.tagHandles);
+  // Diminui um pouco a altura da foto quando há marcação @ para acomodá-la logo abaixo sem sobrepor
+  const bottomReserve = sanitizedHandles.length > 0 ? 104 : 44;
+
+  const cardX = 56;
+  const cardW = W - cardX * 2; // 968
+  const cardH = BODY_H - cardY - bottomReserve;
+  const cardRadius = 36;
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.13)';
+  ctx.shadowBlur = 26;
+  ctx.shadowOffsetY = 8;
+  drawRoundedRectPath(ctx, cardX, cardY, cardW, cardH, cardRadius);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.restore();
+
+  const pad = 12;
+  const innerX = cardX + pad;
+  const innerY = cardY + pad;
+  const innerW = cardW - pad * 2;
+  const innerH = cardH - pad * 2;
+  const innerRadius = cardRadius - 8;
+
+  if (options.isResolved && options.resolvedPhotoUrl) {
+    const [beforeImg, afterImg] = await Promise.all([
+      loadImageForCanvas(options.photoUrl),
+      loadImageForCanvas(options.resolvedPhotoUrl)
+    ]);
+
+    const colGap = 12;
+    const colW = (innerW - colGap) / 2;
+    const leftX = innerX;
+    const rightX = innerX + colW + colGap;
+
+    drawRoundedRectPath(ctx, leftX, innerY, colW, innerH, 24);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fill();
+    if (beforeImg) {
+      drawImageSmartInFrame(ctx, beforeImg, leftX, innerY, colW, innerH, 24, true);
+    }
+
+    const beforeTagText = '⚠️ ANTES';
+    ctx.font = `800 23px ${fontStack}`;
+    const beforeTagW = ctx.measureText(beforeTagText).width + 40;
+    const beforeTagH = 46;
+    const beforeTagX = leftX + (colW - beforeTagW) / 2;
+    const beforeTagY = innerY + 20;
+
+    drawRoundedRectPath(ctx, beforeTagX, beforeTagY, beforeTagW, beforeTagH, 23);
+    ctx.fillStyle = 'rgba(217, 119, 6, 0.95)';
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(beforeTagText, beforeTagX + beforeTagW / 2, beforeTagY + beforeTagH / 2 + 1);
+
+    drawRoundedRectPath(ctx, rightX, innerY, colW, innerH, 24);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fill();
+    if (afterImg) {
+      drawImageSmartInFrame(ctx, afterImg, rightX, innerY, colW, innerH, 24, true);
+    }
+
+    const afterTagText = '✅ DEPOIS';
+    ctx.font = `800 23px ${fontStack}`;
+    const afterTagW = ctx.measureText(afterTagText).width + 40;
+    const afterTagH = 46;
+    const afterTagX = rightX + (colW - afterTagW) / 2;
+    const afterTagY = innerY + 20;
+
+    drawRoundedRectPath(ctx, afterTagX, afterTagY, afterTagW, afterTagH, 23);
+    ctx.fillStyle = 'rgba(22, 163, 74, 0.95)';
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(afterTagText, afterTagX + afterTagW / 2, afterTagY + afterTagH / 2 + 1);
+
+    drawPrivacyAppliedBadge(ctx, fontStack, innerX + innerW, innerY + innerH);
+
+    if (options.totalSlides > 1) {
+      const counterText = `${options.slideIndex + 1}/${options.totalSlides}`;
+      ctx.font = `700 22px ${fontStack}`;
+      const cW = ctx.measureText(counterText).width + 34;
+      const cH = 42;
+      const cX = leftX + 18;
+      const cY = innerY + innerH - cH - 18;
+
+      drawRoundedRectPath(ctx, cX, cY, cW, cH, 21);
+      ctx.fillStyle = 'rgba(248, 250, 252, 0.94)';
+      ctx.fill();
+      ctx.fillStyle = '#0f172a';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(counterText, cX + cW / 2, cY + cH / 2 + 1);
+    }
+  } else {
+    drawRoundedRectPath(ctx, innerX, innerY, innerW, innerH, innerRadius);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+
+    const mainImg = await loadImageForCanvas(options.photoUrl);
+    if (mainImg) {
+      drawImageSmartInFrame(ctx, mainImg, innerX, innerY, innerW, innerH, innerRadius, false);
+    }
+
+    drawPrivacyAppliedBadge(ctx, fontStack, innerX + innerW, innerY + innerH);
+
+    if (options.totalSlides > 1) {
+      const counterText = `${options.slideIndex + 1}/${options.totalSlides}`;
+      ctx.font = `700 22px ${fontStack}`;
+      const cW = ctx.measureText(counterText).width + 34;
+      const cH = 42;
+      const cX = innerX + innerW - cW - 18;
+      const cY = innerY + 18;
+
+      drawRoundedRectPath(ctx, cX, cY, cW, cH, 21);
+      ctx.fillStyle = 'rgba(88, 28, 135, 0.86)';
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(counterText, cX + cW / 2, cY + cH / 2 + 1);
+    }
+  }
+
+  // Marcação discreta logo abaixo do quadro da foto (sem sobrepor o quadro nem o rodapé)
+  let userTags: InstagramStoryUserTagPoint[] = [];
+  if (sanitizedHandles.length > 0) {
+    const tagCenterY = cardY + cardH + 50;
+    userTags = drawDiscreetStoryMentionPills(ctx, W, H, tagCenterY, sanitizedHandles, fontStack);
+  }
+
+  drawInstagramStoryPurpleFooter(
+    ctx,
+    W,
+    H,
+    BODY_H,
+    FOOTER_H,
+    fontStack,
+    'Denuncie você também pelo',
+    'www.valepcd.com.br/multei'
+  );
+
+  const blob: Blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('Falha ao exportar Story do Instagram.'))),
+      'image/jpeg',
+      0.93
+    );
+  });
+
+  const safeCity = cleanCidade.replace(/[^a-zA-Z0-9_-]+/g, '_');
+  const file = new File(
+    [blob],
+    `multei_story_${safeCity}_slide_${options.slideIndex + 1}.jpg`,
+    {
+      type: 'image/jpeg'
+    }
+  );
+
+  return { file, userTags };
+}
+
+/**
+ * Gera a arte `1080x1920` (9:16 Stories) do Relatório Geral do Multei (Fase 2).
+ * Posiciona a marcação `@` discreta imediatamente abaixo do card de Problemas Resolvidos
+ * (quando `resolvidos >= 1`) ou imediatamente abaixo da linha Trânsito | Mobilidade
+ * (quando `resolvidos === 0`).
+ */
+export async function generateInstagramGeneralReportStoryWithTags(
+  options: InstagramGeneralReportStoryOptions
+): Promise<{ file: File; userTags: InstagramStoryUserTagPoint[] }> {
+  const W = 1080;
+  const H = 1920;
+  const FOOTER_H = 260;
+  const BODY_H = H - FOOTER_H; // 1660
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Contexto 2D indisponível para gerar o Story do relatório geral.');
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  const fontStack = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  drawInstagramFeedBackgroundAndTopPill(ctx, W, BODY_H, fontStack, 122);
+
+  const cleanTitle = String(options.title || 'Essa semana no Multei').trim();
+  const titleFontPx = fitSingleLineFontSize(ctx, cleanTitle, 800, fontStack, 64, 40, 932);
+  ctx.font = `800 ${titleFontPx}px ${fontStack}`;
+  ctx.fillStyle = '#070b19';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(cleanTitle, W / 2, 260);
+
+  const subtitle = String(options.periodSubtitle || '').trim();
+  if (subtitle) {
+    ctx.font = `500 28px ${fontStack}`;
+    ctx.fillStyle = '#475569';
+    ctx.fillText(subtitle, W / 2, 310);
+  }
+
+  const hasResolved = options.resolvidos >= 1;
+  const marginX = 74;
+  const fullCardW = W - marginX * 2; // 932
+  const colGap = 28;
+  const halfCardW = (fullCardW - colGap) / 2; // 452
+
+  const startY = hasResolved ? (subtitle ? 356 : 338) : subtitle ? 416 : 392;
+  const rowGap = hasResolved ? 32 : 38;
+  const topCardH = hasResolved ? 248 : 276;
+  const midCardH = hasResolved ? 298 : 336;
+  const resCardH = 224;
+
+  // Card 1: Total de registros mapeados em X cidades
+  ctx.save();
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.08)';
+  ctx.shadowBlur = 24;
+  ctx.shadowOffsetY = 8;
+  drawRoundedRectPath(ctx, marginX, startY, fullCardW, topCardH, 32);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  drawRoundedRectPath(ctx, marginX, startY, fullCardW, topCardH, 32);
+  ctx.clip();
+  ctx.fillStyle = '#8b5cf6';
+  ctx.fillRect(marginX, startY, fullCardW, 8);
+  ctx.restore();
+
+  ctx.font = `800 ${hasResolved ? 94 : 104}px ${fontStack}`;
+  ctx.fillStyle = '#070b19';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(
+    String(Math.max(0, Math.floor(options.totalGeral))),
+    W / 2,
+    startY + (hasResolved ? 138 : 154)
+  );
+
+  const citiesWord = options.cidadesCount === 1 ? 'cidade' : 'cidades';
+  ctx.font = `500 32px ${fontStack}`;
+  ctx.fillStyle = '#1e293b';
+  ctx.fillText(
+    `Registros mapeados em ${Math.max(0, Math.floor(options.cidadesCount))} ${citiesWord}`,
+    W / 2,
+    startY + (hasResolved ? 198 : 218)
+  );
+
+  // Cards 2 e 3: Denúncias de Trânsito | Mobilidade Urbana
+  const midY = startY + topCardH + rowGap;
+
+  const drawHalfMetricCard = (
+    x: number,
+    iconText: string,
+    circleBg: string,
+    value: number,
+    labelLine1: string,
+    labelLine2: string
+  ) => {
+    ctx.save();
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.08)';
+    ctx.shadowBlur = 24;
+    ctx.shadowOffsetY = 8;
+    drawRoundedRectPath(ctx, x, midY, halfCardW, midCardH, 32);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(226, 232, 240, 0.9)';
+    drawRoundedRectPath(ctx, x, midY, halfCardW, midCardH, 32);
+    ctx.stroke();
+
+    const numStr = String(Math.max(0, Math.floor(value)));
+    ctx.font = `800 82px ${fontStack}`;
+    const numW = ctx.measureText(numStr).width;
+    const circleR = 38;
+    const pairGap = 22;
+    const pairW = circleR * 2 + pairGap + numW;
+    const pairStartX = x + (halfCardW - pairW) / 2;
+    const centerRowY = midY + (hasResolved ? 102 : 118);
+
+    ctx.beginPath();
+    ctx.arc(pairStartX + circleR, centerRowY, circleR, 0, Math.PI * 2);
+    ctx.fillStyle = circleBg;
+    ctx.fill();
+
+    ctx.font = `700 36px ${fontStack}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(iconText, pairStartX + circleR, centerRowY + 2);
+
+    ctx.font = `800 82px ${fontStack}`;
+    ctx.fillStyle = '#070b19';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(numStr, pairStartX + circleR * 2 + pairGap, centerRowY + 4);
+
+    ctx.font = `500 33px ${fontStack}`;
+    ctx.fillStyle = '#0f172a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(labelLine1, x + halfCardW / 2, midY + (hasResolved ? 202 : 226));
+    ctx.fillText(labelLine2, x + halfCardW / 2, midY + (hasResolved ? 244 : 270));
+  };
+
+  drawHalfMetricCard(
+    marginX,
+    '♿',
+    '#ede9fe',
+    options.infracoesTransito,
+    'Denúncias',
+    'de Trânsito'
+  );
+  drawHalfMetricCard(
+    marginX + halfCardW + colGap,
+    '🚧',
+    '#fef3c7',
+    options.mobilidadeUrbana,
+    'Mobilidade',
+    'Urbana'
+  );
+
+  let cardsBottomY = midY + midCardH;
+
+  // Card 4 condicional: Problemas Resolvidos (somente quando >= 1)
+  if (hasResolved) {
+    const resY = midY + midCardH + rowGap;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(5, 150, 105, 0.1)';
+    ctx.shadowBlur = 24;
+    ctx.shadowOffsetY = 8;
+    drawRoundedRectPath(ctx, marginX, resY, fullCardW, resCardH, 32);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    drawRoundedRectPath(ctx, marginX, resY, fullCardW, resCardH, 32);
+    ctx.clip();
+    ctx.fillStyle = '#10b981';
+    ctx.fillRect(marginX, resY, fullCardW, 8);
+    ctx.restore();
+
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = 'rgba(16, 185, 129, 0.35)';
+    drawRoundedRectPath(ctx, marginX, resY, fullCardW, resCardH, 32);
+    ctx.stroke();
+
+    const checkOuterR = 38;
+    const checkInnerR = 25;
+    const checkCx = marginX + 82;
+    const checkCy = resY + resCardH / 2 + 4;
+
+    ctx.beginPath();
+    ctx.arc(checkCx, checkCy, checkOuterR, 0, Math.PI * 2);
+    ctx.fillStyle = '#d1fae5';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(checkCx, checkCy, checkInnerR, 0, Math.PI * 2);
+    ctx.fillStyle = '#10b981';
+    ctx.fill();
+
+    ctx.font = `800 28px ${fontStack}`;
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('✓', checkCx, checkCy + 1);
+
+    ctx.font = `800 84px ${fontStack}`;
+    ctx.fillStyle = '#070b19';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(String(Math.floor(options.resolvidos)), W / 2, resY + 122);
+
+    ctx.font = `500 33px ${fontStack}`;
+    ctx.fillStyle = '#0f172a';
+    ctx.fillText('Problemas Resolvidos', W / 2, resY + 176);
+
+    cardsBottomY = resY + resCardH;
+  }
+
+  // Marcação discreta logo abaixo de onde ficam os registros de Problema Resolvido (quando houver ou não)
+  const sanitizedHandles = sanitizeStoryTagHandles(options.tagHandles);
+  let userTags: InstagramStoryUserTagPoint[] = [];
+  if (sanitizedHandles.length > 0) {
+    const tagCenterY = cardsBottomY + 50;
+    userTags = drawDiscreetStoryMentionPills(ctx, W, H, tagCenterY, sanitizedHandles, fontStack);
+  }
+
+  drawInstagramStoryPurpleFooter(
+    ctx,
+    W,
+    H,
+    BODY_H,
+    FOOTER_H,
+    fontStack,
+    'Conheça o projeto e apoie em',
+    'valepcd.com.br/multei/sobre'
+  );
+
+  const blob: Blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) =>
+        b ? resolve(b) : reject(new Error('Falha ao exportar Story do relatório geral.')),
+      'image/jpeg',
+      0.93
+    );
+  });
+
+  const file = new File([blob], 'multei_relatorio_story_instagram.jpg', {
+    type: 'image/jpeg'
+  });
+
+  return { file, userTags };
+}

@@ -4705,7 +4705,7 @@ export interface InstagramDraftCandidateItem {
 export interface InstagramPublishedPostRecord {
   id: string;
   dateKey: string;
-  mode: 'city_daily' | 'general_report';
+  mode: 'city_daily' | 'city_story' | 'general_report' | 'general_report_story';
   cidade?: string;
   estado?: string;
   itemIds: string[];
@@ -4912,7 +4912,7 @@ export async function saveMulteiCitySocialProfile(input: {
 
 export async function saveMulteiInstagramPublishedPost(input: {
   dateKey: string;
-  mode: 'city_daily' | 'general_report';
+  mode: 'city_daily' | 'city_story' | 'general_report' | 'general_report_story';
   cidade?: string;
   estado?: string;
   itemIds: string[];
@@ -5051,11 +5051,13 @@ export async function fetchInstagramDailyDraftsForAdmin(): Promise<{
     );
 
     const publishedToday = mockInstagramPostsMemory.filter(
-      (p) => p.dateKey === todayDateKey && p.mode === 'city_daily'
+      (p) => p.dateKey === todayDateKey && (p.mode === 'city_daily' || p.mode === 'city_story')
     );
     const alreadyPublishedItemIds = new Set<string>();
     for (const p of publishedToday) {
-      for (const id of p.itemIds) alreadyPublishedItemIds.add(id);
+      if (p.mode === 'city_daily') {
+        for (const id of p.itemIds) alreadyPublishedItemIds.add(id);
+      }
     }
 
     // Em modo mock local (`npm run dev`), caso os mocks fixos de BH tenham data anterior,
@@ -5099,6 +5101,12 @@ export async function fetchInstagramDailyDraftsForAdmin(): Promise<{
       }
       return { key, bucket: byCity.get(key)! };
     };
+
+    for (const post of publishedToday) {
+      if (post.cidade && post.estado) {
+        ensureBucket(post.cidade, post.estado);
+      }
+    }
 
     const resolvedOcIdsToday = new Set<string>();
     for (const res of resolvedList) {
@@ -5262,13 +5270,16 @@ export async function fetchInstagramDailyDraftsForAdmin(): Promise<{
   if (postsSnap) {
     postsSnap.forEach((docSnap) => {
       const d = docSnap.data() || {};
-      if (d.mode && d.mode !== 'city_daily') return;
+      const postMode = d.mode === 'city_story' ? 'city_story' : 'city_daily';
+      if (d.mode && d.mode !== 'city_daily' && d.mode !== 'city_story') return;
       const itemIds = Array.isArray(d.itemIds) ? d.itemIds.map(String) : [];
-      for (const id of itemIds) alreadyPublishedIds.add(id);
+      if (postMode === 'city_daily') {
+        for (const id of itemIds) alreadyPublishedIds.add(id);
+      }
       publishedTodayPosts.push({
         id: docSnap.id,
         dateKey: String(d.dateKey || todayDateKey),
-        mode: 'city_daily',
+        mode: postMode,
         cidade: String(d.cidade || ''),
         estado: String(d.estado || ''),
         itemIds,
