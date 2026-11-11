@@ -225,6 +225,21 @@
                 </div>
               </div>
 
+              <div class="ig-field ig-city-footer-field">
+                <label for="ig-city-footer-url" class="ig-label">
+                  Texto / endereço exibido no rodapé roxo da arte
+                </label>
+                <input
+                  id="ig-city-footer-url"
+                  v-model="cityFooterUrlInput"
+                  type="text"
+                  maxlength="90"
+                  class="ig-input is-standalone"
+                  placeholder="Ex: www.valepcd.com.br/multei"
+                  @input="handleCityFooterChanged"
+                />
+              </div>
+
               <div v-if="isRenderingSlides" class="ig-rendering-indicator">
                 Gerando prévia dos templates
                 {{ cityPreviewFormat === 'stories' ? '1080×1920 (Stories 9:16)' : '1080×1350 (Feed 4:5)' }}...
@@ -605,9 +620,9 @@
               id="ig-rep-title"
               v-model="reportTitleText"
               type="text"
-              maxlength="48"
+              maxlength="64"
               class="ig-input is-standalone"
-              placeholder="Ex: Essa semana no Multei"
+              placeholder="Cidades mais acessíveis acontecem aqui"
               @input="scheduleRenderGeneralReportCard"
             />
           </div>
@@ -622,6 +637,32 @@
               class="ig-input is-standalone"
               placeholder="Ex: prefeiturabh, bhtransoficial"
               @input="scheduleRenderGeneralReportCard"
+            />
+          </div>
+
+          <div class="ig-field">
+            <label for="ig-rep-footer-msg" class="ig-label">Frase no rodapé roxo (opcional)</label>
+            <input
+              id="ig-rep-footer-msg"
+              v-model="reportFooterMessageInput"
+              type="text"
+              maxlength="140"
+              class="ig-input is-standalone"
+              placeholder="Com seu apoio e denúncia 100% anônima..."
+              @input="handleReportFooterChanged"
+            />
+          </div>
+
+          <div class="ig-field">
+            <label for="ig-rep-footer-url" class="ig-label">Endereço / link no rodapé roxo</label>
+            <input
+              id="ig-rep-footer-url"
+              v-model="reportFooterUrlInput"
+              type="text"
+              maxlength="90"
+              class="ig-input is-standalone"
+              placeholder="Ex: www.valepcd.com.br/multei"
+              @input="handleReportFooterChanged"
             />
           </div>
         </div>
@@ -789,6 +830,8 @@ import {
   generateInstagramStorySlideWithTags,
   generateInstagramGeneralReportStoryWithTags,
   downloadGeneratedCardFile,
+  readSavedMulteiFooterPrefs,
+  saveMulteiFooterPrefs,
   type InstagramStoryUserTagPoint
 } from '~/services/imageProcessor';
 
@@ -831,6 +874,7 @@ const isLoadingDaily = ref(false);
 const dailyDrafts = ref<InstagramDailyCityDraft[]>([]);
 const selectedCityKey = ref<string>('');
 const cityPreviewFormat = ref<PreviewFormatMode>('feed');
+const cityFooterUrlInput = ref('www.valepcd.com.br/multei');
 
 const curatedSlots = ref<CuratedSlideSlot[]>([]);
 const slotFeedFiles = ref<Record<string, File>>({});
@@ -843,6 +887,7 @@ const feedSlidesDirty = ref(true);
 const isRenderingSlides = ref(false);
 let slideRenderSeq = 0;
 let cityStoryDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let cityFooterDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 const prefeituraHandleInput = ref('');
 const transitoHandleInput = ref('');
@@ -875,8 +920,12 @@ const activeReportPreset = ref<ReportPresetId>('last7');
 const reportPreviewFormat = ref<PreviewFormatMode>('feed');
 const reportStartDate = ref('');
 const reportEndDate = ref('');
-const reportTitleText = ref('Essa semana no Multei');
+const reportTitleText = ref('Cidades mais acessíveis acontecem aqui');
 const reportStoryHandlesInput = ref('');
+const reportFooterMessageInput = ref(
+  'Com seu apoio e denúncia 100% anônima podemos juntos criar cidades mais acessíveis!'
+);
+const reportFooterUrlInput = ref('www.valepcd.com.br/multei');
 const isLoadingReport = ref(false);
 const reportStats = ref<InstagramPeriodReportData>({
   totalGeral: 0,
@@ -1035,7 +1084,8 @@ async function renderCityFormatSlides(format: PreviewFormatMode): Promise<void> 
           verificacao: item.verificacao,
           isResolved: item.category === 'resolvido',
           photoUrl: item.photoUrl,
-          resolvedPhotoUrl: item.resolvedPhotoUrl
+          resolvedPhotoUrl: item.resolvedPhotoUrl,
+          footerUrlText: cityFooterUrlInput.value
         });
         nextFiles[item.id] = file;
         nextUrls[item.id] = URL.createObjectURL(file);
@@ -1071,7 +1121,8 @@ async function renderCityFormatSlides(format: PreviewFormatMode): Promise<void> 
           isResolved: item.category === 'resolvido',
           photoUrl: item.photoUrl,
           resolvedPhotoUrl: item.resolvedPhotoUrl,
-          tagHandles: handles
+          tagHandles: handles,
+          footerUrlText: cityFooterUrlInput.value
         });
         nextFiles[item.id] = generated.file;
         nextUrls[item.id] = URL.createObjectURL(generated.file);
@@ -1122,6 +1173,16 @@ function handleCityHandlesChanged(): void {
       void renderCityFormatSlides('stories');
     }, 280);
   }
+}
+
+function handleCityFooterChanged(): void {
+  saveMulteiFooterPrefs({ cityFooterUrl: cityFooterUrlInput.value });
+  feedSlidesDirty.value = true;
+  storySlidesDirty.value = true;
+  if (cityFooterDebounceTimer) clearTimeout(cityFooterDebounceTimer);
+  cityFooterDebounceTimer = setTimeout(() => {
+    void renderCityFormatSlides(cityPreviewFormat.value);
+  }, 300);
 }
 
 function canSwapCategoryItem(category: 'resolvido' | 'transito' | 'mobilidade'): boolean {
@@ -1316,6 +1377,7 @@ async function generateCityCaption(forceNewVariation = false): Promise<void> {
         bairros: draft.bairrosDia,
         instagramPrefeitura: prefeituraHandleInput.value,
         instagramTransito: transitoHandleInput.value,
+        ctaUrl: cityFooterUrlInput.value,
         variationSeed: ++captionVariationCounter
       }
     );
@@ -1583,23 +1645,22 @@ async function applyReportPreset(preset: ReportPresetId): Promise<void> {
   if (preset === 'today') {
     reportStartDate.value = today;
     reportEndDate.value = today;
-    reportTitleText.value = 'Hoje no Multei';
   } else if (preset === 'last7') {
     reportStartDate.value = computeDateKeyDaysAgo(6);
     reportEndDate.value = today;
-    reportTitleText.value = 'Essa semana no Multei';
   } else if (preset === 'last30') {
     reportStartDate.value = computeDateKeyDaysAgo(29);
     reportEndDate.value = today;
-    reportTitleText.value = 'Últimos 30 dias no Multei';
   } else if (preset === 'thisMonth') {
     reportStartDate.value = `${today.slice(0, 7)}-01`;
     reportEndDate.value = today;
-    reportTitleText.value = 'Esse mês no Multei';
   } else if (preset === 'all') {
     reportStartDate.value = '';
     reportEndDate.value = '';
-    reportTitleText.value = 'Impacto do Multei';
+  }
+
+  if (!reportTitleText.value.trim()) {
+    reportTitleText.value = 'Cidades mais acessíveis acontecem aqui';
   }
 
   await refreshGeneralReportData();
@@ -1614,12 +1675,14 @@ async function renderGeneralReportCardNow(): Promise<void> {
   isRenderingReportCard.value = true;
   try {
     const baseOpts = {
-      title: reportTitleText.value || 'Essa semana no Multei',
+      title: reportTitleText.value || 'Cidades mais acessíveis acontecem aqui',
       totalGeral: reportStats.value.totalGeral,
       cidadesCount: reportStats.value.cidadesCount,
       infracoesTransito: reportStats.value.infracoesTransito,
       mobilidadeUrbana: reportStats.value.mobilidadeUrbana,
-      resolvidos: reportStats.value.resolvidos
+      resolvidos: reportStats.value.resolvidos,
+      footerMessageText: reportFooterMessageInput.value,
+      footerUrlText: reportFooterUrlInput.value
     };
 
     const [feedFile, storyBuilt] = await Promise.all([
@@ -1659,6 +1722,14 @@ function scheduleRenderGeneralReportCard(): void {
   }, 250);
 }
 
+function handleReportFooterChanged(): void {
+  saveMulteiFooterPrefs({
+    reportFooterMessage: reportFooterMessageInput.value,
+    reportFooterUrl: reportFooterUrlInput.value
+  });
+  scheduleRenderGeneralReportCard();
+}
+
 function switchReportPreviewFormat(nextFormat: PreviewFormatMode): void {
   reportPreviewFormat.value = nextFormat;
 }
@@ -1676,7 +1747,7 @@ async function generateReportCaption(): Promise<void> {
       '/api/multei/instagram/caption',
       {
         mode: 'general_report',
-        periodTitle: reportTitleText.value || 'Essa semana no Multei',
+        periodTitle: reportTitleText.value || 'Cidades mais acessíveis acontecem aqui',
         periodLabel,
         totalGeral: reportStats.value.totalGeral,
         cidadesCount: reportStats.value.cidadesCount,
@@ -1684,6 +1755,7 @@ async function generateReportCaption(): Promise<void> {
         mobilidadeUrbana: reportStats.value.mobilidadeUrbana,
         resolvidos: reportStats.value.resolvidos,
         topCities: reportStats.value.topCities,
+        ctaUrl: reportFooterUrlInput.value,
         variationSeed: ++captionVariationCounter
       }
     );
@@ -1858,6 +1930,11 @@ async function switchSubMode(nextMode: 'city_daily' | 'general_report'): Promise
 }
 
 onMounted(() => {
+  const savedFooterPrefs = readSavedMulteiFooterPrefs();
+  cityFooterUrlInput.value = savedFooterPrefs.cityFooterUrl;
+  reportFooterMessageInput.value = savedFooterPrefs.reportFooterMessage;
+  reportFooterUrlInput.value = savedFooterPrefs.reportFooterUrl;
+
   void loadDailyDrafts();
 
   // Verifica virada das 23:59 -> 00:00 (horário de Brasília) para renovar automaticamente os rascunhos
@@ -1879,6 +1956,7 @@ onBeforeUnmount(() => {
     URL.revokeObjectURL(reportStoryPreviewUrl.value);
   }
   if (cityStoryDebounceTimer) clearTimeout(cityStoryDebounceTimer);
+  if (cityFooterDebounceTimer) clearTimeout(cityFooterDebounceTimer);
   if (reportRenderDebounceTimer) clearTimeout(reportRenderDebounceTimer);
   if (midnightRolloverTimer) clearInterval(midnightRolloverTimer);
 });
@@ -2234,6 +2312,11 @@ onBeforeUnmount(() => {
   font-size: 0.85rem;
   color: var(--pp-text-secondary);
   margin: 0;
+}
+
+.ig-city-footer-field {
+  max-width: 440px;
+  margin-bottom: 1rem;
 }
 
 .ig-rendering-indicator {

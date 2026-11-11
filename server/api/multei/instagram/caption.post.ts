@@ -25,6 +25,13 @@ function toHashtagToken(raw: string): string {
   return clean ? clean.slice(0, 28) : 'Brasil';
 }
 
+function sanitizeCtaUrlText(raw: unknown, fallback: string): string {
+  if (typeof raw !== 'string') return fallback;
+  const cleaned = raw.replace(/[\u0000-\u001f<>`"']/g, '').trim();
+  if (!cleaned) return fallback;
+  return cleaned.slice(0, 90);
+}
+
 function buildFallbackCityCaption(params: {
   cidade: string;
   estado: string;
@@ -35,6 +42,7 @@ function buildFallbackCityCaption(params: {
   bairros: string[];
   instagramPrefeitura: string;
   instagramTransito: string;
+  ctaUrl: string;
 }): string {
   const mentions = [
     params.instagramPrefeitura ? `@${params.instagramPrefeitura}` : '',
@@ -63,7 +71,7 @@ function buildFallbackCityCaption(params: {
         pendentesInfo +
         bairrosLine +
         `${mentions ? `${mentions}, seguimos` : 'Seguimos'} acompanhando as demandas mapeadas pelos cidadãos e colocamos a ONG Vale PCD totalmente à disposição para agendar uma reunião e firmar parceria gratuita de fornecimento de dados cívicos de acessibilidade.\n\n` +
-        `📲 Registre ocorrências de forma 100% anônima em: www.valepcd.com.br/multei\n\n` +
+        `📲 Conheça e participe em: ${params.ctaUrl}\n\n` +
         `#ValePCD #Multei #Acessibilidade #MobilidadeUrbana #Inclusao #${cityTag} #${params.estado}`
     );
   }
@@ -73,7 +81,7 @@ function buildFallbackCityCaption(params: {
       bairrosLine +
       `${mentions ? `Solicitamos um posicionamento de ${mentions}` : 'Cobramos atenção do poder público municipal'} quanto à fiscalização e manutenção desses pontos essenciais para o direito de ir e vir de pessoas com deficiência e idosos.\n\n` +
       `🤝 A ONG Vale PCD está de portas abertas para se reunir com a gestão de ${params.cidade} e firmar uma parceria institucional gratuita para compartilhar nossos dados georreferenciados e apoiar o planejamento da fiscalização.\n\n` +
-      `📲 Denuncie também de forma anônima em: www.valepcd.com.br/multei\n\n` +
+      `📲 Saiba mais em: ${params.ctaUrl}\n\n` +
       `#ValePCD #Multei #Acessibilidade #VagaPcD #MobilidadeUrbana #FiscalizacaoCidada #${cityTag}`
   );
 }
@@ -86,6 +94,7 @@ function buildFallbackReportCaption(params: {
   mobilidadeUrbana: number;
   resolvidos: number;
   topCities: string[];
+  ctaUrl: string;
 }): string {
   const resolvidosLine =
     params.resolvidos > 0
@@ -104,7 +113,7 @@ function buildFallbackReportCaption(params: {
       resolvidosLine +
       topCitiesLine +
       `\nCada pino registrado pela comunidade ajuda a transformar invisibilidade em dado público para cobrar fiscalização e obras de acessibilidade.\n\n` +
-      `🤝 Gestores públicos e apoiadores: conheçam nossa metodologia e saibam como firmar parceria gratuita com a ONG Vale PCD em https://valepcd.com.br/multei/sobre (link também na bio!).\n\n` +
+      `🤝 Gestores públicos e apoiadores: conheçam nossa metodologia e saibam como firmar parceria gratuita com a ONG Vale PCD em ${params.ctaUrl} (link também na bio!).\n\n` +
       `#ValePCD #Multei #DadosCivicos #Acessibilidade #MobilidadeUrbana #Inclusao #CidadesAcessiveis`
   );
 }
@@ -124,13 +133,16 @@ export default defineEventHandler(async (event) => {
   ).trim();
 
   if (mode === 'general_report') {
-    const periodTitle = String(body.periodTitle || 'Essa semana no Multei').trim().slice(0, 80);
+    const periodTitle = String(body.periodTitle || 'Cidades mais acessíveis acontecem aqui')
+      .trim()
+      .slice(0, 80);
     const periodLabel = String(body.periodLabel || '').trim().slice(0, 80);
     const totalGeral = Math.max(0, Math.floor(Number(body.totalGeral || 0)));
     const cidadesCount = Math.max(0, Math.floor(Number(body.cidadesCount || 0)));
     const infracoesTransito = Math.max(0, Math.floor(Number(body.infracoesTransito || 0)));
     const mobilidadeUrbana = Math.max(0, Math.floor(Number(body.mobilidadeUrbana || 0)));
     const resolvidos = Math.max(0, Math.floor(Number(body.resolvidos || 0)));
+    const ctaUrl = sanitizeCtaUrlText(body.ctaUrl, 'https://valepcd.com.br/multei/sobre');
     const topCities = Array.isArray(body.topCities)
       ? body.topCities.map((c) => String(c || '').trim().slice(0, 50)).filter(Boolean).slice(0, 6)
       : [];
@@ -142,7 +154,8 @@ export default defineEventHandler(async (event) => {
       infracoesTransito,
       mobilidadeUrbana,
       resolvidos,
-      topCities
+      topCities,
+      ctaUrl
     });
 
     if (!apiKey) {
@@ -162,7 +175,7 @@ ${topCities.length > 0 ? `- Cidades com maior participação: ${topCities.join('
 Regras obrigatórias:
 1. Texto em português do Brasil, tom sério, cidadão, propositivo e humano (máximo 1.400 caracteres).
 2. Destaque a importância da inteligência de dados cívicos para melhorar a acessibilidade urbana.
-3. Convide gestores públicos, prefeituras e cidadãos a conhecerem mais e firmarem parceria gratuita em https://valepcd.com.br/multei/sobre (mencione também que o link está na bio).
+3. Convide gestores públicos, prefeituras e cidadãos a conhecerem mais e firmarem parceria gratuita em ${ctaUrl} (mencione também que o link está na bio).
 4. Inclua de 5 a 7 hashtags relevantes ao final (#ValePCD #Multei etc.).
 5. Retorne APENAS o texto puro da legenda pronta para postar, sem aspas extras e sem explicações.
 6. Seja enxuto em emojis, hashtags (máximo 3), não use jargões de IA como "nao é sobre <algo> é sobre <algo>" "mais que <algo>, é <algo>"`;
@@ -202,6 +215,7 @@ Regras obrigatórias:
   const mobilidadeDia = Math.max(0, Math.floor(Number(body.mobilidadeDia || 0)));
   const instagramPrefeitura = sanitizeInstagramHandle(body.instagramPrefeitura);
   const instagramTransito = sanitizeInstagramHandle(body.instagramTransito);
+  const ctaUrl = sanitizeCtaUrlText(body.ctaUrl, 'www.valepcd.com.br/multei');
   const bairros = Array.isArray(body.bairros)
     ? body.bairros.map((b) => String(b || '').trim().slice(0, 50)).filter(Boolean).slice(0, 6)
     : [];
@@ -215,7 +229,8 @@ Regras obrigatórias:
     mobilidadeDia,
     bairros,
     instagramPrefeitura,
-    instagramTransito
+    instagramTransito,
+    ctaUrl
   });
 
   if (!apiKey) {
@@ -252,7 +267,7 @@ Regras obrigatórias:
 1. ${resolvidosDia > 0 ? 'Como há problema(s) resolvido(s) hoje, abra celebrando que a transformação acontece em ' + cidade + ', reconheça a melhoria e, se houver denúncias ativas também, pontue o que ainda precisa avançar.' : 'Apresente os registros de hoje em ' + cidade + ' de forma firme, respeitosa e institucional, sem ataques pessoais.'}
 2. Cobre um posicionamento e fiscalização efetiva do poder público marcado (${mentionsList.join(' ') || 'Prefeitura de ' + cidade}).
 3. Inclua explicitamente o convite institucional: coloque a ONG Vale PCD à disposição da Prefeitura para agendar uma reunião e firmar uma parceria gratuita de compartilhamento dos dados georreferenciados do Multei para apoiar a gestão pública.
-4. Convide a população a registrar de forma 100% anônima em www.valepcd.com.br/multei.
+4. Convide a população a conhecer e acompanhar em ${ctaUrl}.
 5. Finalize com 5 a 7 hashtags pertinentes (incluindo #ValePCD #Multei e a hashtag da cidade). Máximo total: 1.500 caracteres.
 6. Retorne APENAS o texto puro da legenda, sem markdown de título e sem comentários extras.`;
 
