@@ -1798,13 +1798,13 @@ async function renderValePcdGeneralReportCanvas(params: {
     ctx.fillText(label2, textStartX, cy + (isVerticalStory ? 200 : 162));
   };
 
-  // Fileira 1: Resultados das denúncias (totalGeral) | Mobilidade Urbana
+  // Fileira 1: Total de denúncias (totalGeral) | Mobilidade Urbana
   drawReportCard(
     marginX,
     row1Y,
     'document',
     params.totalGeral,
-    'Resultados das',
+    'Total de',
     'denúncias'
   );
   drawReportCard(
