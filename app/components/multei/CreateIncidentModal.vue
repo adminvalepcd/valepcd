@@ -2935,6 +2935,7 @@ const handleShareCreatedIncident = async () => {
       verificacao: inc.verificacao,
       descricao: inc.descricao,
       cidade: inc.cidade,
+      estado: inc.estado,
       locationText,
       latitude: Number(inc.latitude),
       longitude: Number(inc.longitude),

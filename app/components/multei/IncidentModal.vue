@@ -1257,6 +1257,7 @@ const handleShareIncident = async (target = 'header') => {
       verificacao: inc?.verificacao ?? inc?.verification,
       descricao: inc?.descricao,
       cidade: inc?.cidade,
+      estado: inc?.estado,
       locationText: buildShareLocationString(),
       latitude: Number(inc?.latitude),
       longitude: Number(inc?.longitude),

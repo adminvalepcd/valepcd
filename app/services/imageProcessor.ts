@@ -638,6 +638,7 @@ export interface IncidentShareCardOptions {
   verificacao?: string;
   descricao?: string;
   cidade?: string;
+  estado?: string;
   locationText: string;
   latitude: number;
   longitude: number;
@@ -1261,9 +1262,9 @@ async function renderValePcdCityOccurrenceCanvas(params: {
   ctx.fillText('Hoje em', marginX, isVerticalStory ? 262 : 164);
 
   const cleanCity = String(params.cidade || 'Sua Cidade').trim();
-  const maxCitySingleW = isVerticalStory ? 890 : 720;
-  const cityMaxPx = isVerticalStory ? 86 : 68;
-  const cityMinPx = isVerticalStory ? 46 : 40;
+  const maxCitySingleW = W - marginX * 2;
+  const cityMaxPx = isVerticalStory ? 84 : 66;
+  const cityMinPx = isVerticalStory ? 38 : 34;
   const cityFontPx = fitFontSizeWithStyle(
     ctx,
     cleanCity,
@@ -2068,8 +2069,60 @@ export function downloadGeneratedCardFile(file: File): void {
   triggerCardDownload(file);
 }
 
+const BRAZIL_STATE_NAME_TO_UF: Record<string, string> = {
+  acre: 'AC',
+  alagoas: 'AL',
+  amapa: 'AP',
+  amazonas: 'AM',
+  bahia: 'BA',
+  ceara: 'CE',
+  'distrito federal': 'DF',
+  'espirito santo': 'ES',
+  goias: 'GO',
+  maranhao: 'MA',
+  'mato grosso': 'MT',
+  'mato grosso do sul': 'MS',
+  'minas gerais': 'MG',
+  para: 'PA',
+  paraiba: 'PB',
+  parana: 'PR',
+  pernambuco: 'PE',
+  piaui: 'PI',
+  'rio de janeiro': 'RJ',
+  'rio grande do norte': 'RN',
+  'rio grande do sul': 'RS',
+  rondonia: 'RO',
+  roraima: 'RR',
+  'santa catarina': 'SC',
+  'sao paulo': 'SP',
+  sergipe: 'SE',
+  tocantins: 'TO'
+};
+
+function normalizeBrazilUfSigla(raw?: string): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  if (/^[a-zA-Z]{2}$/.test(trimmed)) return trimmed.toUpperCase();
+  const key = trimmed
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  return BRAZIL_STATE_NAME_TO_UF[key] || '';
+}
+
+function formatCityWithUfSigla(cidadeRaw?: string, estadoRaw?: string): string {
+  const cleanCity = String(cidadeRaw || '')
+    .trim()
+    .replace(/\s*[-/]\s*[a-zA-Z]{2}$/, '')
+    .trim();
+  const uf = normalizeBrazilUfSigla(estadoRaw);
+  if (!cleanCity) return 'Sua Cidade';
+  return uf ? `${cleanCity} - ${uf}` : cleanCity;
+}
+
 /**
- * Gera o card visual de compartilhamento no mapa `/multei` (1080x1920, 9:16) usando o novo template "Hoje em {Cidade}".
+ * Gera o card visual de compartilhamento no mapa `/multei` (1080x1920, 9:16) usando o novo template "Hoje em {Cidade} - {UF}".
  */
 export async function generateIncidentShareCardFile(
   options: IncidentShareCardOptions,
@@ -2081,14 +2134,20 @@ export async function generateIncidentShareCardFile(
     .map((s) => s.trim())
     .filter(Boolean);
 
-  let cityDisplay = String(options.cidade || '').trim();
-  if (!cityDisplay && locSegments.length > 1) {
-    cityDisplay = locSegments[locSegments.length - 1].split('-')[0].trim();
-  }
-  if (!cityDisplay) {
-    cityDisplay = 'Sua Cidade';
+  let parsedCity = String(options.cidade || '').trim();
+  let parsedUf = normalizeBrazilUfSigla(options.estado);
+
+  if (locSegments.length > 1) {
+    const tailParts = locSegments[locSegments.length - 1].split('-').map((p) => p.trim());
+    if (!parsedCity && tailParts[0]) {
+      parsedCity = tailParts[0];
+    }
+    if (!parsedUf && tailParts.length > 1) {
+      parsedUf = normalizeBrazilUfSigla(tailParts[tailParts.length - 1]);
+    }
   }
 
+  const cityDisplay = formatCityWithUfSigla(parsedCity, parsedUf);
   const streetPart =
     locSegments.length > 0 ? locSegments[0] : rawLoc || 'Local registrado no Multei';
 
@@ -2139,7 +2198,7 @@ export async function shareIncidentWithTemplate(
 }
 
 /**
- * Gera um slide `1080x1350` (4:5 Feed) na Fase 1 usando o template oficial "Hoje em {Cidade}".
+ * Gera um slide `1080x1350` (4:5 Feed) na Fase 1 usando o template oficial "Hoje em {Cidade} - {UF}".
  */
 export async function generateInstagramCarouselSlideFile(
   options: InstagramCarouselSlideOptions
@@ -2147,13 +2206,14 @@ export async function generateInstagramCarouselSlideFile(
   const cleanRua = String(options.rua || '').trim();
   const cleanBairro = String(options.bairro || '').trim();
   const cleanCidade = String(options.cidade || 'Cidade').trim();
+  const cityWithUf = formatCityWithUfSigla(cleanCidade, options.estado);
   const streetParts = [cleanRua, cleanBairro].filter(Boolean);
   const addressLine =
     streetParts.length > 0 ? streetParts.join(' - ') : 'Local registrado no Multei';
 
   const { canvas } = await renderValePcdCityOccurrenceCanvas({
     aspect: '4:5',
-    cidade: cleanCidade,
+    cidade: cityWithUf,
     addressLine,
     photoUrl: options.photoUrl,
     resolvedPhotoUrl: options.resolvedPhotoUrl,
@@ -2176,7 +2236,7 @@ export async function generateInstagramCarouselSlideFile(
 }
 
 /**
- * Gera um slide `1080x1920` (9:16 Stories) na Fase 1 usando o template oficial "Hoje em {Cidade}".
+ * Gera um slide `1080x1920` (9:16 Stories) na Fase 1 usando o template oficial "Hoje em {Cidade} - {UF}".
  */
 export async function generateInstagramStorySlideWithTags(
   options: InstagramStorySlideOptions
@@ -2184,13 +2244,14 @@ export async function generateInstagramStorySlideWithTags(
   const cleanRua = String(options.rua || '').trim();
   const cleanBairro = String(options.bairro || '').trim();
   const cleanCidade = String(options.cidade || 'Cidade').trim();
+  const cityWithUf = formatCityWithUfSigla(cleanCidade, options.estado);
   const streetParts = [cleanRua, cleanBairro].filter(Boolean);
   const addressLine =
     streetParts.length > 0 ? streetParts.join(' - ') : 'Local registrado no Multei';
 
   const { canvas, userTags } = await renderValePcdCityOccurrenceCanvas({
     aspect: '9:16',
-    cidade: cleanCidade,
+    cidade: cityWithUf,
     addressLine,
     photoUrl: options.photoUrl,
     resolvedPhotoUrl: options.resolvedPhotoUrl,
