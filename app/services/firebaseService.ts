@@ -4698,6 +4698,7 @@ export interface InstagramDraftCandidateItem {
   natureza: string;
   verificacao: string;
   photoUrl: string;
+  secondaryPhotoUrl?: string;
   resolvedPhotoUrl?: string;
   timestampMs: number;
 }
@@ -5156,6 +5157,12 @@ export async function fetchInstagramDailyDraftsForAdmin(): Promise<{
       if (alreadyPublishedItemIds.has(id)) continue;
 
       const isUrban = String(oc.natureza || '').toLowerCase() === 'urbana';
+      const rawPhoto2 = String(
+        oc.fotoUrl2 ||
+          (Array.isArray(oc.fotosUrls) && oc.fotosUrls.length > 1 ? oc.fotosUrls[1] : '') ||
+          ''
+      ).trim();
+      const secondaryPhotoUrl = rawPhoto2 && rawPhoto2 !== photo ? rawPhoto2 : undefined;
       const candidate: InstagramDraftCandidateItem = {
         id,
         ocorrenciaId: id,
@@ -5167,6 +5174,7 @@ export async function fetchInstagramDailyDraftsForAdmin(): Promise<{
         natureza: oc.natureza || 'infracao_veicular',
         verificacao: oc.verificacao || '',
         photoUrl: photo,
+        secondaryPhotoUrl,
         timestampMs: ts
       };
       if (isUrban) entry.bucket.mobilidade.push(candidate);
@@ -5417,6 +5425,13 @@ export async function fetchInstagramDailyDraftsForAdmin(): Promise<{
 
     const photoUrl = String(d.fotoUrl || d.foto || d.image || '').trim();
     if (!photoUrl) return;
+    const rawPhoto2 = String(
+      d.fotoUrl2 ||
+        d.foto2 ||
+        (Array.isArray(d.fotosUrls) && d.fotosUrls.length > 1 ? d.fotosUrls[1] : '') ||
+        ''
+    ).trim();
+    const secondaryPhotoUrl = rawPhoto2 && rawPhoto2 !== photoUrl ? rawPhoto2 : undefined;
 
     const cidade = String(d.cidade || '').trim();
     const estado = String(d.estado || '').trim();
@@ -5441,6 +5456,7 @@ export async function fetchInstagramDailyDraftsForAdmin(): Promise<{
       natureza,
       verificacao: String(d.verificacao || '').trim(),
       photoUrl,
+      secondaryPhotoUrl,
       timestampMs: ts
     };
 

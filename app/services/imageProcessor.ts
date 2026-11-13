@@ -717,7 +717,13 @@ function drawRoundedRectPath(
 
 const shareImageMemoryCache = new Map<string, string>();
 
-async function loadImageForCanvas(src: string): Promise<HTMLImageElement | null> {
+export interface PhotoCropAdjustment {
+  zoom?: number;
+  offsetX?: number;
+  offsetY?: number;
+}
+
+export async function loadImageForCanvas(src: string): Promise<HTMLImageElement | null> {
   if (!src || typeof window === 'undefined') return null;
 
   const loadFromUrl = (urlToLoad: string, useCors: boolean): Promise<HTMLImageElement | null> =>
@@ -792,7 +798,8 @@ function drawImageSmartInFrame(
   fw: number,
   fh: number,
   radius: number,
-  alwaysCover = false
+  alwaysCover = false,
+  crop?: PhotoCropAdjustment
 ) {
   ctx.save();
   drawRoundedRectPath(ctx, fx, fy, fw, fh, radius);
@@ -803,15 +810,21 @@ function drawImageSmartInFrame(
   const imgRatio = iw / ih;
   const frameRatio = fw / fh;
 
-  const coverScale = Math.max(fw / iw, fh / ih);
+  const zoom = Math.min(3, Math.max(1, Number(crop?.zoom) || 1));
+  const offsetX = Math.min(1, Math.max(-1, Number(crop?.offsetX) || 0));
+  const offsetY = Math.min(1, Math.max(-1, Number(crop?.offsetY) || 0));
+
+  const coverScale = Math.max(fw / iw, fh / ih) * zoom;
   const coverW = iw * coverScale;
   const coverH = ih * coverScale;
-  const coverX = fx + (fw - coverW) / 2;
-  const coverY = fy + (fh - coverH) / 2;
+  const maxShiftX = Math.max(0, (coverW - fw) / 2);
+  const maxShiftY = Math.max(0, (coverH - fh) / 2);
+  const coverX = fx + (fw - coverW) / 2 + offsetX * maxShiftX;
+  const coverY = fy + (fh - coverH) / 2 + offsetY * maxShiftY;
 
   const ratioDiff = Math.abs(imgRatio - frameRatio) / frameRatio;
 
-  if (alwaysCover || ratioDiff <= 0.38) {
+  if (alwaysCover || crop || ratioDiff <= 0.38) {
     ctx.drawImage(img, coverX, coverY, coverW, coverH);
   } else {
     // Fundo preenchido com desfoque suave + imagem inteira nítida centralizada
@@ -829,6 +842,57 @@ function drawImageSmartInFrame(
   }
 
   ctx.restore();
+}
+
+export function drawInteractiveCropFrame(
+  canvas: HTMLCanvasElement,
+  img: HTMLImageElement,
+  crop: PhotoCropAdjustment,
+  showGrid = true
+): { maxShiftX: number; maxShiftY: number } {
+  const ctx = canvas.getContext('2d');
+  const fw = canvas.width || 1;
+  const fh = canvas.height || 1;
+  if (!ctx) return { maxShiftX: 0, maxShiftY: 0 };
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.clearRect(0, 0, fw, fh);
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, fw, fh);
+
+  const iw = img.naturalWidth || img.width || 1;
+  const ih = img.naturalHeight || img.height || 1;
+  const zoom = Math.min(3, Math.max(1, Number(crop?.zoom) || 1));
+  const coverScale = Math.max(fw / iw, fh / ih) * zoom;
+  const coverW = iw * coverScale;
+  const coverH = ih * coverScale;
+  const maxShiftX = Math.max(0, (coverW - fw) / 2);
+  const maxShiftY = Math.max(0, (coverH - fh) / 2);
+
+  drawImageSmartInFrame(ctx, img, 0, 0, fw, fh, 0, true, crop);
+
+  if (showGrid) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.42)';
+    ctx.lineWidth = 1.5;
+    for (let i = 1; i <= 2; i++) {
+      const gx = Math.round((fw * i) / 3);
+      const gy = Math.round((fh * i) / 3);
+      ctx.beginPath();
+      ctx.moveTo(gx, 0);
+      ctx.lineTo(gx, fh);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(fw, gy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  return { maxShiftX, maxShiftY };
 }
 
 function wrapCanvasText(
@@ -1047,6 +1111,8 @@ export interface InstagramCarouselSlideOptions {
   photoUrl: string;
   resolvedPhotoUrl?: string;
   footerUrlText?: string;
+  crop?: PhotoCropAdjustment;
+  resolvedCrop?: PhotoCropAdjustment;
 }
 
 export interface InstagramGeneralReportCardOptions {
@@ -1191,6 +1257,8 @@ async function renderValePcdCityOccurrenceCanvas(params: {
   isResolved?: boolean;
   tagHandles?: string[];
   footerUrlText?: string;
+  crop?: PhotoCropAdjustment;
+  resolvedCrop?: PhotoCropAdjustment;
 }): Promise<{ canvas: HTMLCanvasElement; userTags: InstagramStoryUserTagPoint[] }> {
   await ensureCanvasFontsReady();
 
@@ -1350,7 +1418,7 @@ async function renderValePcdCityOccurrenceCanvas(params: {
     ctx.fillStyle = '#e5e7eb';
     ctx.fillRect(leftX, photoY, colW, photoH);
     if (mainOrBeforeImg) {
-      drawImageSmartInFrame(ctx, mainOrBeforeImg, leftX, photoY, colW, photoH, 2, true);
+      drawImageSmartInFrame(ctx, mainOrBeforeImg, leftX, photoY, colW, photoH, 2, true, params.crop);
     }
 
     const beforeTagText = 'ANTES';
@@ -1369,7 +1437,17 @@ async function renderValePcdCityOccurrenceCanvas(params: {
 
     ctx.fillStyle = '#e5e7eb';
     ctx.fillRect(rightX, photoY, colW, photoH);
-    drawImageSmartInFrame(ctx, afterImg, rightX, photoY, colW, photoH, 2, true);
+    drawImageSmartInFrame(
+      ctx,
+      afterImg,
+      rightX,
+      photoY,
+      colW,
+      photoH,
+      2,
+      true,
+      params.resolvedCrop || params.crop
+    );
 
     const afterTagText = '✓ RESOLVIDO';
     ctx.font = `700 22px ${VALE_PCD_FONT_STACK}`;
@@ -1388,7 +1466,7 @@ async function renderValePcdCityOccurrenceCanvas(params: {
     ctx.fillStyle = '#1e293b';
     ctx.fillRect(photoX, photoY, photoW, photoH);
     if (mainOrBeforeImg) {
-      drawImageSmartInFrame(ctx, mainOrBeforeImg, photoX, photoY, photoW, photoH, 2, true);
+      drawImageSmartInFrame(ctx, mainOrBeforeImg, photoX, photoY, photoW, photoH, 2, true, params.crop);
     }
   }
 
@@ -2218,7 +2296,9 @@ export async function generateInstagramCarouselSlideFile(
     photoUrl: options.photoUrl,
     resolvedPhotoUrl: options.resolvedPhotoUrl,
     isResolved: options.isResolved,
-    footerUrlText: options.footerUrlText
+    footerUrlText: options.footerUrlText,
+    crop: options.crop,
+    resolvedCrop: options.resolvedCrop
   });
 
   const blob: Blob = await new Promise((resolve, reject) => {
@@ -2257,7 +2337,9 @@ export async function generateInstagramStorySlideWithTags(
     resolvedPhotoUrl: options.resolvedPhotoUrl,
     isResolved: options.isResolved,
     tagHandles: options.tagHandles,
-    footerUrlText: options.footerUrlText
+    footerUrlText: options.footerUrlText,
+    crop: options.crop,
+    resolvedCrop: options.resolvedCrop
   });
 
   const blob: Blob = await new Promise((resolve, reject) => {

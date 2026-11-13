@@ -281,22 +281,33 @@
                   </div>
 
                   <div class="ig-slide-meta">
-                    <span
-                      class="ig-cat-tag"
-                      :class="{
-                        'is-green': slot.item.category === 'resolvido',
-                        'is-purple': slot.item.category === 'transito',
-                        'is-amber': slot.item.category === 'mobilidade'
-                      }"
-                    >
-                      {{
+                    <div class="ig-slide-meta-top">
+                      <span class="ig-cat-tag" :class="{
+                                                'is-green': slot.item.category === 'resolvido',
+                                                'is-purple': slot.item.category === 'transito',
+                                                'is-amber': slot.item.category === 'mobilidade'
+                                              }">
+                        {{
                         slot.item.category === 'resolvido'
-                          ? '✅ Problema Resolvido'
-                          : slot.item.category === 'transito'
-                            ? '♿ Trânsito'
-                            : '🚧 Mobilidade Urbana'
-                      }}
-                    </span>
+                        ? '✅ Problema Resolvido'
+                        : slot.item.category === 'transito'
+                        ? '♿ Trânsito'
+                        : '🚧 Mobilidade Urbana'
+                        }}
+                      </span>
+<div v-if="slot.item.secondaryPhotoUrl" class="ig-photo-choice-bar" role="group"
+  aria-label="Escolher entre Foto 1 e Foto 2 da ocorrência">
+  <button type="button" class="ig-photo-choice-btn" :class="{ 'is-active': slot.selectedPhoto === 1 }"
+    title="Usar a Foto 1 da ocorrência" @click="selectSlotPhotoIndex(idx, 1)">
+    📷 Foto 1
+  </button>
+  <button type="button" class="ig-photo-choice-btn" :class="{ 'is-active': slot.selectedPhoto === 2 }"
+    title="Usar a Foto 2 da ocorrência" @click="selectSlotPhotoIndex(idx, 2)">
+    📷 Foto 2
+  </button>
+</div>
+</div>
+
                     <p class="ig-slide-addr">
                       {{ [slot.item.rua, slot.item.bairro].filter(Boolean).join(' - ') || 'Endereço registrado' }}
                     </p>
@@ -312,6 +323,11 @@
                       />
                       <span>Incluir</span>
                     </label>
+
+                    <button type="button" class="ig-mini-btn ig-crop-trigger-btn" :class="{ 'is-cropped': hasCustomCrop(slot) }"
+                      title="Ajustar posição e zoom da foto dentro do quadro (recortar)" @click="openCropModal(idx)">
+                      ✂️ {{ hasCustomCrop(slot) ? 'Ajustado' : 'Recortar' }}
+                    </button>
 
                     <button
                       v-if="slot.included && getIncludedIndex(slot.item.id) !== 0"
@@ -628,7 +644,7 @@
           </div>
 
           <div class="ig-field">
-            <label for="ig-rep-story-tags" class="ig-label">@ para marcar nos Stories (opcional)</label>
+            <label for="ig-rep-story-tags" class="ig-label">@ para marcar nos Stories</label>
             <input
               id="ig-rep-story-tags"
               v-model="reportStoryHandlesInput"
@@ -806,11 +822,126 @@
         </div>
       </div>
     </div>
+<!-- ===================================================================== -->
+<!-- MODAL INTERATIVO DE ENQUADRAMENTO / RECORTE DA FOTO DENTRO DO QUADRO  -->
+<!-- ===================================================================== -->
+<div v-if="cropModalSlot" class="ig-crop-modal-backdrop" role="dialog" aria-modal="true"
+  aria-labelledby="ig-crop-modal-title" @click.self="closeCropModal">
+  <div class="ig-crop-modal-card">
+    <div class="ig-crop-modal-header">
+      <div>
+        <h3 id="ig-crop-modal-title" class="ig-crop-modal-title">
+          ✂️ Ajustar Foto no Quadro — Slide {{ cropModalSlotIdx + 1 }}
+        </h3>
+        <p class="ig-crop-modal-subtitle">
+          Arraste a imagem com o mouse (ou toque) para posicionar e use o controle de zoom para recortar dentro do
+          quadro.
+        </p>
+      </div>
+      <button type="button" class="ig-crop-close-btn" aria-label="Fechar ajuste de foto" @click="closeCropModal">
+        ✕
+      </button>
+    </div>
+
+    <!-- Seletor de Foto 1 / Foto 2 ou Antes / Depois dentro do modal -->
+    <div v-if="cropModalSlot.item.secondaryPhotoUrl || cropModalSlot.item.category === 'resolvido'"
+      class="ig-crop-source-bar">
+      <template v-if="cropModalSlot.item.category === 'resolvido' && cropModalSlot.item.resolvedPhotoUrl">
+        <span class="ig-crop-source-label">Quadro em ajuste:</span>
+        <div class="ig-photo-choice-bar">
+          <button type="button" class="ig-photo-choice-btn" :class="{ 'is-active': cropModalTargetSide === 'main' }"
+            @click="switchCropModalSide('main')">
+            📷 Foto Antes
+          </button>
+          <button type="button" class="ig-photo-choice-btn" :class="{ 'is-active': cropModalTargetSide === 'resolved' }"
+            @click="switchCropModalSide('resolved')">
+            ✓ Foto Resolvido
+          </button>
+        </div>
+      </template>
+
+      <template v-else-if="cropModalSlot.item.secondaryPhotoUrl">
+        <span class="ig-crop-source-label">Foto da publicação:</span>
+        <div class="ig-photo-choice-bar">
+          <button type="button" class="ig-photo-choice-btn" :class="{ 'is-active': cropModalPhotoIndex === 1 }"
+            @click="switchCropModalPhotoIndex(1)">
+            📷 Foto 1
+          </button>
+          <button type="button" class="ig-photo-choice-btn" :class="{ 'is-active': cropModalPhotoIndex === 2 }"
+            @click="switchCropModalPhotoIndex(2)">
+            📷 Foto 2
+          </button>
+        </div>
+      </template>
+    </div>
+
+    <div class="ig-crop-stage-wrapper">
+      <div class="ig-crop-canvas-shell" :class="{
+              'is-dragging': isDraggingCropCanvas,
+              'is-half-frame': cropModalSlot.item.category === 'resolvido'
+            }">
+        <canvas ref="cropCanvasRef" :width="cropCanvasDimensions.width" :height="cropCanvasDimensions.height"
+          class="ig-crop-canvas" @pointerdown="onCropPointerDown" @pointermove="onCropPointerMove"
+          @pointerup="onCropPointerUp" @pointercancel="onCropPointerUp" @wheel.prevent="onCropWheel"></canvas>
+        <div v-if="isLoadingCropImage" class="ig-crop-loading-overlay">
+          Carregando foto...
+        </div>
+        <span class="ig-crop-drag-hint">
+          ✋ Arraste para mover • Role para dar zoom
+        </span>
+      </div>
+    </div>
+
+    <div class="ig-crop-sliders-grid">
+      <div class="ig-crop-slider-row">
+        <div class="ig-crop-slider-header">
+          <label for="ig-crop-zoom-range">🔍 Zoom (Recorte)</label>
+          <strong>{{ Math.round(activeWorkingCrop.zoom * 100) }}%</strong>
+        </div>
+        <input id="ig-crop-zoom-range" type="range" min="1" max="3" step="0.02" :value="activeWorkingCrop.zoom"
+          class="ig-crop-range" @input="onCropZoomSliderInput" />
+      </div>
+
+      <div class="ig-crop-slider-row">
+        <div class="ig-crop-slider-header">
+          <label for="ig-crop-x-range">↔ Posição Horizontal (Esquerda / Direita)</label>
+          <strong>{{ Math.round(activeWorkingCrop.offsetX * 100) }}%</strong>
+        </div>
+        <input id="ig-crop-x-range" type="range" min="-1" max="1" step="0.02" :value="activeWorkingCrop.offsetX"
+          class="ig-crop-range" @input="onCropOffsetXSliderInput" />
+      </div>
+
+      <div class="ig-crop-slider-row">
+        <div class="ig-crop-slider-header">
+          <label for="ig-crop-y-range">↕ Posição Vertical (Topo / Base)</label>
+          <strong>{{ Math.round(activeWorkingCrop.offsetY * 100) }}%</strong>
+        </div>
+        <input id="ig-crop-y-range" type="range" min="-1" max="1" step="0.02" :value="activeWorkingCrop.offsetY"
+          class="ig-crop-range" @input="onCropOffsetYSliderInput" />
+      </div>
+    </div>
+
+    <div class="ig-crop-modal-footer">
+      <button type="button" class="ig-btn-secondary" @click="resetCropModalCurrent">
+        ↺ Centralizar / Original
+      </button>
+
+      <div class="ig-crop-footer-right">
+        <button type="button" class="ig-btn-secondary" @click="closeCropModal">
+          Cancelar
+        </button>
+        <button type="button" class="ig-btn-primary" :disabled="isApplyingCrop" @click="applyCropModalChanges">
+          {{ isApplyingCrop ? 'Aplicando...' : '✓ Aplicar no Slide' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+  import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import {
   fetchInstagramDailyDraftsForAdmin,
   fetchInstagramGeneralReportForPeriod,
@@ -832,7 +963,10 @@ import {
   downloadGeneratedCardFile,
   readSavedMulteiFooterPrefs,
   saveMulteiFooterPrefs,
-  type InstagramStoryUserTagPoint
+      loadImageForCanvas,
+      drawInteractiveCropFrame,
+      type InstagramStoryUserTagPoint,
+      type PhotoCropAdjustment
 } from '~/services/imageProcessor';
 
 const props = defineProps<{
@@ -842,9 +976,22 @@ const props = defineProps<{
 type PublishTargetMode = 'feed' | 'stories' | 'both';
 type PreviewFormatMode = 'feed' | 'stories';
 
+  interface NormalizedCropState {
+    zoom: number;
+    offsetX: number;
+    offsetY: number;
+  }
+
 interface CuratedSlideSlot {
   item: InstagramDraftCandidateItem;
   included: boolean;
+      selectedPhoto: 1 | 2;
+      crop: NormalizedCropState;
+      resolvedCrop: NormalizedCropState;
+    }
+
+    function createDefaultCropState(): NormalizedCropState {
+      return { zoom: 1, offsetX: 0, offsetY: 0 };
 }
 
 interface DiscoveredSocialPreview {
@@ -888,6 +1035,45 @@ const isRenderingSlides = ref(false);
 let slideRenderSeq = 0;
 let cityStoryDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let cityFooterDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Estado do Modal Interativo de Enquadramento / Recorte da Foto
+  const cropModalSlotIdx = ref < number > (-1);
+  const cropModalPhotoIndex = ref < 1 | 2 > (1);
+  const cropModalTargetSide = ref < 'main' | 'resolved' > ('main');
+  const cropModalWorkingMain = ref < NormalizedCropState > (createDefaultCropState());
+  const cropModalWorkingResolved = ref < NormalizedCropState > (createDefaultCropState());
+  const cropCanvasRef = ref < HTMLCanvasElement | null > (null);
+  const isLoadingCropImage = ref(false);
+  const isApplyingCrop = ref(false);
+  const isDraggingCropCanvas = ref(false);
+  let cropLoadedImg: HTMLImageElement | null = null;
+  let cropMaxShiftX = 0;
+  let cropMaxShiftY = 0;
+  let dragStartClientX = 0;
+  let dragStartClientY = 0;
+  let dragStartOffsetX = 0;
+  let dragStartOffsetY = 0;
+
+  const cropModalSlot = computed < CuratedSlideSlot | null > (() => {
+    const idx = cropModalSlotIdx.value;
+    if (idx < 0 || idx >= curatedSlots.value.length) return null;
+    return curatedSlots.value[idx] || null;
+  });
+
+  const activeWorkingCrop = computed < NormalizedCropState > (() => {
+    return cropModalTargetSide.value === 'resolved'
+      ? cropModalWorkingResolved.value
+      : cropModalWorkingMain.value;
+  });
+
+  const cropCanvasDimensions = computed < { width: number; height: number } > (() => {
+    const slot = cropModalSlot.value;
+    const isStory = cityPreviewFormat.value === 'stories';
+    if (slot?.item.category === 'resolvido') {
+      return isStory ? { width: 460, height: 924 } : { width: 464, height: 756 };
+    }
+    return isStory ? { width: 932, height: 924 } : { width: 940, height: 756 };
+  });
 
 const prefeituraHandleInput = ref('');
 const transitoHandleInput = ref('');
@@ -1002,6 +1188,26 @@ function getIncludedIndex(itemId: string): number {
   return includedSlots.value.findIndex((s) => s.item.id === itemId);
 }
 
+  function getEffectiveSlotPhotoUrl(slot: CuratedSlideSlot): string {
+    if (slot.selectedPhoto === 2 && slot.item.secondaryPhotoUrl) {
+      return slot.item.secondaryPhotoUrl;
+    }
+    return slot.item.photoUrl;
+  }
+
+  function hasCustomCrop(slot: CuratedSlideSlot): boolean {
+    const c = slot.crop;
+    const rc = slot.resolvedCrop;
+    return (
+      Math.abs((c?.zoom || 1) - 1) > 0.01 ||
+      Math.abs(c?.offsetX || 0) > 0.01 ||
+      Math.abs(c?.offsetY || 0) > 0.01 ||
+      Math.abs((rc?.zoom || 1) - 1) > 0.01 ||
+      Math.abs(rc?.offsetX || 0) > 0.01 ||
+      Math.abs(rc?.offsetY || 0) > 0.01
+    );
+  }
+
 function formatDateKeyBr(dateKey: string): string {
   const parts = String(dateKey || '').split('-');
   if (parts.length !== 3) return dateKey;
@@ -1072,7 +1278,8 @@ async function renderCityFormatSlides(format: PreviewFormatMode): Promise<void> 
 
       for (let i = 0; i < activeIncluded.length; i++) {
         if (seq !== slideRenderSeq) return;
-        const item = activeIncluded[i].item;
+        const slot = activeIncluded[i];
+        const item = slot.item;
         const file = await generateInstagramCarouselSlideFile({
           slideIndex: i,
           totalSlides: total,
@@ -1083,9 +1290,11 @@ async function renderCityFormatSlides(format: PreviewFormatMode): Promise<void> 
           natureza: item.natureza,
           verificacao: item.verificacao,
           isResolved: item.category === 'resolvido',
-          photoUrl: item.photoUrl,
+          photoUrl: getEffectiveSlotPhotoUrl(slot),
           resolvedPhotoUrl: item.resolvedPhotoUrl,
-          footerUrlText: cityFooterUrlInput.value
+          footerUrlText: cityFooterUrlInput.value,
+          crop: slot.crop,
+          resolvedCrop: slot.resolvedCrop
         });
         nextFiles[item.id] = file;
         nextUrls[item.id] = URL.createObjectURL(file);
@@ -1108,7 +1317,8 @@ async function renderCityFormatSlides(format: PreviewFormatMode): Promise<void> 
 
       for (let i = 0; i < activeIncluded.length; i++) {
         if (seq !== slideRenderSeq) return;
-        const item = activeIncluded[i].item;
+        const slot = activeIncluded[i];
+        const item = slot.item;
         const generated = await generateInstagramStorySlideWithTags({
           slideIndex: i,
           totalSlides: total,
@@ -1119,10 +1329,12 @@ async function renderCityFormatSlides(format: PreviewFormatMode): Promise<void> 
           natureza: item.natureza,
           verificacao: item.verificacao,
           isResolved: item.category === 'resolvido',
-          photoUrl: item.photoUrl,
+          photoUrl: getEffectiveSlotPhotoUrl(slot),
           resolvedPhotoUrl: item.resolvedPhotoUrl,
           tagHandles: handles,
-          footerUrlText: cityFooterUrlInput.value
+          footerUrlText: cityFooterUrlInput.value,
+          crop: slot.crop,
+          resolvedCrop: slot.resolvedCrop
         });
         nextFiles[item.id] = generated.file;
         nextUrls[item.id] = URL.createObjectURL(generated.file);
@@ -1148,6 +1360,288 @@ async function renderCityFormatSlides(format: PreviewFormatMode): Promise<void> 
     }
   }
 }
+
+  async function renderSingleCitySlot(slot: CuratedSlideSlot): Promise<void> {
+    const draft = activeCityDraft.value;
+    if (!draft || !slot.included) return;
+
+    const activeIncluded = curatedSlots.value.filter((s) => s.included);
+    const slideIdx = activeIncluded.findIndex((s) => s.item.id === slot.item.id);
+    if (slideIdx < 0) return;
+
+    const total = activeIncluded.length;
+    const item = slot.item;
+
+    try {
+      if (cityPreviewFormat.value === 'feed') {
+        storySlidesDirty.value = true;
+        const file = await generateInstagramCarouselSlideFile({
+          slideIndex: slideIdx,
+          totalSlides: total,
+          cidade: draft.cidade,
+          estado: draft.estado,
+          rua: item.rua,
+          bairro: item.bairro,
+          natureza: item.natureza,
+          verificacao: item.verificacao,
+          isResolved: item.category === 'resolvido',
+          photoUrl: getEffectiveSlotPhotoUrl(slot),
+          resolvedPhotoUrl: item.resolvedPhotoUrl,
+          footerUrlText: cityFooterUrlInput.value,
+          crop: slot.crop,
+          resolvedCrop: slot.resolvedCrop
+        });
+        const oldUrl = slotFeedPreviewUrls.value[item.id];
+        if (oldUrl && oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
+        slotFeedFiles.value = { ...slotFeedFiles.value, [item.id]: file };
+        slotFeedPreviewUrls.value = {
+          ...slotFeedPreviewUrls.value,
+          [item.id]: URL.createObjectURL(file)
+        };
+      } else {
+        feedSlidesDirty.value = true;
+        const generated = await generateInstagramStorySlideWithTags({
+          slideIndex: slideIdx,
+          totalSlides: total,
+          cidade: draft.cidade,
+          estado: draft.estado,
+          rua: item.rua,
+          bairro: item.bairro,
+          natureza: item.natureza,
+          verificacao: item.verificacao,
+          isResolved: item.category === 'resolvido',
+          photoUrl: getEffectiveSlotPhotoUrl(slot),
+          resolvedPhotoUrl: item.resolvedPhotoUrl,
+          tagHandles: getActiveCityStoryHandles(),
+          footerUrlText: cityFooterUrlInput.value,
+          crop: slot.crop,
+          resolvedCrop: slot.resolvedCrop
+        });
+        const oldUrl = slotStoryPreviewUrls.value[item.id];
+        if (oldUrl && oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
+        slotStoryFiles.value = { ...slotStoryFiles.value, [item.id]: generated.file };
+        slotStoryPreviewUrls.value = {
+          ...slotStoryPreviewUrls.value,
+          [item.id]: URL.createObjectURL(generated.file)
+        };
+        slotStoryUserTags.value = {
+          ...slotStoryUserTags.value,
+          [item.id]: generated.userTags
+        };
+      }
+    } catch { }
+  }
+
+  async function selectSlotPhotoIndex(slotIdx: number, photoIndex: 1 | 2): Promise<void> {
+    const slot = curatedSlots.value[slotIdx];
+    if (!slot || slot.selectedPhoto === photoIndex) return;
+    if (photoIndex === 2 && !slot.item.secondaryPhotoUrl) return;
+
+    slot.selectedPhoto = photoIndex;
+    slot.crop = createDefaultCropState();
+    await renderSingleCitySlot(slot);
+  }
+
+  function redrawCropModalCanvas(): void {
+    const canvas = cropCanvasRef.value;
+    if (!canvas || !cropLoadedImg) return;
+    const result = drawInteractiveCropFrame(canvas, cropLoadedImg, activeWorkingCrop.value, true);
+    cropMaxShiftX = result.maxShiftX;
+    cropMaxShiftY = result.maxShiftY;
+  }
+
+  async function loadCropModalActiveImage(): Promise<void> {
+    const slot = cropModalSlot.value;
+    if (!slot) return;
+
+    let targetUrl = slot.item.photoUrl;
+    if (cropModalTargetSide.value === 'resolved' && slot.item.resolvedPhotoUrl) {
+      targetUrl = slot.item.resolvedPhotoUrl;
+    } else if (cropModalPhotoIndex.value === 2 && slot.item.secondaryPhotoUrl) {
+      targetUrl = slot.item.secondaryPhotoUrl;
+    }
+
+    isLoadingCropImage.value = true;
+    try {
+      cropLoadedImg = await loadImageForCanvas(targetUrl);
+      await nextTick();
+      redrawCropModalCanvas();
+    } finally {
+      isLoadingCropImage.value = false;
+    }
+  }
+
+  async function openCropModal(slotIdx: number): Promise<void> {
+    const slot = curatedSlots.value[slotIdx];
+    if (!slot) return;
+
+    cropModalSlotIdx.value = slotIdx;
+    cropModalPhotoIndex.value = slot.selectedPhoto;
+    cropModalTargetSide.value = 'main';
+    cropModalWorkingMain.value = { ...slot.crop };
+    cropModalWorkingResolved.value = { ...slot.resolvedCrop };
+
+    await nextTick();
+    await loadCropModalActiveImage();
+  }
+
+  function closeCropModal(): void {
+    isDraggingCropCanvas.value = false;
+    cropModalSlotIdx.value = -1;
+    cropLoadedImg = null;
+  }
+
+  async function switchCropModalPhotoIndex(photoIndex: 1 | 2): Promise<void> {
+    const slot = cropModalSlot.value;
+    if (!slot || cropModalPhotoIndex.value === photoIndex) return;
+    if (photoIndex === 2 && !slot.item.secondaryPhotoUrl) return;
+
+    cropModalPhotoIndex.value = photoIndex;
+    cropModalWorkingMain.value = createDefaultCropState();
+    await loadCropModalActiveImage();
+  }
+
+  async function switchCropModalSide(side: 'main' | 'resolved'): Promise<void> {
+    if (cropModalTargetSide.value === side) return;
+    cropModalTargetSide.value = side;
+    await loadCropModalActiveImage();
+  }
+
+  function resetCropModalCurrent(): void {
+    if (cropModalTargetSide.value === 'resolved') {
+      cropModalWorkingResolved.value = createDefaultCropState();
+    } else {
+      cropModalWorkingMain.value = createDefaultCropState();
+    }
+    redrawCropModalCanvas();
+  }
+
+  function setActiveWorkingCrop(patch: Partial<NormalizedCropState>): void {
+    const current = activeWorkingCrop.value;
+    const next: NormalizedCropState = {
+      zoom:
+        patch.zoom !== undefined
+          ? Math.min(3, Math.max(1, Number(patch.zoom) || 1))
+          : current.zoom,
+      offsetX:
+        patch.offsetX !== undefined
+          ? Math.min(1, Math.max(-1, Number(patch.offsetX) || 0))
+          : current.offsetX,
+      offsetY:
+        patch.offsetY !== undefined
+          ? Math.min(1, Math.max(-1, Number(patch.offsetY) || 0))
+          : current.offsetY
+    };
+
+    if (cropModalTargetSide.value === 'resolved') {
+      cropModalWorkingResolved.value = next;
+    } else {
+      cropModalWorkingMain.value = next;
+    }
+    redrawCropModalCanvas();
+  }
+
+  function onCropZoomSliderInput(event: Event): void {
+    const val = Number((event.target as HTMLInputElement).value);
+    setActiveWorkingCrop({ zoom: val });
+  }
+
+  function onCropOffsetXSliderInput(event: Event): void {
+    const val = Number((event.target as HTMLInputElement).value);
+    const current = activeWorkingCrop.value;
+    const nextZoom = cropMaxShiftX < 2 && Math.abs(val) > 0.02 ? Math.max(current.zoom, 1.2) : current.zoom;
+    setActiveWorkingCrop({ zoom: nextZoom, offsetX: val });
+  }
+
+  function onCropOffsetYSliderInput(event: Event): void {
+    const val = Number((event.target as HTMLInputElement).value);
+    const current = activeWorkingCrop.value;
+    const nextZoom = cropMaxShiftY < 2 && Math.abs(val) > 0.02 ? Math.max(current.zoom, 1.2) : current.zoom;
+    setActiveWorkingCrop({ zoom: nextZoom, offsetY: val });
+  }
+
+  function onCropPointerDown(event: PointerEvent): void {
+    const canvas = cropCanvasRef.value;
+    if (!canvas || !cropLoadedImg) return;
+    isDraggingCropCanvas.value = true;
+    dragStartClientX = event.clientX;
+    dragStartClientY = event.clientY;
+    dragStartOffsetX = activeWorkingCrop.value.offsetX;
+    dragStartOffsetY = activeWorkingCrop.value.offsetY;
+    try {
+      canvas.setPointerCapture(event.pointerId);
+    } catch { }
+  }
+
+  function onCropPointerMove(event: PointerEvent): void {
+    if (!isDraggingCropCanvas.value) return;
+    const canvas = cropCanvasRef.value;
+    if (!canvas || !cropLoadedImg) return;
+
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const dxScreen = event.clientX - dragStartClientX;
+    const dyScreen = event.clientY - dragStartClientY;
+
+    let currentZoom = activeWorkingCrop.value.zoom;
+    if (
+      (cropMaxShiftX < 2 && Math.abs(dxScreen) > 8) ||
+      (cropMaxShiftY < 2 && Math.abs(dyScreen) > 8)
+    ) {
+      currentZoom = Math.max(currentZoom, 1.2);
+      setActiveWorkingCrop({ zoom: currentZoom });
+    }
+
+    const scaleToScreenX = rect.width / (canvas.width || 1);
+    const scaleToScreenY = rect.height / (canvas.height || 1);
+    const maxShiftScreenX = cropMaxShiftX * scaleToScreenX;
+    const maxShiftScreenY = cropMaxShiftY * scaleToScreenY;
+
+    const nextOffsetX =
+      maxShiftScreenX > 1 ? dragStartOffsetX + dxScreen / maxShiftScreenX : dragStartOffsetX;
+    const nextOffsetY =
+      maxShiftScreenY > 1 ? dragStartOffsetY + dyScreen / maxShiftScreenY : dragStartOffsetY;
+
+    setActiveWorkingCrop({
+      zoom: currentZoom,
+      offsetX: nextOffsetX,
+      offsetY: nextOffsetY
+    });
+  }
+
+  function onCropPointerUp(event: PointerEvent): void {
+    if (!isDraggingCropCanvas.value) return;
+    isDraggingCropCanvas.value = false;
+    const canvas = cropCanvasRef.value;
+    if (canvas) {
+      try {
+        canvas.releasePointerCapture(event.pointerId);
+      } catch { }
+    }
+  }
+
+  function onCropWheel(event: WheelEvent): void {
+    if (!cropLoadedImg) return;
+    const delta = event.deltaY < 0 ? 0.08 : -0.08;
+    setActiveWorkingCrop({ zoom: activeWorkingCrop.value.zoom + delta });
+  }
+
+  async function applyCropModalChanges(): Promise<void> {
+    const slot = cropModalSlot.value;
+    if (!slot || isApplyingCrop.value) return;
+
+    isApplyingCrop.value = true;
+    try {
+      slot.selectedPhoto = cropModalPhotoIndex.value;
+      slot.crop = { ...cropModalWorkingMain.value };
+      slot.resolvedCrop = { ...cropModalWorkingResolved.value };
+      await renderSingleCitySlot(slot);
+      closeCropModal();
+    } finally {
+      isApplyingCrop.value = false;
+    }
+  }
 
 async function renderActiveCitySlides(): Promise<void> {
   feedSlidesDirty.value = true;
@@ -1226,7 +1720,10 @@ async function swapSlotWithAnotherFromPool(slotIdx: number): Promise<void> {
 
   curatedSlots.value[slotIdx] = {
     item: replacement,
-    included: target.included
+    included: target.included,
+    selectedPhoto: 1,
+    crop: createDefaultCropState(),
+    resolvedCrop: createDefaultCropState()
   };
 
   await renderActiveCitySlides();
@@ -1398,13 +1895,17 @@ async function selectCityDraft(cityKey: string): Promise<void> {
   selectedCityKey.value = cityKey;
   confirmingCityPublish.value = false;
   discoveredPrefeituraInfo.value = null;
+  closeCropModal();
 
   const draft = activeCityDraft.value;
   if (!draft) return;
 
   curatedSlots.value = draft.selectedItems.map((item) => ({
     item,
-    included: true
+    included: true,
+    selectedPhoto: 1,
+    crop: createDefaultCropState(),
+    resolvedCrop: createDefaultCropState()
   }));
 
   prefeituraHandleInput.value = draft.citySocial?.instagramPrefeitura || '';
@@ -2772,5 +3273,229 @@ onBeforeUnmount(() => {
   width: 100%;
   height: auto;
   display: block;
+}
+
+.ig-slide-meta-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.ig-photo-choice-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.16rem;
+  border-radius: 8px;
+  background: var(--pp-surface-alt);
+  border: 1px solid var(--pp-border);
+}
+
+.ig-photo-choice-btn {
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--pp-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.ig-photo-choice-btn.is-active {
+  background: #86007d;
+  color: #ffffff;
+}
+
+.ig-crop-trigger-btn.is-cropped {
+  border-color: #86007d;
+  color: #86007d;
+  background: rgba(134, 0, 125, 0.08);
+}
+
+/* Modal Interativo de Enquadramento / Recorte */
+.ig-crop-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.ig-crop-modal-card {
+  width: 100%;
+  max-width: 560px;
+  max-height: 92vh;
+  overflow-y: auto;
+  background: var(--pp-surface);
+  border: 1px solid var(--pp-border);
+  border-radius: 16px;
+  padding: 1.15rem 1.25rem;
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.ig-crop-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.ig-crop-modal-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--pp-text-primary);
+}
+
+.ig-crop-modal-subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: var(--pp-text-secondary);
+  line-height: 1.38;
+}
+
+.ig-crop-close-btn {
+  background: var(--pp-surface-alt);
+  border: 1px solid var(--pp-border);
+  color: var(--pp-text-primary);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.ig-crop-source-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  background: var(--pp-surface-alt);
+  border: 1px solid var(--pp-border);
+}
+
+.ig-crop-source-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--pp-text-primary);
+}
+
+.ig-crop-stage-wrapper {
+  display: flex;
+  justify-content: center;
+  background: #0b0f19;
+  border-radius: 12px;
+  padding: 0.75rem;
+  border: 1px solid var(--pp-border);
+}
+
+.ig-crop-canvas-shell {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid #86007d;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.ig-crop-canvas-shell.is-half-frame {
+  max-width: 250px;
+}
+
+.ig-crop-canvas-shell.is-dragging {
+  cursor: grabbing;
+}
+
+.ig-crop-canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.ig-crop-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.76);
+  color: #ffffff;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.ig-crop-drag-hint {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.82);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.ig-crop-sliders-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.ig-crop-slider-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.ig-crop-slider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--pp-text-primary);
+}
+
+.ig-crop-range {
+  width: 100%;
+  accent-color: #86007d;
+  cursor: pointer;
+}
+
+.ig-crop-modal-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--pp-border);
+}
+
+.ig-crop-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 </style>
