@@ -18,6 +18,9 @@ import {
 import {
   notifyMulteiLiveDelta,
   normalizeVerificacao,
+  isIncidentUnderReportReview,
+  REPORT_REVIEW_FLAG_FIELD,
+  REPORT_REVIEW_DATE_FIELD,
   PANEL_SESSION_MAX_DURATION_MS,
   type MulteiUserRole,
   type MulteiPanelUserProfile,
@@ -454,6 +457,8 @@ function mapMockRecordToIncident(docId: string, rawData: Record<string, any>): R
       : true;
   if (!isAtivo) return null;
 
+  const isUnderReportReview = isIncidentUnderReportReview(data);
+
   const ruaVal = data.rua ? String(data.rua).trim() : '';
   const bairroVal = data.bairro ? String(data.bairro).trim() : '';
   const cidadeVal = data.cidade ? String(data.cidade).trim() : '';
@@ -507,13 +512,16 @@ function mapMockRecordToIncident(docId: string, rawData: Record<string, any>): R
     estado: estadoVal,
     classificacao: classificacaoVal,
     verificacao: verificacaoVal,
-    fotoUrl,
-    fotoUrl2,
-    fotosUrls,
-    maskedImageUrl: fotoUrl,
+    fotoUrl: isUnderReportReview ? '' : fotoUrl,
+    fotoUrl2: isUnderReportReview ? '' : fotoUrl2,
+    fotosUrls: isUnderReportReview ? [] : fotosUrls,
+    maskedImageUrl: isUnderReportReview ? '' : fotoUrl,
     description:
       data.description || (descParts.length > 0 ? descParts.join(' - ') : 'Infração registrada'),
     ativo: true,
+    em_revisao_denuncia: isUnderReportReview,
+    data_revisao_denuncia:
+      isUnderReportReview && data.data_revisao_denuncia ? String(data.data_revisao_denuncia) : '',
     motivo_denuncia: data.motivo_denuncia ? String(data.motivo_denuncia) : '',
     resolvido_em_validacao: isResolvido
       ? false
@@ -1030,7 +1038,15 @@ export async function mockReportIncidentInFirebase(
   id: string,
   reason: string,
   incidentData?: Partial<ReportedIncident>
-): Promise<{ success: boolean; deactivated: boolean; totalReports: number }> {
+): Promise<{
+  success: boolean;
+  deactivated: boolean;
+  flagged: boolean;
+  totalReports: number;
+  reviewFlaggedAt: string;
+  reason: string;
+}> {
+  // A validação do motivo (allow-list) e o limite de envio são aplicados em `reportIncidentInFirebase`
   const cleanId = (id || '').trim();
   if (!cleanId) {
     throw new Error('ID da ocorrência ausente para denúncia.');
@@ -1049,7 +1065,6 @@ export async function mockReportIncidentInFirebase(
     existingData.ativo !== undefined
       ? existingData.ativo !== false && String(existingData.ativo).toLowerCase() !== 'false'
       : true;
-  const wasUrbana = (existingData.natureza || incidentData?.natureza) === 'urbana';
   const wasPossibleDuplicate = Boolean(
     existingData.possivel_duplicidade === true ||
       String(existingData.possivel_duplicidade).toLowerCase() === 'true' ||
@@ -1095,7 +1110,8 @@ export async function mockReportIncidentInFirebase(
     incidentData?.geohash ||
     (latitude && longitude ? geohashForLocation([latitude, longitude]) : '');
 
-  const shouldStayActiveOnMap = alreadyApprovedImprocedente;
+  // Opção A: se já foi validada como improcedente, apenas registra o novo report sem ocultar a foto novamente
+  const shouldFlagForReview = wasActive && !alreadyApprovedImprocedente;
 
   const resolvedFotoUrl = resolveMockPhotoUrl(
     existingData.fotoUrl ||
@@ -1155,7 +1171,11 @@ export async function mockReportIncidentInFirebase(
             'Possível duplicidade'
         )
       : '',
-    ativo: shouldStayActiveOnMap,
+    ativo: wasActive,
+    [REPORT_REVIEW_FLAG_FIELD]: shouldFlagForReview,
+    [REPORT_REVIEW_DATE_FIELD]: shouldFlagForReview
+      ? reportedAtIso
+      : String(existingReportData[REPORT_REVIEW_DATE_FIELD] || ''),
     motivo_denuncia: cleanReason,
     motivo_report: cleanReason,
     data_report: existingReportData.data_report || reportedAtIso,
@@ -1170,10 +1190,12 @@ export async function mockReportIncidentInFirebase(
 
   store.reportadas[cleanId] = reportDocData;
 
-  if (!shouldStayActiveOnMap && store.ocorrencias[cleanId]) {
+  if (shouldFlagForReview && store.ocorrencias[cleanId]) {
+    // Mantém a ocorrência ativa no mapa, apenas sinalizada (foto oculta até a moderação)
     store.ocorrencias[cleanId] = {
       ...store.ocorrencias[cleanId],
-      ativo: false,
+      [REPORT_REVIEW_FLAG_FIELD]: true,
+      [REPORT_REVIEW_DATE_FIELD]: reportedAtIso,
       motivo_denuncia: cleanReason
     };
   }
@@ -1181,18 +1203,6 @@ export async function mockReportIncidentInFirebase(
   store.estatisticas = computeStatsFromRecords(store.ocorrencias, store.resolvidos);
   persistMockStore(store);
   notifyMockStatsSubscribers(store.estatisticas);
-
-  if (!shouldStayActiveOnMap && wasActive && !wasPossibleDuplicate) {
-    void notifyMulteiLiveDelta(wasUrbana ? 'mobilidadeUrbana' : 'infracoesTransito', -1, {
-      cidade: String(reportDocData.cidade || ''),
-      estado: String(reportDocData.estado || ''),
-      bairro: String(reportDocData.bairro || ''),
-      rua: String(reportDocData.rua || ''),
-      natureza: String(reportDocData.natureza || ''),
-      ocorrenciaId: cleanId,
-      action: 'novo_report'
-    });
-  }
 
   void notifyMulteiLiveDelta('reportadas', 1, {
     cidade: String(reportDocData.cidade || ''),
@@ -1206,8 +1216,11 @@ export async function mockReportIncidentInFirebase(
 
   return {
     success: true,
-    deactivated: !shouldStayActiveOnMap,
-    totalReports
+    deactivated: false,
+    flagged: shouldFlagForReview,
+    totalReports,
+    reviewFlaggedAt: shouldFlagForReview ? reportedAtIso : '',
+    reason: cleanReason
   };
 }
 
@@ -1886,6 +1899,8 @@ export async function mockFetchReportedIncidentsForPanel(): Promise<ReportedInci
       ativo: Boolean(d.ativo === true || String(d.ativo).toLowerCase() === 'true'),
       motivo_denuncia: String(d.motivo_denuncia || d.motivo_report || ''),
       motivo_report: String(d.motivo_report || d.motivo_denuncia || ''),
+      em_revisao_denuncia: !isRevisada && isIncidentUnderReportReview(d),
+      data_revisao_denuncia: d.data_revisao_denuncia ? String(d.data_revisao_denuncia) : undefined,
       total_reports: totalReports,
       outras_revisoes_solicitadas: Boolean(d.outras_revisoes_solicitadas || totalReports > 1),
       historico_reports: rawHistory,
@@ -2059,6 +2074,7 @@ export async function mockReviewReportedIncidentInFirebase(params: {
     rotulo_duplicidade: targetRotuloDuplicidade,
     origem_duplicidade: targetOrigemDuplicidade,
     ...(clearDuplicityLink ? { duplicidade_de_id: '' } : {}),
+    [REPORT_REVIEW_FLAG_FIELD]: false,
     revisada_admin: true,
     resultado_revisao: decision,
     data_revisao: nowIso,
@@ -2075,6 +2091,7 @@ export async function mockReviewReportedIncidentInFirebase(params: {
     rotulo_duplicidade: targetRotuloDuplicidade,
     origem_duplicidade: targetOrigemDuplicidade,
     ...(clearDuplicityLink ? { duplicidade_de_id: '' } : {}),
+    [REPORT_REVIEW_FLAG_FIELD]: false,
     revisada: true,
     status_revisao: 'revisada',
     resultado_revisao: decision,
@@ -2121,6 +2138,7 @@ export async function mockReviewReportedIncidentInFirebase(params: {
       ? undefined
       : item.duplicidade_original_fotoUrl,
     revisada: true,
+    em_revisao_denuncia: false,
     resultado_revisao: decision,
     data_revisao: nowIso,
     revisado_por: reviewerEmail,

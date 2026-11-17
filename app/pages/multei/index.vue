@@ -4,61 +4,72 @@
       class="multei-fullscreen-page"
       :style="fullscreenPageStyle"
     >
-      <!-- Zona Superior em fluxo normal: Botão Voltar + Busca de Endereço + Status/GPS -->
+      <!-- Zona Superior em fluxo normal: Botão Voltar + Filtro + Status/GPS + Busca de Endereço + Avisos do mapa -->
       <header
         class="top-header-bar"
         ref="searchContainerRef"
         :inert="isAnyModalOpen || undefined"
         :aria-hidden="isAnyModalOpen ? 'true' : undefined"
       >
+        <h1 class="sr-only">Multei — mapa colaborativo de ocorrências de acessibilidade</h1>
+
         <div class="top-left-controls">
-          <NuxtLink to="/" class="btn-back-home" title="Voltar para a página inicial do Vale PCD"
-            aria-label="Voltar para a Home do Vale PCD">
+          <NuxtLink to="/" class="btn-back-home" aria-label="Voltar para a página inicial do Vale PCD">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-              stroke-linecap="round" stroke-linejoin="round" class="back-icon">
+              stroke-linecap="round" stroke-linejoin="round" class="back-icon" aria-hidden="true" focusable="false">
               <line x1="19" y1="12" x2="5" y2="12"></line>
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
             <span class="back-label">Voltar</span>
           </NuxtLink>
 
-          <!-- Filtro de Tipo de Ocorrência (filtra apenas o que é exibido em tela, sem nova busca) -->
-          <div class="incident-type-filter-wrapper">
+          <!-- Filtro de Tipo de Ocorrência (filtra apenas o que é exibido em tela, sem nova busca).
+               O <select> nativo fica transparente sobre o chip compacto: mantém o seletor nativo
+               acessível (leitores de tela/teclado) ocupando pouco espaço no celular. -->
+          <div
+            class="incident-type-filter-wrapper"
+            :class="{ 'is-filter-active': selectedIncidentType !== 'all' }"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
+              stroke-linecap="round" stroke-linejoin="round" class="filter-icon" aria-hidden="true" focusable="false">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            </svg>
+            <span class="filter-current-label" aria-hidden="true">{{ selectedIncidentTypeShortLabel }}</span>
+            <span v-if="selectedIncidentType !== 'all'" class="filter-active-dot" aria-hidden="true"></span>
             <select
               v-model="selectedIncidentType"
               class="incident-type-select"
-              aria-label="Filtrar tipo de ocorrência exibida no mapa"
-              title="Filtrar ocorrências exibidas no mapa"
+              aria-label="Filtrar ocorrências exibidas no mapa"
             >
-              <option value="all">Todas ocorrências</option>
-              <option value="urbana">Mobilidade urbana</option>
+              <option value="all">Todas as ocorrências</option>
               <option value="transito">Infrações de trânsito</option>
+              <option value="urbana">Mobilidade urbana</option>
             </select>
           </div>
-      
+
           <div class="top-bar-pills glass-panel">
-            <span v-if="isLoadingSheet" class="badge-status">Sincronizando...</span>
-            <span v-else class="badge-status is-active"
-              :title="`Exibindo ${visibleIncidentsCount} de ${filteredIncidents.length} ocorrências filtradas (${incidents.length} carregadas na região)`">
+            <span v-if="isLoadingSheet" class="badge-status">Buscando...</span>
+            <span v-else-if="hasLoadedOnce && visibleIncidentsCount > 0" class="badge-status is-active">
               {{ visibleIncidentsCount }} na região
             </span>
 
             <span
               v-if="locationState === 'granted'"
               class="badge-status is-gps"
-              title="Localização GPS ativa"
             >
-              📍 GPS Ativo
+              <span aria-hidden="true">📍</span> GPS ativo
             </span>
             <button
               v-else
               type="button"
               class="badge-status is-clickable-gps is-gps-off"
               :disabled="locationState === 'requesting'"
-              title="GPS desativado. Clique para ativar sua localização no navegador"
+              :aria-expanded="gpsPanelMode ? 'true' : 'false'"
+              aria-controls="multei-gps-panel"
               @click="handleGpsActivateClick"
             >
-              📍 {{ locationState === 'requesting' ? 'GPS...' : 'Ativar GPS' }}
+              <span aria-hidden="true">📍</span>
+              {{ locationState === 'requesting' ? 'Localizando...' : 'Ativar GPS' }}
             </button>
           </div>
         </div>
@@ -67,39 +78,42 @@
         <div class="address-search-wrapper">
           <form class="address-search-box glass-panel" @submit.prevent="handleSearchSubmit" role="search">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-              stroke-linecap="round" stroke-linejoin="round" class="search-icon" aria-hidden="true">
+              stroke-linecap="round" stroke-linejoin="round" class="search-icon" aria-hidden="true" focusable="false">
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
         
-            <input v-model="searchQuery" type="search" class="address-search-input"
+            <input ref="searchInputRef" v-model="searchQuery" type="search" class="address-search-input"
               placeholder="Buscar endereço, rua, bairro ou cidade..." aria-label="Buscar endereço no mapa" autocomplete="off"
+              role="combobox" aria-autocomplete="list" aria-controls="multei-address-suggestions"
+              :aria-expanded="showSuggestions && (searchResults.length > 0 || searchNoResults) ? 'true' : 'false'"
+              :aria-activedescendant="showSuggestions && highlightedIndex >= 0 ? `multei-address-option-${highlightedIndex}` : undefined"
               @input="handleSearchInput" @focus="handleSearchFocus" @keydown.down.prevent="moveHighlight(1)"
               @keydown.up.prevent="moveHighlight(-1)" @keydown.esc="closeSuggestions" />
         
-            <span v-if="isSearchingAddress" class="search-spinner" aria-label="Buscando endereço"></span>
+            <span v-if="isSearchingAddress" class="search-spinner" role="status" aria-label="Buscando endereço"></span>
         
-            <button v-if="searchQuery" type="button" class="btn-clear-search" @click="clearSearch" title="Limpar busca"
+            <button v-if="searchQuery" type="button" class="btn-clear-search" @click="clearSearch"
               aria-label="Limpar busca">
-              ✕
+              <span aria-hidden="true">✕</span>
             </button>
         
-            <button type="submit" class="btn-submit-search" :disabled="isSearchingAddress || searchQuery.trim().length < 2"
-              title="Buscar endereço">
+            <button type="submit" class="btn-submit-search" :disabled="isSearchingAddress || searchQuery.trim().length < 2">
               Buscar
             </button>
           </form>
         
           <!-- Lista de Sugestões de Endereço -->
           <Transition name="fade-slide">
-            <ul v-if="showSuggestions && (searchResults.length > 0 || searchNoResults)" class="address-suggestions-list"
-              role="listbox">
-              <li v-if="searchNoResults && searchResults.length === 0" class="suggestion-empty">
+            <ul v-if="showSuggestions && (searchResults.length > 0 || searchNoResults)" id="multei-address-suggestions"
+              class="address-suggestions-list" role="listbox" aria-label="Sugestões de endereço">
+              <li v-if="searchNoResults && searchResults.length === 0" class="suggestion-empty" role="option" aria-disabled="true">
                 Nenhum endereço encontrado para "{{ searchQuery }}"
               </li>
-              <li v-for="(item, index) in searchResults" :key="`${item.latitude}_${item.longitude}_${index}`"
+              <li v-for="(item, index) in searchResults" :id="`multei-address-option-${index}`"
+                :key="`${item.latitude}_${item.longitude}_${index}`"
                 class="suggestion-item" :class="{ 'is-highlighted': index === highlightedIndex }" role="option"
-                :aria-selected="index === highlightedIndex" @mousedown.prevent="selectSearchResult(item)"
+                :aria-selected="index === highlightedIndex ? 'true' : 'false'" @mousedown.prevent="selectSearchResult(item)"
                 @mouseenter="highlightedIndex = index">
                 <span class="suggestion-pin" aria-hidden="true">📍</span>
                 <div class="suggestion-texts">
@@ -110,23 +124,81 @@
             </ul>
           </Transition>
         </div>
-      </header>
 
-      <!-- Alerta sucinto flutuante quando o usuário move o mapa para outra região -->
-      <Transition name="fade-slide">
-        <button
-          v-if="hasMovedRegion && !isLoadingSheet"
-          type="button"
-          class="btn-floating-refresh"
-          :inert="isAnyModalOpen || undefined"
-          :aria-hidden="isAnyModalOpen ? 'true' : undefined"
-          @click="handleRegionButtonClick"
-          title="Você mudou a localização do mapa. Clique para carregar ocorrências desta região."
-        >
-          <span>🔄</span>
-          <span>Atualizar região</span>
-        </button>
-      </Transition>
+        <!-- Avisos do mapa (em fluxo, logo abaixo da busca): permissão de GPS, atualizar região e estado vazio -->
+        <div class="map-status-stack">
+          <Transition name="fade-slide">
+            <section
+              v-if="gpsPanelMode && !isWaitingForInitialAd"
+              id="multei-gps-panel"
+              class="gps-panel-card"
+              :aria-labelledby="gpsPanelMode === 'prompt' ? 'multei-gps-prompt-title' : undefined"
+              :aria-label="gpsPanelMode === 'denied' ? 'Localização bloqueada' : undefined"
+            >
+              <button type="button" class="gps-panel-close" aria-label="Fechar aviso de localização" @click="dismissGpsPanel">
+                <span aria-hidden="true">✕</span>
+              </button>
+
+              <template v-if="gpsPanelMode === 'prompt'">
+                <h2 id="multei-gps-prompt-title" class="gps-panel-title">Veja as ocorrências perto de você</h2>
+                <p class="gps-panel-desc">
+                  Use sua localização para abrir o mapa na sua região. Ela é usada só neste aparelho para posicionar o mapa
+                  e não é armazenada.
+                </p>
+                <p v-if="gpsErrorMessage" class="gps-panel-error" role="alert">{{ gpsErrorMessage }}</p>
+                <div class="gps-panel-actions">
+                  <button
+                    type="button"
+                    class="gps-panel-btn-primary"
+                    :disabled="locationState === 'requesting'"
+                    @click="requestLocation"
+                  >
+                    <span aria-hidden="true">📍</span>
+                    {{ locationState === 'requesting' ? 'Obtendo localização...' : 'Usar minha localização' }}
+                  </button>
+                  <button type="button" class="gps-panel-btn-secondary" @click="focusAddressSearch">
+                    Buscar um endereço
+                  </button>
+                </div>
+              </template>
+
+              <template v-else>
+                <MulteiGpsDeniedHelp
+                  :is-retrying="isRetryingGps"
+                  dismissible
+                  dismiss-label="Buscar um endereço"
+                  @retry="retryGpsAfterDenied"
+                  @dismiss="focusAddressSearch"
+                />
+                <p v-if="gpsErrorMessage" class="gps-panel-error" role="alert">{{ gpsErrorMessage }}</p>
+              </template>
+            </section>
+          </Transition>
+
+          <!-- Botão de atualização da região (também dispara sozinho após 3s com o mapa parado) -->
+          <Transition name="fade-slide">
+            <button
+              v-if="showRefreshButton"
+              type="button"
+              class="btn-floating-refresh"
+              @click="handleRegionButtonClick"
+            >
+              <span aria-hidden="true">🔄</span>
+              <span>Atualizar região</span>
+            </button>
+          </Transition>
+
+          <!-- Pill de estado do mapa (região sem ocorrências / zoom muito aberto) -->
+          <Transition name="fade-slide">
+            <p v-if="mapStatusPillText" class="map-status-pill" aria-hidden="true">
+              {{ mapStatusPillText }}
+            </p>
+          </Transition>
+
+          <!-- Região viva persistente para anunciar mudanças de estado do mapa a leitores de tela -->
+          <p class="sr-only" role="status" aria-live="polite">{{ mapStatusPillText }}</p>
+        </div>
+      </header>
 
       <!-- Zona Central em fluxo normal: ocupa a tela durante o pré-render / "Carregando mapa..." para forçar a publicidade na área inferior -->
       <section
@@ -144,7 +216,7 @@
       </section>
       <div v-else class="multei-center-spacer" aria-hidden="true"></div>
 
-      <!-- Zona Inferior em fluxo normal: Botões Flutuantes (Incluir Ocorrência + Dúvidas?) -->
+      <!-- Zona Inferior em fluxo normal: Botões Flutuantes (Registrar + Dúvidas?) -->
       <footer
         class="bottom-action-zone"
         :class="{ 'has-consent-bar': isConsentVisible && !isWaitingForInitialAd && !isAnyModalOpen }"
@@ -153,55 +225,81 @@
         :aria-hidden="isAnyModalOpen ? 'true' : undefined"
       >
         <div class="bottom-action-container">
-          <button
-            v-if="isCurrentLocationInBrazil"
-            type="button"
-            class="btn btn-primary btn-floating-report"
-            @click="handleOpenCreateModal"
-          >
-            <span class="btn-report-icon" aria-hidden="true">+</span>
-            <span>Incluir</span>
-          </button>
+          <div class="report-btn-wrap">
+            <Transition name="fade-slide">
+              <span
+                v-if="!isCurrentLocationInBrazil"
+                id="multei-report-outside-br-tip"
+                class="report-outside-tooltip"
+                role="tooltip"
+              >
+                Disponível somente no Brasil
+              </span>
+            </Transition>
+            <button
+              type="button"
+              class="btn btn-primary btn-floating-report"
+              :class="{ 'is-unavailable': !isCurrentLocationInBrazil }"
+              :aria-disabled="!isCurrentLocationInBrazil ? 'true' : undefined"
+              :aria-describedby="!isCurrentLocationInBrazil ? 'multei-report-outside-br-tip' : undefined"
+              aria-label="Registrar nova ocorrência"
+              @click="handleOpenCreateModal"
+            >
+              <span class="btn-report-icon" aria-hidden="true">+</span>
+              <span>Registrar</span>
+            </button>
+          </div>
 
-          <div class="help-menu-wrapper" ref="helpMenuRef">
+          <div class="help-menu-wrapper" ref="helpMenuRef" @keydown.esc="closeHelpMenu(true)">
             <Transition name="help-menu-pop">
-              <div v-if="isHelpMenuOpen" class="help-upward-menu" role="menu" aria-label="Opções de ajuda">
-                <NuxtLink to="/multei/sobre" class="help-menu-item" role="menuitem" @click="isHelpMenuOpen = false">
-                  <span class="help-menu-icon" aria-hidden="true">📊</span>
-                  <span>Sobre o Multei</span>
-                </NuxtLink>
-                <NuxtLink to="/multei/orientacoes" class="help-menu-item" role="menuitem" @click="isHelpMenuOpen = false">
-                  <span class="help-menu-icon" aria-hidden="true">ℹ️</span>
-                  <span>Orientações de Uso</span>
-                </NuxtLink>
-                <button type="button" class="help-menu-item" role="menuitem" @click="openWhatToReportModal">
-                  <span class="help-menu-icon" aria-hidden="true">📋</span>
-                  <span>O que denunciar?</span>
-                </button>
-                <button type="button" class="help-menu-item" role="menuitem" @click="openTermsModal">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="help-menu-svg-icon"
-                    aria-hidden="true"
-                  >
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                  </svg>
-                  <span>Termos e Privacidade</span>
-                </button>
-              </div>
+              <nav v-if="isHelpMenuOpen" id="multei-help-menu" class="help-upward-menu" aria-label="Ajuda do Multei">
+                <ul class="help-menu-list">
+                  <li>
+                    <NuxtLink to="/multei/sobre" class="help-menu-item" @click="isHelpMenuOpen = false">
+                      <span class="help-menu-icon" aria-hidden="true">📊</span>
+                      <span>Sobre o Multei</span>
+                    </NuxtLink>
+                  </li>
+                  <li>
+                    <NuxtLink to="/multei/orientacoes" class="help-menu-item" @click="isHelpMenuOpen = false">
+                      <span class="help-menu-icon" aria-hidden="true">ℹ️</span>
+                      <span>Orientações de uso</span>
+                    </NuxtLink>
+                  </li>
+                  <li>
+                    <button type="button" class="help-menu-item" @click="openWhatToReportModal">
+                      <span class="help-menu-icon" aria-hidden="true">📋</span>
+                      <span>O que posso registrar?</span>
+                    </button>
+                  </li>
+                  <li>
+                    <button type="button" class="help-menu-item" @click="openTermsModal">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="help-menu-svg-icon"
+                        aria-hidden="true"
+                        focusable="false"
+                      >
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                      </svg>
+                      <span>Termos e Privacidade</span>
+                    </button>
+                  </li>
+                </ul>
+              </nav>
             </Transition>
 
-            <button type="button" class="btn-floating-help" :class="{ 'is-open': isHelpMenuOpen }" :aria-expanded="isHelpMenuOpen"
-              aria-haspopup="true" title="Ver opções de ajuda e orientações sobre o Multei" @click="toggleHelpMenu">
+            <button ref="helpToggleRef" type="button" class="btn-floating-help" :class="{ 'is-open': isHelpMenuOpen }"
+              :aria-expanded="isHelpMenuOpen ? 'true' : 'false'" aria-controls="multei-help-menu" @click="toggleHelpMenu">
               <span>Dúvidas?</span>
             </button>
           </div>
@@ -241,9 +339,11 @@
       </Transition>
 
       <!-- Mapa em Tela Cheia (montado após o ciclo inicial de carregamento/anúncio) -->
-      <div
+      <main
         v-if="!isWaitingForInitialAd"
+        id="multei-map"
         class="fullscreen-map-container"
+        aria-label="Mapa de ocorrências"
         :inert="isAnyModalOpen || undefined"
         :aria-hidden="isAnyModalOpen ? 'true' : undefined"
       >
@@ -252,15 +352,16 @@
           :initial-center="initialCenter"
           :initial-zoom="initialCenter.zoom || 15"
           :show-user-location-dot="locationState === 'granted'"
-          :bottom-padding="bottomAdOffset"
+          :bottom-padding="effectiveBottomOffset"
           height="100%"
           @marker-click="handleMarkerClick"
           @bounds-change="handleBoundsChange"
           @user-location-found="handleUserLocationFound"
+          @user-location-error="handleMapLocationError"
         />
-      </div>
+      </main>
 
-      <!-- Modal Tela Cheia: O que posso denunciar? -->
+      <!-- Modal Tela Cheia: O que posso registrar? -->
       <Transition name="fade-modal">
         <div
           v-show="isWhatToReportModalOpen"
@@ -274,99 +375,177 @@
         >
           <div class="what-to-report-content">
             <div class="what-to-report-topbar">
-              <span class="what-to-report-badge">Guia de Infrações</span>
-              <button type="button" class="what-to-report-close-btn" aria-label="Fechar janela"
+              <span class="what-to-report-badge">Guia de ocorrências</span>
+              <button type="button" class="what-to-report-close-btn" aria-label="Fechar guia de ocorrências"
                 @click="isWhatToReportModalOpen = false">
-                ✕ Fechar
+                <span aria-hidden="true">✕</span> Fechar
               </button>
             </div>
       
             <header class="what-to-report-header">
-              <h2 id="what-to-report-title" class="what-to-report-title">O que posso denunciar?</h2>
+              <h2 id="what-to-report-title" class="what-to-report-title">O que posso registrar?</h2>
               <p class="what-to-report-intro">
-                Você pode usar este aplicativo para reportar veículos que desrespeitam o espaço e bloqueiam a mobilidade de
-                pessoas com deficiência. Veja o que é infração:
+                No Multei você registra dois tipos de ocorrência: <strong>infrações de trânsito</strong> que desrespeitam o
+                espaço de pessoas com deficiência e <strong>problemas de mobilidade urbana</strong> que bloqueiam rotas
+                acessíveis. Veja exemplos de cada tipo:
               </p>
             </header>
-      
-            <div class="what-to-report-accordion">
-              <details class="report-summary-card" open>
-                <summary class="report-summary-trigger">
-                  <span class="report-summary-number">1</span>
-                  <span class="report-summary-heading">1. Vaga exclusiva sem credencial</span>
-                  <span class="report-summary-chevron" aria-hidden="true">▾</span>
-                </summary>
-                <div class="report-summary-body">
-                  <p><strong>O que é:</strong> Veículos estacionados nas vagas reservadas sem exibir a credencial oficial no
-                    painel.</p>
-                  <p><strong>Por que atrapalha:</strong> Tira o direito de quem realmente precisa de um espaço mais largo e
-                    próximo aos acessos.</p>
-                  <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso XX do Código de Trânsito
-                    Brasileiro (CTB)</p>
-                </div>
-              </details>
-      
-              <details class="report-summary-card">
-                <summary class="report-summary-trigger">
-                  <span class="report-summary-number">2</span>
-                  <span class="report-summary-heading">2. Bloqueio de calçadas e faixas de pedestres</span>
-                  <span class="report-summary-chevron" aria-hidden="true">▾</span>
-                </summary>
-                <div class="report-summary-body">
-                  <p><strong>O que é:</strong> Carros ou motos parados sobre o passeio público ou em cima das faixas de
-                    travessia.</p>
-                  <p><strong>Por que atrapalha:</strong> Interrompe a rota acessível e obriga pessoas que utilizam caideira de
-                    rodas, pessoas cegas ou com mobilidade reduzida a desviarem pelo asfalto, correndo risco de atropelamento.
-                  </p>
-                  <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso VIII do CTB</p>
-                </div>
-              </details>
-      
-              <details class="report-summary-card">
-                <summary class="report-summary-trigger">
-                  <span class="report-summary-number">3</span>
-                  <span class="report-summary-heading">3. Obstrução de rampas e esquinas</span>
-                  <span class="report-summary-chevron" aria-hidden="true">▾</span>
-                </summary>
-                <div class="report-summary-body">
-                  <p><strong>O que é:</strong> Veículos estacionados a menos de 5 metros do alinhamento da via (nas esquinas),
-                    onde ficam as rampas de acessibilidade.</p>
-                  <p><strong>Por que atrapalha:</strong> Impede a transição segura entre a calçada e a rua.</p>
-                  <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso I do CTB</p>
-                </div>
-              </details>
-      
-              <details class="report-summary-card">
-                <summary class="report-summary-trigger">
-                  <span class="report-summary-number">4</span>
-                  <span class="report-summary-heading">4. Invasão de ilhas e refúgios</span>
-                  <span class="report-summary-chevron" aria-hidden="true">▾</span>
-                </summary>
-                <div class="report-summary-body">
-                  <p><strong>O que é:</strong> Veículos parados nas áreas de segurança estruturadas no meio de avenidas e vias
-                    largas.</p>
-                  <p><strong>Por que atrapalha:</strong> Elimina a área de descanso e proteção essencial para quem se locomove
-                    mais devagar e precisa fazer a travessia em duas etapas.</p>
-                  <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso VIII do CTB</p>
-                </div>
-              </details>
-              <details class="report-summary-card">
-                <summary class="report-summary-trigger">
-                  <span class="report-summary-number" aria-hidden="true">5</span>
-                  <span class="report-summary-heading">Multa em supermercado e shopping tem validade?</span>
-                  <span class="report-summary-chevron" aria-hidden="true">▾</span>
-                </summary>
-                <div class="report-summary-body">
-                  <p><strong>Sim, tem total validade.</strong> Desde 2015, o Código de Trânsito Brasileiro (CTB) estabelece que
-                    estacionamentos de uso coletivo — como supermercados, shoppings, hospitais e faculdades — são considerados
-                    vias públicas para fins de fiscalização.</p>
-                  <p><strong>Como funciona a regra:</strong></p>
-                  <p class="report-legal-base"><strong>A infração principal:</strong> Estacionar nas vagas reservadas para
-                    pessoas com deficiência ou idosos sem a credencial (Art. 181, XX). A multa é gravíssima e o veículo pode ser
-                    guinchado.</p>
-                </div>
-              </details>
-            </div>
+
+            <section class="what-to-report-section" aria-labelledby="what-to-report-traffic-title">
+              <h3 id="what-to-report-traffic-title" class="what-to-report-section-title is-traffic">
+                <span class="what-to-report-section-icon" aria-hidden="true">♿</span>
+                Infrações de trânsito
+              </h3>
+              <div class="what-to-report-accordion">
+                <details class="report-summary-card" open>
+                  <summary class="report-summary-trigger">
+                    <span class="report-summary-number" aria-hidden="true">1</span>
+                    <span class="report-summary-heading">Vaga exclusiva sem credencial</span>
+                    <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                  </summary>
+                  <div class="report-summary-body">
+                    <p><strong>O que é:</strong> veículos estacionados nas vagas reservadas sem exibir a credencial oficial no
+                      painel.</p>
+                    <p><strong>Por que atrapalha:</strong> tira o direito de quem realmente precisa de um espaço mais largo e
+                      próximo aos acessos.</p>
+                    <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso XX do Código de Trânsito
+                      Brasileiro (CTB).</p>
+                  </div>
+                </details>
+        
+                <details class="report-summary-card">
+                  <summary class="report-summary-trigger">
+                    <span class="report-summary-number" aria-hidden="true">2</span>
+                    <span class="report-summary-heading">Bloqueio de calçadas e faixas de pedestres</span>
+                    <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                  </summary>
+                  <div class="report-summary-body">
+                    <p><strong>O que é:</strong> carros ou motos parados sobre o passeio público ou em cima das faixas de
+                      travessia.</p>
+                    <p><strong>Por que atrapalha:</strong> interrompe a rota acessível e obriga pessoas que usam cadeira de
+                      rodas, pessoas cegas ou com mobilidade reduzida a desviar pelo asfalto, correndo risco de atropelamento.
+                    </p>
+                    <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso VIII do CTB.</p>
+                  </div>
+                </details>
+        
+                <details class="report-summary-card">
+                  <summary class="report-summary-trigger">
+                    <span class="report-summary-number" aria-hidden="true">3</span>
+                    <span class="report-summary-heading">Obstrução de rampas e esquinas</span>
+                    <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                  </summary>
+                  <div class="report-summary-body">
+                    <p><strong>O que é:</strong> veículos estacionados a menos de 5 metros do alinhamento da via (nas esquinas),
+                      onde ficam as rampas de acessibilidade.</p>
+                    <p><strong>Por que atrapalha:</strong> impede a transição segura entre a calçada e a rua.</p>
+                    <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso I do CTB.</p>
+                  </div>
+                </details>
+        
+                <details class="report-summary-card">
+                  <summary class="report-summary-trigger">
+                    <span class="report-summary-number" aria-hidden="true">4</span>
+                    <span class="report-summary-heading">Invasão de ilhas e refúgios</span>
+                    <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                  </summary>
+                  <div class="report-summary-body">
+                    <p><strong>O que é:</strong> veículos parados nas áreas de segurança no meio de avenidas e vias largas.</p>
+                    <p><strong>Por que atrapalha:</strong> elimina a área de descanso e proteção essencial para quem se locomove
+                      mais devagar e precisa fazer a travessia em duas etapas.</p>
+                    <p class="report-legal-base"><strong>Base legal:</strong> Art. 181, inciso VIII do CTB.</p>
+                  </div>
+                </details>
+              </div>
+            </section>
+
+            <section class="what-to-report-section" aria-labelledby="what-to-report-urban-title">
+              <h3 id="what-to-report-urban-title" class="what-to-report-section-title is-urban">
+                <span class="what-to-report-section-icon" aria-hidden="true">🚧</span>
+                Mobilidade urbana
+              </h3>
+              <div class="what-to-report-accordion">
+                <details class="report-summary-card">
+                  <summary class="report-summary-trigger">
+                    <span class="report-summary-number" aria-hidden="true">1</span>
+                    <span class="report-summary-heading">Calçadas quebradas, buracos e desníveis</span>
+                    <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                  </summary>
+                  <div class="report-summary-body">
+                    <p><strong>O que é:</strong> piso solto ou afundado, buracos, raízes expostas e degraus no meio do passeio.</p>
+                    <p><strong>Por que atrapalha:</strong> pode travar rodas de cadeiras e andadores e causar quedas de pessoas
+                      cegas, idosas ou com mobilidade reduzida.</p>
+                  </div>
+                </details>
+
+                <details class="report-summary-card">
+                  <summary class="report-summary-trigger">
+                    <span class="report-summary-number" aria-hidden="true">2</span>
+                    <span class="report-summary-heading">Obstáculos na rota acessível</span>
+                    <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                  </summary>
+                  <div class="report-summary-body">
+                    <p><strong>O que é:</strong> postes, lixeiras, entulho, mesas, placas ou obras ocupando a faixa livre da
+                      calçada sem rota alternativa segura.</p>
+                    <p><strong>Por que atrapalha:</strong> estreita ou bloqueia a passagem e obriga o desvio pela rua.</p>
+                  </div>
+                </details>
+
+                <details class="report-summary-card">
+                  <summary class="report-summary-trigger">
+                    <span class="report-summary-number" aria-hidden="true">3</span>
+                    <span class="report-summary-heading">Rampas ausentes ou danificadas</span>
+                    <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                  </summary>
+                  <div class="report-summary-body">
+                    <p><strong>O que é:</strong> travessias sem rebaixamento de calçada ou com rampas quebradas, íngremes demais
+                      ou bloqueadas.</p>
+                    <p><strong>Por que atrapalha:</strong> impede que pessoas em cadeira de rodas subam ou desçam da calçada com
+                      segurança.</p>
+                  </div>
+                </details>
+
+                <details class="report-summary-card">
+                  <summary class="report-summary-trigger">
+                    <span class="report-summary-number" aria-hidden="true">4</span>
+                    <span class="report-summary-heading">Piso tátil ausente ou danificado</span>
+                    <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                  </summary>
+                  <div class="report-summary-body">
+                    <p><strong>O que é:</strong> sinalização tátil no piso faltando, solta, coberta ou levando a obstáculos.</p>
+                    <p><strong>Por que atrapalha:</strong> pessoas cegas ou com baixa visão perdem a referência de direção e de
+                      alerta.</p>
+                  </div>
+                </details>
+              </div>
+              <p class="report-legal-base what-to-report-section-note">
+                <strong>Referências:</strong> Lei Brasileira de Inclusão (Lei nº 13.146/2015) e normas de acessibilidade da
+                ABNT (NBR 9050 e NBR 16537).
+              </p>
+            </section>
+
+            <section class="what-to-report-section" aria-labelledby="what-to-report-faq-title">
+              <h3 id="what-to-report-faq-title" class="what-to-report-section-title is-faq">
+                <span class="what-to-report-section-icon" aria-hidden="true">💬</span>
+                Dúvidas frequentes
+              </h3>
+              <div class="what-to-report-accordion">
+                <details class="report-summary-card">
+                  <summary class="report-summary-trigger">
+                    <span class="report-summary-heading">Multa em supermercado e shopping tem validade?</span>
+                    <span class="report-summary-chevron" aria-hidden="true">▾</span>
+                  </summary>
+                  <div class="report-summary-body">
+                    <p><strong>Sim, tem total validade.</strong> Desde 2015, o Código de Trânsito Brasileiro (CTB) estabelece que
+                      estacionamentos de uso coletivo — como supermercados, shoppings, hospitais e faculdades — são considerados
+                      vias públicas para fins de fiscalização.</p>
+                    <p class="report-legal-base"><strong>A infração principal:</strong> estacionar nas vagas reservadas para
+                      pessoas com deficiência ou idosos sem a credencial (Art. 181, XX). A multa é gravíssima e o veículo pode ser
+                      guinchado.</p>
+                  </div>
+                </details>
+              </div>
+            </section>
       
             <div class="what-to-report-footer">
               <button type="button" class="btn btn-primary what-to-report-cta" @click="isWhatToReportModalOpen = false">
@@ -442,8 +621,9 @@
     </div>
 
     <!-- Conteúdo semântico em fluxo normal abaixo da dobra (100vh) para garantir altura rolável (> 100vh)
-         e análise de conteúdo pelo Google AdSense sem nunca sobrepor o mapa -->
-    <main id="main-content" class="multei-seo-backdrop" role="main">
+         e análise de conteúdo pelo Google AdSense sem nunca sobrepor o mapa.
+         Fica fora da árvore de acessibilidade (aria-hidden + inert): esta tela expõe somente o mapa. -->
+    <div id="main-content" class="multei-seo-backdrop" aria-hidden="true" inert>
       <article class="multei-seo-article">
         <header>
           <h1 class="seo-main-heading">Multei - Denúncia anônima de uso irregular de vagas para PcD e Mobilidade Urbana</h1>
@@ -495,7 +675,7 @@
           </p>
         </section>
       </article>
-    </main>
+    </div>
   </div>
 </template>
 
@@ -536,7 +716,7 @@ useHead({
     class: 'multei-map-lock-scroll'
   },
   meta: [
-    { name: 'description', content: 'Mapeamento colaborativo de vagas e infrações contra acessibilidade com proteção de privacidade por IA.' }
+    { name: 'description', content: 'Mapeamento colaborativo de ocorrências de acessibilidade e vagas PcD, com proteção de privacidade por IA.' }
   ],
   // Preconnect apenas nesta página (é a única com mapa). Abre a conexão TLS
   // enquanto o bundle ainda está sendo avaliado, reduzindo o atraso até o
@@ -556,8 +736,15 @@ const appsScriptUrl = ref(config.public.appsScriptUrl || '');
 const isCreateModalOpen = ref(false);
 const selectedIncident = ref(null);
 const isLoadingSheet = ref(false);
-const locationState = ref('idle');
+const locationState = ref('idle'); // 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable'
 const filterScope = ref('nearby'); // 'nearby' ou 'all'
+
+// Painel de localização: 'prompt' (pré-permissão com contexto) | 'denied' (instruções para liberar) | null
+const gpsPanelMode = ref(null);
+const gpsErrorMessage = ref('');
+const isRetryingGps = ref(false);
+const searchInputRef = ref(null);
+const hasLoadedOnce = ref(false);
 
 // Trava geográfica: ocorrências só podem ser incluídas no Brasil
 const isUserGpsInBrazil = ref(true);
@@ -617,6 +804,7 @@ const verifyUserGpsInBrazil = async (coords) => {
 };
 
 const handleOpenCreateModal = async () => {
+  // Fora do Brasil o botão fica visível (aria-disabled) com o aviso "Disponível somente no Brasil"
   if (!isCurrentLocationInBrazil.value) return;
   const center = currentMapCenter.value || initialCenter.value;
   if (center && !isCoordinateInBrazilBounds(center.latitude, center.longitude)) {
@@ -674,8 +862,18 @@ const handleOpenCreateModal = async () => {
     }
   });
 
+  const helpToggleRef = ref(null);
+
   const toggleHelpMenu = () => {
     isHelpMenuOpen.value = !isHelpMenuOpen.value;
+  };
+
+  const closeHelpMenu = (returnFocus = false) => {
+    if (!isHelpMenuOpen.value) return;
+    isHelpMenuOpen.value = false;
+    if (returnFocus) {
+      helpToggleRef.value?.focus?.();
+    }
   };
 
   const openWhatToReportModal = () => {
@@ -742,6 +940,8 @@ const handleOpenCreateModal = async () => {
   const acceptAll = () => {
     setMulteiConsent('all');
     isConsentVisible.value = false;
+    // Reserva o espaço do anúncio âncora ANTES de ele carregar, para os botões não "pularem" sob o dedo
+    startAdSpaceReservation();
     enableNonEssentialCookies(true);
   };
 
@@ -756,15 +956,27 @@ const handleOpenCreateModal = async () => {
   let searchDebounceTimer = null;
   let boundsFetchDebounceTimer = null;
 
+// Sem localização definida o mapa abre na visão geral do Brasil (sem consultar o Firestore).
+// A busca de ocorrências só acontece quando há uma região concreta (GPS, endereço, link ou zoom manual).
+const BRAZIL_OVERVIEW_CENTER = { latitude: -14.235, longitude: -51.9253, zoom: 4, isSearchResult: true };
+
 const defaultMapCenter = isFirebaseMockEnabled()
   ? { latitude: MOCK_BH_DEFAULT_CENTER.latitude, longitude: MOCK_BH_DEFAULT_CENTER.longitude }
-  : { latitude: -23.55052, longitude: -46.633308 };
+  : { ...BRAZIL_OVERVIEW_CENTER };
 
 const initialCenter = ref({ ...defaultMapCenter });
 
-const loadedCenter = ref({ ...defaultMapCenter });
+const currentMapCenter = ref({ latitude: defaultMapCenter.latitude, longitude: defaultMapCenter.longitude });
 
-const currentMapCenter = ref({ ...defaultMapCenter });
+// Áreas já consultadas nesta sessão (círculos equivalentes ao raio usado em fetchIncidentsByVisibleArea).
+// Evita novas leituras quando o mapa é movido só um pouco para os lados.
+const LOADED_AREA_TTL_MS = 15 * 60 * 1000; // mesmo TTL do cache regional do firebaseService
+const MAX_LOADED_AREAS = 12;
+const MAX_FETCH_CORNER_KM = 60; // acima disso o zoom está aberto demais para buscar (raio máx. do serviço = 80 km)
+const AUTO_REFRESH_IDLE_MS = 3000;
+const loadedAreas = ref([]);
+const locallyAddedIncidentIds = new Set();
+let autoRefreshTimer = null;
 
 const incidents = ref([]);
 const mapBounds = ref(null);
@@ -856,6 +1068,7 @@ const lastQueriedBounds = ref(null);
       latitude: item.latitude,
       longitude: item.longitude
     };
+    gpsPanelMode.value = null;
     verifyMapCenterInBrazil(
       {
         latitude: item.latitude,
@@ -863,7 +1076,7 @@ const lastQueriedBounds = ref(null);
       },
       true
     );
-    loadIncidents('nearby', {
+    loadIncidentsIfNotCovered({
       latitude: item.latitude,
       longitude: item.longitude
     });
@@ -903,17 +1116,87 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const hasMovedRegion = computed(() => {
-  if (filterScope.value !== 'nearby') return false;
-  if (!currentMapCenter.value || !loadedCenter.value) return false;
-  const dist = getDistanceKm(
-    currentMapCenter.value.latitude,
-    currentMapCenter.value.longitude,
-    loadedCenter.value.latitude,
-    loadedCenter.value.longitude
+const isValidBounds = (b) =>
+  Boolean(b) &&
+  [b.north, b.south, b.east, b.west].every((v) => Number.isFinite(Number(v)));
+
+const getBoundsCenter = (b) =>
+  b?.center && Number.isFinite(b.center.latitude) && Number.isFinite(b.center.longitude)
+    ? b.center
+    : { latitude: (b.north + b.south) / 2, longitude: (b.east + b.west) / 2 };
+
+// Mesmo cálculo do firebaseService: raio = distância centro→canto + 5 km (mín. 5 km, máx. 80 km)
+const getCoverageRadiusKm = (center, bounds) => {
+  if (!center || !isValidBounds(bounds)) return 5;
+  const cornerKm = getDistanceKm(center.latitude, center.longitude, bounds.north, bounds.east);
+  return Math.min(Math.max(cornerKm + 5, 5), 80);
+};
+
+// Zoom suficientemente aproximado para buscar ocorrências (independe do tamanho da tela)
+const isBoundsZoomedEnough = (bounds) => {
+  if (!isValidBounds(bounds)) return false;
+  const center = getBoundsCenter(bounds);
+  return getDistanceKm(center.latitude, center.longitude, bounds.north, bounds.east) <= MAX_FETCH_CORNER_KM;
+};
+
+const getValidLoadedAreas = () => {
+  const now = Date.now();
+  return loadedAreas.value.filter((area) => now - area.fetchedAt < LOADED_AREA_TTL_MS);
+};
+
+// A tela está coberta se os 4 cantos estão dentro de uma mesma área já consultada (e ainda válida)
+const isBoundsCovered = (bounds) => {
+  if (!isValidBounds(bounds)) return false;
+  const corners = [
+    [bounds.north, bounds.east],
+    [bounds.north, bounds.west],
+    [bounds.south, bounds.east],
+    [bounds.south, bounds.west]
+  ];
+  return getValidLoadedAreas().some((area) =>
+    corners.every(([lat, lng]) => getDistanceKm(area.latitude, area.longitude, lat, lng) <= area.radiusKm)
   );
-  return dist > 5;
+};
+
+// Para pontos isolados (GPS/endereço) exige uma margem de 2 km dentro de uma área já consultada
+const isPointCovered = (point, marginKm = 2) => {
+  if (!point || !Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) return false;
+  return getValidLoadedAreas().some(
+    (area) => getDistanceKm(area.latitude, area.longitude, point.latitude, point.longitude) + marginKm <= area.radiusKm
+  );
+};
+
+const needsRegionRefresh = computed(() => {
+  if (filterScope.value !== 'nearby') return false;
+  if (isLoadingSheet.value) return false;
+  const bounds = mapBounds.value;
+  if (!isBoundsZoomedEnough(bounds)) return false;
+  return !isBoundsCovered(bounds);
 });
+
+const showRefreshButton = computed(
+  () => needsRegionRefresh.value && !isAnyModalOpen.value && !isWaitingForInitialAd.value
+);
+
+const clearAutoRefreshTimer = () => {
+  if (autoRefreshTimer) {
+    clearTimeout(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+};
+
+// Atualiza sozinho quando o mapa fica parado por 3s numa região ainda não consultada.
+// O botão "Atualizar região" continua disponível para quem não quiser esperar.
+const scheduleAutoRegionRefresh = () => {
+  clearAutoRefreshTimer();
+  if (!needsRegionRefresh.value) return;
+  autoRefreshTimer = setTimeout(() => {
+    autoRefreshTimer = null;
+    if (!needsRegionRefresh.value || isAnyModalOpen.value) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    handleRegionButtonClick();
+  }, AUTO_REFRESH_IDLE_MS);
+};
 
 const handleBoundsChange = (bounds) => {
   mapBounds.value = bounds;
@@ -921,12 +1204,27 @@ const handleBoundsChange = (bounds) => {
     currentMapCenter.value = bounds.center;
     verifyMapCenterInBrazil(bounds.center, false);
   }
-  // A consulta ao Firebase carrega um raio de 5 km ao redor do loadedCenter.
-  // Movimentações dentro desse raio usam os pinos já em memória; ao passar de 5 km,
-  // o botão "Atualizar região" aparece para buscar sob demanda e economizar leituras.
+  // Movimentações dentro de uma área já consultada usam os pinos em memória (0 leituras).
+  // Fora dela, o botão "Atualizar região" aparece e a busca dispara sozinha após 3s parado.
+  scheduleAutoRegionRefresh();
 };
 
+// Não consulta com modal aberto; ao fechar, rearma a atualização automática se ainda for necessária
+watch(isAnyModalOpen, (open) => {
+  if (open) {
+    clearAutoRefreshTimer();
+  } else {
+    scheduleAutoRegionRefresh();
+  }
+});
+
 const selectedIncidentType = ref('all'); // 'all' | 'urbana' | 'transito'
+
+const selectedIncidentTypeShortLabel = computed(() => {
+  if (selectedIncidentType.value === 'transito') return 'Trânsito';
+  if (selectedIncidentType.value === 'urbana') return 'Urbana';
+  return 'Todas';
+});
 
 const normalizeAddressToken = (val) =>
   String(val || '')
@@ -1180,11 +1478,32 @@ const visibleIncidentsCount = computed(() => {
   return visiblePins.reduce((acc, inc) => acc + countPinValidIncidents(inc), 0);
 });
 
+const mapStatusPillText = computed(() => {
+  if (isWaitingForInitialAd.value || isAnyModalOpen.value || gpsPanelMode.value) return '';
+  if (isLoadingSheet.value) return '';
+  const bounds = mapBounds.value;
+  if (!isValidBounds(bounds)) return '';
+  if (!isBoundsZoomedEnough(bounds)) {
+    return 'Aproxime o mapa para ver as ocorrências';
+  }
+  if (!hasLoadedOnce.value || needsRegionRefresh.value) return '';
+  if (visibleIncidentsCount.value === 0) {
+    return selectedIncidentType.value === 'all'
+      ? 'Nenhuma ocorrência na região'
+      : 'Nenhuma ocorrência deste tipo na região';
+  }
+  return '';
+});
+
 const handleMarkerClick = (incident) => {
   selectedIncident.value = incident;
 };
 
 const handleIncidentCreated = (newIncident) => {
+  if (newIncident?.id) {
+    // Mantém a ocorrência recém-criada mesmo que uma consulta seguinte venha de um cache anterior a ela
+    locallyAddedIncidentIds.add(String(newIncident.id).trim());
+  }
   if (newIncident?.ativo !== false) {
     incidents.value = [
       newIncident,
@@ -1197,74 +1516,97 @@ const handleIncidentCreated = (newIncident) => {
   };
 };
 
+// Ao reportar, a ocorrência NÃO sai do mapa: passa a ficar "Em revisão de denúncia" (foto oculta).
+// Atualiza o item em memória pelo id com os campos devolvidos pelo modal.
 const handleIncidentReported = (reportedData) => {
-  const targetId = typeof reportedData === 'object' && reportedData?.id
-    ? String(reportedData.id).trim()
-    : (typeof reportedData === 'string' ? reportedData.trim() : (selectedIncident.value?.id ? String(selectedIncident.value.id).trim() : ''));
+  const updated = reportedData && typeof reportedData === 'object' ? reportedData : null;
+  const targetId = updated?.id
+    ? String(updated.id).trim()
+    : (typeof reportedData === 'string' ? reportedData.trim() : '');
+  if (!targetId) return;
 
-  const targetObj = (typeof reportedData === 'object' && reportedData) ? reportedData : selectedIncident.value;
-
-  incidents.value = incidents.value.filter((inc) => {
-    // 1. Se ambos possuem ID, compara exclusivamente pelo ID para manter outras ocorrências no mesmo endereço
-    if (targetId && inc?.id) {
-      return String(inc.id).trim() !== targetId;
-    }
-    // 2. Fallback por referência direta de objeto caso algum item em memória não tenha ID
-    if (targetObj && inc === targetObj) {
-      return false;
-    }
-    return true;
+  incidents.value = incidents.value.map((inc) => {
+    if (!inc?.id || String(inc.id).trim() !== targetId) return inc;
+    const { groupItems, groupCount, initialPageIndex, ...cleanUpdate } = updated || {};
+    return { ...inc, ...cleanUpdate, id: inc.id };
   });
+};
+
+// Mescla o resultado de uma área consultada com o que já está em memória:
+// - itens retornados substituem os existentes (mesmo id);
+// - itens que estavam DENTRO da área consultada e não voltaram são removidos (desativados/excluídos);
+// - itens fora da área (de outras regiões já carregadas) são mantidos.
+const mergeIncidentsForArea = (freshList, areaCenter, radiusKm) => {
+  const fresh = Array.isArray(freshList) ? freshList.filter(Boolean) : [];
+  const freshIds = new Set(fresh.filter((inc) => inc?.id).map((inc) => String(inc.id).trim()));
+  const kept = incidents.value.filter((inc) => {
+    const id = inc?.id ? String(inc.id).trim() : '';
+    if (id && freshIds.has(id)) return false;
+    if (id && locallyAddedIncidentIds.has(id)) return true;
+    const lat = Number(inc?.latitude);
+    const lng = Number(inc?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !areaCenter) return true;
+    return getDistanceKm(areaCenter.latitude, areaCenter.longitude, lat, lng) > radiusKm;
+  });
+  incidents.value = [...fresh, ...kept];
+};
+
+const registerLoadedArea = (center, radiusKm) => {
+  if (!center || !Number.isFinite(center.latitude) || !Number.isFinite(center.longitude)) return;
+  loadedAreas.value = [
+    { latitude: center.latitude, longitude: center.longitude, radiusKm, fetchedAt: Date.now() },
+    ...getValidLoadedAreas()
+  ].slice(0, MAX_LOADED_AREAS);
 };
 
 let latestLoadRequestId = 0;
 
 const loadIncidents = async (scope = filterScope.value, customCenter = null, customBounds = null) => {
+  const targetBounds = customBounds || mapBounds.value;
+  const targetCenter = customCenter || targetBounds?.center || currentMapCenter.value;
+  if (!targetCenter || !Number.isFinite(targetCenter.latitude) || !Number.isFinite(targetCenter.longitude)) {
+    return;
+  }
+
+  clearAutoRefreshTimer();
   const requestId = ++latestLoadRequestId;
   isLoadingSheet.value = true;
   filterScope.value = scope;
 
-  const targetBounds = customBounds || mapBounds.value;
-  const targetCenter = customCenter || targetBounds?.center || currentMapCenter.value || initialCenter.value;
+  // Se customCenter foi passado explicitamente (ex: busca de endereço ou GPS inicial)
+  // antes do mapa reposicionar os bounds, verifica se o targetCenter está dentro dos bounds atuais
+  const centerInsideBounds =
+    isValidBounds(targetBounds) &&
+    targetCenter.latitude >= targetBounds.south &&
+    targetCenter.latitude <= targetBounds.north &&
+    targetCenter.longitude >= targetBounds.west &&
+    targetCenter.longitude <= targetBounds.east;
+  const queryBounds = centerInsideBounds ? targetBounds : null;
+  const coverageRadiusKm = getCoverageRadiusKm(targetCenter, queryBounds);
 
-  if (targetCenter) {
-    loadedCenter.value = {
-      latitude: targetCenter.latitude,
-      longitude: targetCenter.longitude
-    };
-  }
-
-  if (targetBounds) {
+  if (queryBounds) {
     lastQueriedBounds.value = {
-      north: targetBounds.north,
-      south: targetBounds.south,
-      east: targetBounds.east,
-      west: targetBounds.west
+      north: queryBounds.north,
+      south: queryBounds.south,
+      east: queryBounds.east,
+      west: queryBounds.west
     };
   }
 
   try {
-    // Se customCenter foi passado explicitamente (ex: busca de endereço ou GPS inicial)
-    // antes do mapa reposicionar os bounds, verifica se o targetCenter está dentro dos bounds atuais
-    const centerInsideBounds =
-      targetBounds &&
-      targetCenter &&
-      targetCenter.latitude >= targetBounds.south &&
-      targetCenter.latitude <= targetBounds.north &&
-      targetCenter.longitude >= targetBounds.west &&
-      targetCenter.longitude <= targetBounds.east;
-
     const firebaseIncidents = await fetchIncidentsByVisibleArea({
-      bounds: centerInsideBounds ? targetBounds : null,
+      bounds: queryBounds,
       center: targetCenter,
       radiusKm: 5
     });
 
     if (requestId !== latestLoadRequestId) return;
-    incidents.value = firebaseIncidents;
+    mergeIncidentsForArea(firebaseIncidents, targetCenter, coverageRadiusKm);
+    registerLoadedArea(targetCenter, coverageRadiusKm);
+    hasLoadedOnce.value = true;
   } catch (e) {
     if (requestId !== latestLoadRequestId) return;
-    console.warn('Não foi possível sincronizar com o Firebase no momento:', e);
+    console.warn('Não foi possível sincronizar com o Firebase no momento:', e?.message || e);
   } finally {
     if (requestId === latestLoadRequestId) {
       isLoadingSheet.value = false;
@@ -1272,8 +1614,15 @@ const loadIncidents = async (scope = filterScope.value, customCenter = null, cus
   }
 };
 
+// Carrega apenas se o ponto ainda não estiver dentro de uma área consultada recentemente
+const loadIncidentsIfNotCovered = (center) => {
+  if (isPointCovered(center)) return Promise.resolve();
+  return loadIncidents('nearby', center);
+};
+
 const handleRegionButtonClick = () => {
-  loadIncidents('nearby', currentMapCenter.value || initialCenter.value, mapBounds.value);
+  if (!isBoundsZoomedEnough(mapBounds.value)) return;
+  loadIncidents('nearby', currentMapCenter.value, mapBounds.value);
 };
 
 const setFilterScope = (scope) => {
@@ -1285,36 +1634,53 @@ const handleUserLocationFound = (coords) => {
   initialCenter.value = coords;
   currentMapCenter.value = coords;
   locationState.value = 'granted';
+  gpsPanelMode.value = null;
+  gpsErrorMessage.value = '';
   verifyUserGpsInBrazil(coords);
   verifyMapCenterInBrazil(coords, true);
-  const distFromLoaded = loadedCenter.value
-    ? getDistanceKm(
-        coords.latitude,
-        coords.longitude,
-        loadedCenter.value.latitude,
-        loadedCenter.value.longitude
-      )
-    : Infinity;
-  if (incidents.value.length === 0 || distFromLoaded > 5) {
-    loadIncidents('nearby', coords);
+  loadIncidentsIfNotCovered(coords);
+};
+
+const GPS_UNAVAILABLE_MSG =
+  'Não foi possível obter sua localização agora. Verifique se a localização do aparelho está ligada e tente novamente, ou busque um endereço.';
+
+const queryGeoPermissionState = async () => {
+  if (geoPermissionStatus?.state) return geoPermissionStatus.state;
+  if (typeof navigator === 'undefined' || !navigator.permissions?.query) return 'unknown';
+  try {
+    const status = await navigator.permissions.query({ name: 'geolocation' });
+    return status?.state || 'unknown';
+  } catch {
+    return 'unknown';
   }
 };
 
+// Solicita a localização SOMENTE por ação da pessoa (ou silenciosamente quando a permissão já foi concedida).
+// Em caso de falha não consulta o Firestore em uma região padrão.
 const requestLocation = async () => {
+  if (locationState.value === 'requesting') return;
   locationState.value = 'requesting';
+  gpsErrorMessage.value = '';
   try {
     const coords = await requestUserLocation();
     initialCenter.value = coords;
     currentMapCenter.value = coords;
     locationState.value = 'granted';
+    gpsPanelMode.value = null;
     verifyUserGpsInBrazil(coords);
     verifyMapCenterInBrazil(coords, true);
-    await loadIncidents('nearby', coords);
+    await loadIncidentsIfNotCovered(coords);
   } catch (err) {
-    console.warn('[multei] Permissão de geolocalização recusada ou indisponível:', err);
-    locationState.value = 'denied';
-    verifyMapCenterInBrazil(currentMapCenter.value || initialCenter.value, true);
-    await loadIncidents('nearby', currentMapCenter.value || initialCenter.value, mapBounds.value);
+    console.warn('[multei] Permissão de geolocalização recusada ou indisponível:', err?.message || err);
+    const isDenied = Number(err?.code) === 1 || (await queryGeoPermissionState()) === 'denied';
+    if (isDenied) {
+      locationState.value = 'denied';
+      gpsPanelMode.value = 'denied';
+    } else {
+      locationState.value = 'unavailable';
+      gpsPanelMode.value = 'prompt';
+      gpsErrorMessage.value = GPS_UNAVAILABLE_MSG;
+    }
   }
 };
 
@@ -1322,7 +1688,53 @@ const handleGpsActivateClick = async () => {
   if (locationState.value === 'granted' || locationState.value === 'requesting') {
     return;
   }
+  if (locationState.value === 'denied') {
+    const state = await queryGeoPermissionState();
+    if (state === 'denied') {
+      // O navegador não mostra o pedido de novo: exibe/oculta as instruções para liberar
+      gpsPanelMode.value = gpsPanelMode.value === 'denied' ? null : 'denied';
+      return;
+    }
+  }
   await requestLocation();
+};
+
+const retryGpsAfterDenied = async () => {
+  if (isRetryingGps.value) return;
+  isRetryingGps.value = true;
+  gpsErrorMessage.value = '';
+  try {
+    const state = await queryGeoPermissionState();
+    if (state === 'denied') {
+      gpsErrorMessage.value = 'A localização ainda está bloqueada no navegador. Siga os passos acima e tente novamente.';
+      return;
+    }
+    await requestLocation();
+  } finally {
+    isRetryingGps.value = false;
+  }
+};
+
+const handleMapLocationError = ({ code } = {}) => {
+  if (Number(code) === 1) {
+    locationState.value = 'denied';
+    gpsPanelMode.value = 'denied';
+  } else {
+    gpsPanelMode.value = 'prompt';
+    gpsErrorMessage.value = GPS_UNAVAILABLE_MSG;
+  }
+};
+
+const dismissGpsPanel = () => {
+  gpsPanelMode.value = null;
+  gpsErrorMessage.value = '';
+};
+
+const focusAddressSearch = () => {
+  dismissGpsPanel();
+  requestAnimationFrame(() => {
+    searchInputRef.value?.focus?.();
+  });
 };
 
 let geoPermissionStatus = null;
@@ -1332,6 +1744,10 @@ const handleGeoPermissionChange = () => {
     locationState.value = 'denied';
   } else if (geoPermissionStatus.state === 'prompt') {
     locationState.value = 'idle';
+    if (gpsPanelMode.value === 'denied') {
+      gpsPanelMode.value = 'prompt';
+      gpsErrorMessage.value = '';
+    }
   } else if (geoPermissionStatus.state === 'granted') {
     requestLocation();
   }
@@ -1364,10 +1780,43 @@ const fullscreenPageStyle = computed(() => {
   };
 });
 
+// Reserva antecipada do espaço do anúncio âncora (anti-clique acidental):
+// com consentimento total, os botões já nascem ACIMA da área onde o anúncio vai aparecer.
+// Quando o anúncio é medido, passa a valer a altura real; se ele não aparecer em até 6s,
+// a reserva é liberada e os botões DESCEM (sentido seguro: o toque cai no mapa, não no anúncio).
+const AD_RESERVE_MOBILE_PX = 100;
+const AD_RESERVE_DESKTOP_PX = 120;
+const AD_RESERVE_MAX_WAIT_MS = 6000;
+const adReservePx = ref(0);
+let adReserveTimer = null;
+
+const releaseAdSpaceReservation = () => {
+  if (adReserveTimer) {
+    clearTimeout(adReserveTimer);
+    adReserveTimer = null;
+  }
+  adReservePx.value = 0;
+};
+
+const startAdSpaceReservation = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (window.self !== window.top) return;
+  } catch {
+    return;
+  }
+  if (getMulteiConsent() !== 'all') return;
+  adReservePx.value = window.innerWidth < 768 ? AD_RESERVE_MOBILE_PX : AD_RESERVE_DESKTOP_PX;
+  if (adReserveTimer) clearTimeout(adReserveTimer);
+  adReserveTimer = setTimeout(releaseAdSpaceReservation, AD_RESERVE_MAX_WAIT_MS);
+};
+
+const effectiveBottomOffset = computed(() => Math.max(bottomAdOffset.value, adReservePx.value));
+
 const bottomActionContainerStyle = computed(() => {
-  if (bottomAdOffset.value <= 0) return undefined;
+  if (effectiveBottomOffset.value <= 0) return undefined;
   return {
-    paddingBottom: `calc(${bottomAdOffset.value + 12}px + env(safe-area-inset-bottom, 0px))`
+    paddingBottom: `calc(${effectiveBottomOffset.value + 12}px + env(safe-area-inset-bottom, 0px))`
   };
 });
 
@@ -1577,6 +2026,10 @@ const updateBottomAdOffset = () => {
   if (bottomAdOffset.value !== nextOffset) {
     bottomAdOffset.value = nextOffset;
   }
+  // Anúncio real medido: a reserva antecipada deixa de ser necessária
+  if (nextOffset > 0 && adReservePx.value > 0) {
+    releaseAdSpaceReservation();
+  }
 };
 
 const scheduleAdOffsetChecks = () => {
@@ -1646,6 +2099,7 @@ const cleanupBottomAdObserver = () => {
   while (adFollowUpTimers.length) {
     clearTimeout(adFollowUpTimers.pop());
   }
+  releaseAdSpaceReservation();
 };
 
 onMounted(async () => {
@@ -1660,6 +2114,7 @@ onMounted(async () => {
     if (!savedConsent) {
       isConsentVisible.value = true;
     } else if (savedConsent === 'all') {
+      startAdSpaceReservation();
       enableNonEssentialCookies(false);
     } else if (savedConsent === 'essentials') {
       disableNonEssentialCookies();
@@ -1769,7 +2224,23 @@ onMounted(async () => {
     return;
   }
 
-  await requestLocation();
+  // Pré-permissão: o pedido nativo de localização NÃO é disparado ao abrir a página.
+  // - permissão já concedida: localiza silenciosamente (sem pop-up do navegador);
+  // - bloqueada: mostra instruções para liberar;
+  // - ainda não decidida: mostra um card explicando o motivo, com "Usar minha localização" ou "Buscar um endereço".
+  if (isFirebaseMockEnabled()) {
+    await requestLocation();
+    return;
+  }
+  const permissionState = await queryGeoPermissionState();
+  if (permissionState === 'granted') {
+    await requestLocation();
+  } else if (permissionState === 'denied') {
+    locationState.value = 'denied';
+    gpsPanelMode.value = 'denied';
+  } else {
+    gpsPanelMode.value = 'prompt';
+  }
 });
 
   let unsubscribeMockLiveSync = null;
@@ -1782,6 +2253,7 @@ onMounted(async () => {
     }
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
     if (boundsFetchDebounceTimer) clearTimeout(boundsFetchDebounceTimer);
+    clearAutoRefreshTimer();
     if (mapCenterCountryTimer) clearTimeout(mapCenterCountryTimer);
     if (typeof document !== 'undefined') {
       document.removeEventListener('mousedown', handleDocumentClick);
@@ -2065,7 +2537,7 @@ onMounted(async () => {
   border: none;
   border-radius: 9999px;
   padding: 0.36rem 0.85rem;
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   cursor: pointer;
   flex-shrink: 0;
@@ -2143,7 +2615,7 @@ onMounted(async () => {
 }
 
 .suggestion-sublabel {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   color: #64748b;
   white-space: nowrap;
   overflow: hidden;
@@ -2183,38 +2655,67 @@ onMounted(async () => {
   position: relative;
   display: inline-flex;
   align-items: center;
-}
-
-.incident-type-select {
-  appearance: none;
-  -webkit-appearance: none;
-  background-color: #ffffff;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.75rem center;
-  background-size: 14px;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0.45rem 0.9rem;
+  background: #ffffff;
   color: #0f172a;
-  font-family: inherit;
   font-weight: 700;
   font-size: 0.85rem;
-  padding: 0.55rem 2.1rem 0.55rem 0.95rem;
   border-radius: 9999px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-  cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.incident-type-select:hover {
-  background-color: #f8fafc;
+.incident-type-filter-wrapper:hover {
   border-color: var(--primary, #86007D);
   color: var(--primary, #86007D);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
 }
 
-.incident-type-select:focus-visible {
-  outline: 2px solid var(--primary, #86007D);
+.incident-type-filter-wrapper:focus-within {
+  outline: 3px solid var(--primary, #86007D);
   outline-offset: 2px;
+}
+
+.incident-type-filter-wrapper.is-filter-active {
+  border-color: var(--primary, #86007D);
+  color: var(--primary, #86007D);
+}
+
+.filter-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.filter-current-label {
+  white-space: nowrap;
+}
+
+.filter-active-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #dc2626;
+  border: 2px solid #ffffff;
+}
+
+/* <select> nativo transparente por cima do chip: abre o seletor do sistema e mantém o nome acessível */
+.incident-type-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 16px; /* evita zoom automático no iOS ao focar */
+  border: none;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .glass-panel {
@@ -2295,7 +2796,7 @@ onMounted(async () => {
 }
 
 .badge-status {
-  font-size: 0.76rem;
+  font-size: 0.8125rem;
   color: var(--text-muted, #475466);
   background: rgba(0, 0, 0, 0.05);
   padding: 0.18rem 0.55rem;
@@ -2338,11 +2839,10 @@ onMounted(async () => {
 }
 
 .btn-floating-refresh {
-  position: absolute;
-  top: 72px;
-  left: 50%;
-  transform: translateX(-50%);
+  position: relative;
   z-index: 30;
+  pointer-events: auto;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -2361,7 +2861,7 @@ onMounted(async () => {
 .btn-floating-refresh:hover {
   background: var(--primary, #86007D);
   color: #ffffff;
-  transform: translateX(-50%) translateY(-1px);
+  transform: translateY(-1px);
   box-shadow: 0 8px 22px rgba(134, 0, 125, 0.35);
 }
 
@@ -2558,7 +3058,7 @@ onMounted(async () => {
   border-radius: 9999px;
   background: rgba(134, 0, 125, 0.1);
   color: var(--primary, #86007D);
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -2864,31 +3364,45 @@ onMounted(async () => {
     max-width: 100%;
     flex: 1 1 100%;
   }
+  /* Topo compacto no celular: Voltar e Filtro viram botões de ícone (44px) com nome acessível */
   .btn-back-home {
-    padding: 0.36rem 0.52rem;
-    font-size: 0.72rem;
-    gap: 0.2rem;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
     flex-shrink: 0;
+  }
+  .back-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
     white-space: nowrap;
+    border: 0;
   }
   .back-icon {
-    width: 14px;
-    height: 14px;
+    width: 18px;
+    height: 18px;
   }
   .incident-type-filter-wrapper {
-    flex: 1 1 auto;
-    min-width: 0;
-    max-width: 142px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    flex-shrink: 0;
   }
-  .incident-type-select {
-    width: 100%;
-    padding: 0.36rem 1.25rem 0.36rem 0.5rem;
-    font-size: 0.72rem;
-    background-position: right 0.38rem center;
-    background-size: 11px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .filter-current-label {
+    display: none;
+  }
+  .filter-icon {
+    width: 18px;
+    height: 18px;
+  }
+  .top-bar-pills.glass-panel {
+    margin-left: auto;
   }
   .top-bar-pills.glass-panel {
     padding: 0.2rem 0.3rem;
@@ -2897,12 +3411,9 @@ onMounted(async () => {
     flex-shrink: 0;
   }
   .badge-status {
-    font-size: 0.68rem;
+    font-size: 0.8125rem;
     padding: 0.2rem 0.42rem;
     white-space: nowrap;
-  }
-  .btn-floating-refresh {
-    top: 96px;
   }
   .bottom-action-zone {
     padding: 8px 16px calc(20px + env(safe-area-inset-bottom, 0px));
@@ -2916,10 +3427,10 @@ onMounted(async () => {
     justify-content: center;
     gap: 0.65rem;
   }
-  .btn-floating-report,
+  .report-btn-wrap,
   .help-menu-wrapper {
     flex: 1;
-    max-width: 140px;
+    max-width: 160px;
   }
   .btn-floating-report,
   .btn-floating-help {
@@ -2934,6 +3445,235 @@ onMounted(async () => {
   .report-summary-body {
     padding: 0 1rem 1rem 1rem;
   }
+}
+
+/* Avisos do mapa em fluxo logo abaixo da busca */
+.map-status-stack {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.map-status-pill {
+  margin: 0;
+  pointer-events: none;
+  background: rgba(15, 23, 42, 0.88);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  text-align: center;
+}
+
+.gps-panel-card {
+  position: relative;
+  pointer-events: auto;
+  width: 100%;
+  max-width: 440px;
+  box-sizing: border-box;
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 18px;
+  padding: 1rem 1.1rem;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.28);
+  border: 1px solid rgba(134, 0, 125, 0.18);
+}
+
+.gps-panel-card :deep(.gps-denied-help) {
+  padding-right: 2.25rem;
+}
+
+.gps-panel-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #334155;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.gps-panel-close:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.gps-panel-title {
+  margin: 0 2.25rem 0.35rem 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.gps-panel-desc {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #334155;
+}
+
+.gps-panel-error {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.gps-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.gps-panel-btn-primary,
+.gps-panel-btn-secondary {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.gps-panel-btn-primary {
+  background: var(--primary, #86007D);
+  color: #ffffff;
+  border: none;
+}
+
+.gps-panel-btn-primary:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.gps-panel-btn-secondary {
+  background: #ffffff;
+  color: var(--primary, #86007D);
+  border: 1.5px solid var(--primary, #86007D);
+}
+
+.gps-panel-close:focus-visible,
+.gps-panel-btn-primary:focus-visible,
+.gps-panel-btn-secondary:focus-visible,
+.btn-floating-refresh:focus-visible,
+.btn-floating-report:focus-visible,
+.btn-floating-help:focus-visible,
+.help-menu-item:focus-visible,
+.btn-back-home:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+/* Botão Registrar + aviso "Disponível somente no Brasil" */
+.report-btn-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.report-btn-wrap .btn-floating-report {
+  width: 100%;
+  justify-content: center;
+}
+
+.btn-floating-report.is-unavailable {
+  filter: grayscale(0.85);
+  opacity: 0.7;
+  cursor: not-allowed;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.25);
+}
+
+.btn-floating-report.is-unavailable:hover {
+  transform: none;
+}
+
+.report-outside-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  white-space: nowrap;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  padding: 0.45rem 0.75rem;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+.report-outside-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #0f172a;
+}
+
+.help-menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* Guia "O que posso registrar?" dividido por categoria */
+.what-to-report-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.what-to-report-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.what-to-report-section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  font-size: 1.05rem;
+  background: rgba(134, 0, 125, 0.1);
+}
+
+.what-to-report-section-title.is-urban .what-to-report-section-icon {
+  background: rgba(217, 119, 6, 0.15);
+}
+
+.what-to-report-section-title.is-faq .what-to-report-section-icon {
+  background: rgba(3, 105, 161, 0.12);
+}
+
+.what-to-report-section-note {
+  margin: 0;
 }
 
 /* Barra inferior de consentimento de cookies do Multei (Essenciais vs Aceitar Todos) */
@@ -3082,7 +3822,7 @@ onMounted(async () => {
     gap: 0.7rem;
   }
   .multei-consent-text {
-    font-size: 0.79rem;
+    font-size: 0.8125rem;
     line-height: 1.45;
   }
   .multei-consent-actions {

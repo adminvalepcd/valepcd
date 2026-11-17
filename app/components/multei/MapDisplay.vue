@@ -95,7 +95,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['markerClick', 'pinLocationChange', 'boundsChange', 'userLocationFound', 'radiusLimitReached']);
+const emit = defineEmits(['markerClick', 'pinLocationChange', 'boundsChange', 'userLocationFound', 'userLocationError', 'radiusLimitReached']);
 
 const config = useRuntimeConfig();
 const mapsApiKey = config.public.googleMapsApiKey || 'AIzaSyBE9MtDA7cziFHANDknpjvgP5jkAvXyguU';
@@ -337,6 +337,7 @@ const emitVisibleBounds = () => {
       south: sw.lat(),
       east: ne.lng(),
       west: sw.lng(),
+      zoom: map.value.getZoom() ?? null,
       center: center ? { latitude: center.lat(), longitude: center.lng() } : null
     });
   }
@@ -501,7 +502,9 @@ const createMyLocationControl = (mapInstance, googleMaps) => {
     } catch (err) {
       svg.style.transform = 'rotate(0deg)';
       svg.style.fill = '#dc2626';
-      console.warn('[MapDisplay] Não foi possível obter GPS pelo botão Minha Localização:', err);
+      console.warn('[MapDisplay] Não foi possível obter GPS pelo botão Minha Localização:', err?.message || err);
+      // Permite que a página exiba instruções de como liberar a localização (ex.: permissão negada)
+      emit('userLocationError', { code: Number(err?.code) || 0 });
     }
   });
 
@@ -542,7 +545,8 @@ const initMap = () => {
     createMyLocationControl(map.value, googleMaps);
 
     const isDefaultSP = Math.abs(center.lat - (-23.55052)) < 0.0001 && Math.abs(center.lng - (-46.633308)) < 0.0001;
-    if (!isDefaultSP && !props.pinLocation) {
+    // Centros vindos de busca/link compartilhado/visão geral não representam a posição do usuário
+    if (!isDefaultSP && !props.pinLocation && !props.initialCenter?.isSearchResult) {
       updateUserLocationDot(center.lat, center.lng);
     }
 

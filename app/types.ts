@@ -72,6 +72,9 @@ export interface ReportedIncident {
   description?: string;
   ativo?: boolean;
   motivo_denuncia?: string;
+  /** Ocorrência reportada pela comunidade: segue no mapa com a foto oculta até a moderação. */
+  em_revisao_denuncia?: boolean;
+  data_revisao_denuncia?: string;
   possivel_credencial?: boolean;
   resolvido_em_validacao?: boolean;
   status_resolucao?: string;

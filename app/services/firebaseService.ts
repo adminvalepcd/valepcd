@@ -142,6 +142,158 @@ export type ReportReviewDecision =
   | 'indefinido'
   | 'duplicidade';
 
+/**
+ * Campo gravado em `ocorrencias/{id}` (e espelhado em `reportadas/{id}`) quando a comunidade
+ * reporta uma ocorrência publicada. A ocorrência continua ativa no mapa, mas sua foto fica oculta
+ * até a moderação decidir (improcedente → limpa o flag; procedente → inativa a ocorrência).
+ */
+export const REPORT_REVIEW_FLAG_FIELD = 'em_revisao_denuncia' as const;
+export const REPORT_REVIEW_DATE_FIELD = 'data_revisao_denuncia' as const;
+
+export type ReportReasonCode =
+  | 'rosto_placa'
+  | 'sem_problema'
+  | 'credencial'
+  | 'local_errado'
+  | 'duplicada'
+  | 'outro';
+
+/** Allow-list de motivos predefinidos do fluxo "Reportar ocorrência". */
+export const REPORT_REASON_PRESETS: ReadonlyArray<{ code: ReportReasonCode; label: string }> = [
+  { code: 'rosto_placa', label: 'Meu rosto ou uma placa aparece sem desfoque' },
+  { code: 'sem_problema', label: 'Não há infração ou problema na foto' },
+  { code: 'credencial', label: 'Veículo com credencial visível' },
+  { code: 'local_errado', label: 'Local ou endereço errado' },
+  { code: 'duplicada', label: 'Ocorrência duplicada' },
+  { code: 'outro', label: 'Outro motivo' }
+];
+
+export const REPORT_DETAILS_MAX_LENGTH = 500;
+export const REPORT_OTHER_DETAILS_MIN_LENGTH = 10;
+const REPORT_REASON_MAX_LENGTH = 600;
+
+function sanitizeReportText(raw: unknown, maxLength: number): string {
+  return String(raw ?? '')
+    // Remove caracteres de controle (exceto quebra de linha) e normaliza espaços
+    .replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, maxLength);
+}
+
+/**
+ * Compõe e valida o texto do motivo enviado ao backend a partir do código predefinido
+ * (allow-list) e dos detalhes opcionais (obrigatórios apenas para "Outro motivo").
+ * Lança erro com `code = 'INVALID_REPORT_REASON'` quando inválido.
+ */
+export function buildReportReason(code: unknown, details?: unknown): string {
+  const preset = REPORT_REASON_PRESETS.find((p) => p.code === code);
+  const cleanDetails = sanitizeReportText(details, REPORT_DETAILS_MAX_LENGTH);
+  if (!preset) {
+    const err = new Error('Selecione um motivo válido.') as Error & { code?: string };
+    err.code = 'INVALID_REPORT_REASON';
+    throw err;
+  }
+  if (preset.code === 'outro' && cleanDetails.length < REPORT_OTHER_DETAILS_MIN_LENGTH) {
+    const err = new Error('Descreva o motivo com pelo menos 10 caracteres.') as Error & { code?: string };
+    err.code = 'INVALID_REPORT_REASON';
+    throw err;
+  }
+  return cleanDetails ? `${preset.label}: ${cleanDetails}` : preset.label;
+}
+
+/**
+ * Valida um motivo já composto: precisa começar por um dos rótulos da allow-list
+ * e respeitar o tamanho máximo. Retorna o texto saneado ou string vazia se inválido.
+ */
+export function validateReportReason(raw: unknown): string {
+  const clean = sanitizeReportText(raw, REPORT_REASON_MAX_LENGTH);
+  if (!clean) return '';
+  const preset = REPORT_REASON_PRESETS.find(
+    (p) => clean === p.label || clean.startsWith(`${p.label}: `)
+  );
+  if (!preset) return '';
+  if (preset.code === 'outro') {
+    const details = clean.slice(preset.label.length + 2).trim();
+    if (details.length < REPORT_OTHER_DETAILS_MIN_LENGTH) return '';
+  }
+  return clean;
+}
+
+/** Indica se um documento/objeto de ocorrência está "Em revisão de denúncia". */
+export function isIncidentUnderReportReview(data?: Record<string, any> | null): boolean {
+  if (!data) return false;
+  const raw = data[REPORT_REVIEW_FLAG_FIELD];
+  return raw === true || String(raw).toLowerCase() === 'true';
+}
+
+/**
+ * Remove as URLs de foto de uma ocorrência em revisão de denúncia antes de entregá-la
+ * à UI pública / caches locais.
+ */
+export function stripPhotosFromFlaggedIncident<T extends Record<string, any>>(inc: T): T {
+  return {
+    ...inc,
+    fotoUrl: '',
+    fotoUrl2: '',
+    fotosUrls: [],
+    maskedImageUrl: ''
+  };
+}
+
+const REPORT_RATE_LIMIT_STORAGE_KEY = 'multei_report_log_v1';
+const REPORT_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutos
+const REPORT_RATE_LIMIT_MAX = 5; // até 5 reports por janela
+const REPORT_SAME_ID_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 1 report por ocorrência a cada 24 h
+
+/**
+ * Limite simples por navegador para reduzir abuso do fluxo de report (que agora oculta a foto
+ * sem exigir anúncio recompensado).
+ * TODO(security): este limite é apenas client-side e pode ser contornado; aplicar também regras
+ * do Firestore (Security Rules) / backend para limitar escrita em `em_revisao_denuncia`.
+ */
+function readReportRateLimitLog(now: number): Array<{ id: string; at: number }> {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(REPORT_RATE_LIMIT_STORAGE_KEY) || '[]');
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((e) => e && typeof e.id === 'string' && typeof e.at === 'number')
+        .filter((e) => now - e.at < REPORT_SAME_ID_COOLDOWN_MS);
+    }
+  } catch {}
+  return [];
+}
+
+function assertReportAllowedByRateLimit(id: string): void {
+  if (typeof window === 'undefined') return;
+  const now = Date.now();
+  const log = readReportRateLimitLog(now);
+
+  if (log.some((e) => e.id === id)) {
+    const err = new Error('Você já reportou esta ocorrência recentemente.') as Error & { code?: string };
+    err.code = 'ALREADY_REPORTED';
+    throw err;
+  }
+  const recent = log.filter((e) => now - e.at < REPORT_RATE_LIMIT_WINDOW_MS);
+  if (recent.length >= REPORT_RATE_LIMIT_MAX) {
+    const err = new Error('Muitos reportes em pouco tempo. Tente novamente mais tarde.') as Error & { code?: string };
+    err.code = 'REPORT_RATE_LIMITED';
+    throw err;
+  }
+}
+
+function registerReportForRateLimit(id: string): void {
+  if (typeof window === 'undefined') return;
+  const now = Date.now();
+  const log = readReportRateLimitLog(now);
+  log.push({ id, at: now });
+  try {
+    localStorage.setItem(REPORT_RATE_LIMIT_STORAGE_KEY, JSON.stringify(log.slice(-50)));
+  } catch {}
+}
+
 export interface ReportedIncidentPanelItem {
   id: string;
   ocorrenciaId: string;
@@ -165,6 +317,9 @@ export interface ReportedIncidentPanelItem {
   ativo: boolean;
   motivo_denuncia: string;
   motivo_report: string;
+  /** `true` enquanto a ocorrência está no mapa com a foto oculta aguardando moderação. */
+  em_revisao_denuncia?: boolean;
+  data_revisao_denuncia?: string;
   total_reports: number;
   outras_revisoes_solicitadas: boolean;
   historico_reports: ReportHistoryEntry[];
@@ -343,6 +498,9 @@ function mapDocToIncident(docId: string, data: Record<string, any>): ReportedInc
 
   if (!isAtivo) return null;
 
+  // Ocorrências reportadas permanecem no mapa, mas sem expor as URLs de foto até a moderação
+  const isUnderReportReview = isIncidentUnderReportReview(data);
+
   const ruaVal = data.rua ? String(data.rua).trim() : '';
   const bairroVal = data.bairro ? String(data.bairro).trim() : '';
   const cidadeVal = data.cidade ? String(data.cidade).trim() : '';
@@ -395,12 +553,15 @@ function mapDocToIncident(docId: string, data: Record<string, any>): ReportedInc
     estado: estadoVal,
     classificacao: classificacaoVal,
     verificacao: verificacaoVal,
-    fotoUrl,
-    fotoUrl2,
-    fotosUrls,
-    maskedImageUrl: fotoUrl,
+    fotoUrl: isUnderReportReview ? '' : fotoUrl,
+    fotoUrl2: isUnderReportReview ? '' : fotoUrl2,
+    fotosUrls: isUnderReportReview ? [] : fotosUrls,
+    maskedImageUrl: isUnderReportReview ? '' : fotoUrl,
     description: data.description || (descParts.length > 0 ? descParts.join(' - ') : 'Infração registrada'),
     ativo: true,
+    em_revisao_denuncia: isUnderReportReview,
+    data_revisao_denuncia:
+      isUnderReportReview && data.data_revisao_denuncia ? String(data.data_revisao_denuncia) : '',
     motivo_denuncia: data.motivo_denuncia ? String(data.motivo_denuncia) : '',
     resolvido_em_validacao: isResolvido
       ? false
@@ -427,7 +588,9 @@ function mapDocToIncident(docId: string, data: Record<string, any>): ReportedInc
   };
 }
 
-const REGION_CACHE_STORAGE_KEY = 'multei_region_cache_v1';
+// v2: objetos passaram a ter `em_revisao_denuncia` (e fotos removidas quando sinalizados)
+const REGION_CACHE_STORAGE_KEY = 'multei_region_cache_v2';
+const LEGACY_REGION_CACHE_STORAGE_KEYS = ['multei_region_cache_v1'];
 const STATS_CACHE_STORAGE_KEY = 'multei_stats_cache_v1';
 const REGION_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutos de cache por região
 const STATS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutos de cache para fallback de estatísticas
@@ -449,6 +612,11 @@ function loadRegionCacheEntries(): CachedRegionEntry[] {
     return inMemoryRegionCache;
   }
   if (typeof window === 'undefined') return [];
+  try {
+    for (const legacyKey of LEGACY_REGION_CACHE_STORAGE_KEYS) {
+      localStorage.removeItem(legacyKey);
+    }
+  } catch {}
   try {
     const raw = localStorage.getItem(REGION_CACHE_STORAGE_KEY);
     if (raw) {
@@ -1259,26 +1427,45 @@ export async function saveIncidentToFirebase(
 
 /**
  * Reporta uma ocorrência no Firestore consolidando na mesma entrada da coleção `reportadas` (`reportadas/{ocorrenciaId}`).
- * - Se for o 1º report (ainda não validada como improcedente pelo admin), marca `ativo: false` em `ocorrencias` e atualiza as estatísticas.
- * - Se a ocorrência já foi validada como `improcedente` pelo admin (Opção A), mantém `ativo: true` no mapa,
- *   e apenas incrementa `total_reports` (2ª, 3ª vez reportada) e `historico_reports` no mesmo documento em `reportadas`.
+ * - A ocorrência NÃO é mais desativada: permanece `ativo: true` no mapa e recebe `em_revisao_denuncia: true`
+ *   (+ `data_revisao_denuncia`), o que faz a foto ficar oculta para o público até a moderação decidir.
+ * - Se a ocorrência já foi validada como `improcedente` pelo admin (Opção A), não volta a ocultar a foto:
+ *   apenas incrementa `total_reports` (2ª, 3ª vez reportada) e `historico_reports` no mesmo documento em `reportadas`.
  */
 export async function reportIncidentInFirebase(
   id: string,
   reason: string,
   incidentData?: Partial<ReportedIncident>
-): Promise<{ success: boolean; deactivated: boolean; totalReports: number }> {
-  if (isFirebaseMockEnabled()) {
-    return mockReportIncidentInFirebase(id, reason, incidentData);
-  }
+): Promise<{
+  success: boolean;
+  deactivated: boolean;
+  flagged: boolean;
+  totalReports: number;
+  reviewFlaggedAt: string;
+  reason: string;
+}> {
   const cleanId = (id || '').trim();
-  if (!cleanId) {
-    throw new Error('ID da ocorrência ausente para denúncia.');
+  if (!cleanId || cleanId.length > 200 || cleanId.includes('/')) {
+    throw new Error('ID da ocorrência inválido para denúncia.');
   }
 
-  const cleanReason = (reason || '').trim();
+  // Validação por allow-list (motivo predefinido + detalhes com limite de tamanho)
+  const cleanReason = validateReportReason(reason);
   if (!cleanReason) {
-    throw new Error('Motivo da denúncia ausente.');
+    const err = new Error('Motivo da denúncia inválido.') as Error & { code?: string };
+    err.code = 'INVALID_REPORT_REASON';
+    throw err;
+  }
+
+  assertReportAllowedByRateLimit(cleanId);
+
+  if (isFirebaseMockEnabled()) {
+    const mockRes = await mockReportIncidentInFirebase(cleanId, cleanReason, incidentData);
+    registerReportForRateLimit(cleanId);
+    if (mockRes.flagged) {
+      markIncidentUnderReportReviewInLocalCache(cleanId, mockRes.reviewFlaggedAt, cleanReason);
+    }
+    return mockRes;
   }
 
   const { db } = getFirebaseServices();
@@ -1286,7 +1473,6 @@ export async function reportIncidentInFirebase(
   let targetReportDocRef = doc(db, REPORTADAS_COLLECTION, cleanId);
 
   let wasActive = true;
-  let wasUrbana = incidentData?.natureza === 'urbana';
   let wasPossibleDuplicate = Boolean(incidentData?.possivel_duplicidade);
   let existingData: Record<string, any> = {};
   let existingReportData: Record<string, any> = {};
@@ -1300,7 +1486,6 @@ export async function reportIncidentInFirebase(
     if (ocorrenciaSnap.exists()) {
       existingData = ocorrenciaSnap.data() || {};
       wasActive = existingData.ativo !== false && String(existingData.ativo).toLowerCase() !== 'false';
-      wasUrbana = existingData.natureza === 'urbana';
       wasPossibleDuplicate = Boolean(
         existingData.possivel_duplicidade === true ||
           String(existingData.possivel_duplicidade).toLowerCase() === 'true'
@@ -1363,7 +1548,8 @@ export async function reportIncidentInFirebase(
     incidentData?.geohash ||
     (latitude && longitude ? geohashForLocation([latitude, longitude]) : '');
 
-  const shouldStayActiveOnMap = alreadyApprovedImprocedente;
+  // Opção A: se já foi validada como improcedente, apenas registra o novo report sem ocultar a foto novamente
+  const shouldFlagForReview = wasActive && !alreadyApprovedImprocedente;
 
   const resolvedFotoUrl =
     existingData.fotoUrl ||
@@ -1414,7 +1600,11 @@ export async function reportIncidentInFirebase(
             'Possível duplicidade'
         )
       : '',
-    ativo: shouldStayActiveOnMap,
+    ativo: wasActive,
+    [REPORT_REVIEW_FLAG_FIELD]: shouldFlagForReview,
+    [REPORT_REVIEW_DATE_FIELD]: shouldFlagForReview
+      ? reportedAtIso
+      : String(existingReportData[REPORT_REVIEW_DATE_FIELD] || ''),
     motivo_denuncia: cleanReason,
     motivo_report: cleanReason,
     data_report: existingReportData.data_report || reportedAtIso,
@@ -1429,46 +1619,17 @@ export async function reportIncidentInFirebase(
 
   await setDoc(targetReportDocRef, reportDocData, { merge: true });
 
-  if (!shouldStayActiveOnMap) {
-    removeIncidentFromLocalCache(cleanId);
-
+  if (shouldFlagForReview) {
+    // A ocorrência continua ativa no mapa (estatísticas inalteradas), mas com a foto oculta até a moderação
     await updateDoc(docRef, {
-      ativo: false,
+      [REPORT_REVIEW_FLAG_FIELD]: true,
+      [REPORT_REVIEW_DATE_FIELD]: reportedAtIso,
       motivo_denuncia: cleanReason
     });
-
-    if (wasActive && !wasPossibleDuplicate) {
-      adjustCachedStats({
-        totalGeralDelta: -1,
-        infracoesTransitoDelta: wasUrbana ? 0 : -1,
-        mobilidadeUrbanaDelta: wasUrbana ? -1 : 0,
-        resolvidosDelta: 0
-      });
-      void notifyMulteiLiveDelta(wasUrbana ? 'mobilidadeUrbana' : 'infracoesTransito', -1, {
-        cidade: String(reportDocData.cidade || ''),
-        estado: String(reportDocData.estado || ''),
-        bairro: String(reportDocData.bairro || ''),
-        rua: String(reportDocData.rua || ''),
-        natureza: String(reportDocData.natureza || ''),
-        ocorrenciaId: cleanId,
-        action: 'novo_report'
-      });
-      try {
-        const statsRef = doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID);
-        await setDoc(
-          statsRef,
-          {
-            totalGeral: increment(-1),
-            [wasUrbana ? 'mobilidadeUrbana' : 'infracoesTransito']: increment(-1),
-            updatedAt: reportedAtIso
-          },
-          { merge: true }
-        );
-      } catch (statsErr) {
-        console.warn('[firebaseService] Aviso ao decrementar estatísticas:', statsErr);
-      }
-    }
+    markIncidentUnderReportReviewInLocalCache(cleanId, reportedAtIso, cleanReason);
   }
+
+  registerReportForRateLimit(cleanId);
 
   void notifyMulteiLiveDelta('reportadas', 1, {
     cidade: String(reportDocData.cidade || ''),
@@ -1482,8 +1643,11 @@ export async function reportIncidentInFirebase(
 
   return {
     success: true,
-    deactivated: !shouldStayActiveOnMap,
-    totalReports
+    deactivated: false,
+    flagged: shouldFlagForReview,
+    totalReports,
+    reviewFlaggedAt: shouldFlagForReview ? reportedAtIso : '',
+    reason: cleanReason
   };
 }
 
@@ -2238,6 +2402,37 @@ function removeIncidentFromLocalCache(id: string) {
     const entries = loadRegionCacheEntries().map((entry) => ({
       ...entry,
       incidents: (entry.incidents || []).filter((inc) => inc.id !== id)
+    }));
+    saveRegionCacheEntries(entries);
+  } catch {}
+}
+
+/**
+ * Atualiza a ocorrência reportada nos caches locais (lista + regiões) marcando `em_revisao_denuncia`
+ * e removendo as URLs de foto, para que um fetch servido pelo cache não reverta o estado sinalizado.
+ */
+function markIncidentUnderReportReviewInLocalCache(ocorrenciaId: string, flaggedAtIso: string, reason: string) {
+  if (typeof window === 'undefined') return;
+  const patch = (item: ReportedIncident): ReportedIncident =>
+    item.id === ocorrenciaId
+      ? stripPhotosFromFlaggedIncident({
+          ...item,
+          ativo: true,
+          em_revisao_denuncia: true,
+          data_revisao_denuncia: flaggedAtIso,
+          motivo_denuncia: reason
+        })
+      : item;
+
+  try {
+    const cached = loadIncidentsFromLocalCache();
+    localStorage.setItem('multei_cached_incidents', JSON.stringify(cached.map(patch)));
+  } catch {}
+
+  try {
+    const entries = loadRegionCacheEntries().map((entry) => ({
+      ...entry,
+      incidents: (entry.incidents || []).map(patch)
     }));
     saveRegionCacheEntries(entries);
   } catch {}
@@ -3323,6 +3518,8 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
         ativo: Boolean(d.ativo === true || String(d.ativo).toLowerCase() === 'true'),
         motivo_denuncia: String(d.motivo_denuncia || d.motivo_report || ''),
         motivo_report: String(d.motivo_report || d.motivo_denuncia || ''),
+        em_revisao_denuncia: !isRevisada && isIncidentUnderReportReview(d),
+        data_revisao_denuncia: d.data_revisao_denuncia ? String(d.data_revisao_denuncia) : undefined,
         total_reports: totalReports,
         outras_revisoes_solicitadas: Boolean(d.outras_revisoes_solicitadas || totalReports > 1),
         historico_reports: rawHistory,
@@ -3399,6 +3596,9 @@ export async function fetchReportedIncidentsForPanel(): Promise<ReportedIncident
         existing.observacao_admin = d.observacao_admin
           ? String(d.observacao_admin)
           : existing.observacao_admin;
+      }
+      if (!isRevisada && isIncidentUnderReportReview(d)) {
+        existing.em_revisao_denuncia = true;
       }
       existing.legacyDocIds = Array.from(new Set([...(existing.legacyDocIds || []), docSnap.id]));
     }
@@ -3688,6 +3888,7 @@ export async function reviewReportedIncidentInFirebase(params: {
   const nowIso = new Date().toISOString();
 
   // 1. Atualiza o documento na coleção `ocorrencias`
+  // Qualquer decisão da moderação encerra o estado "Em revisão de denúncia" (foto volta a ser exibida se ativa)
   await setDoc(
     ocorrenciaRef,
     {
@@ -3696,6 +3897,7 @@ export async function reviewReportedIncidentInFirebase(params: {
       rotulo_duplicidade: targetRotuloDuplicidade,
       origem_duplicidade: targetOrigemDuplicidade,
       ...(clearDuplicityLink ? { duplicidade_de_id: '' } : {}),
+      [REPORT_REVIEW_FLAG_FIELD]: false,
       revisada_admin: true,
       resultado_revisao: decision,
       data_revisao: nowIso,
@@ -3713,6 +3915,7 @@ export async function reviewReportedIncidentInFirebase(params: {
     rotulo_duplicidade: targetRotuloDuplicidade,
     origem_duplicidade: targetOrigemDuplicidade,
     ...(clearDuplicityLink ? { duplicidade_de_id: '' } : {}),
+    [REPORT_REVIEW_FLAG_FIELD]: false,
     revisada: true,
     status_revisao: 'revisada',
     resultado_revisao: decision,
@@ -3744,6 +3947,7 @@ export async function reviewReportedIncidentInFirebase(params: {
   if (!targetAtivo) {
     removeIncidentFromLocalCache(ocorrenciaId);
   } else if (typeof window !== 'undefined') {
+    const restoredPhotos = [item.fotoUrl, item.fotoUrl2 || ''].filter(Boolean);
     const patchCacheItem = (inc: ReportedIncident): ReportedIncident =>
       inc.id === ocorrenciaId
         ? {
@@ -3751,7 +3955,18 @@ export async function reviewReportedIncidentInFirebase(params: {
             ativo: true,
             possivel_duplicidade: targetPossivelDuplicidade,
             rotulo_duplicidade: targetRotuloDuplicidade,
-            ...(clearDuplicityLink ? { duplicidade_de_id: '' } : {})
+            ...(clearDuplicityLink ? { duplicidade_de_id: '' } : {}),
+            em_revisao_denuncia: false,
+            data_revisao_denuncia: '',
+            // Restaura as fotos removidas do cache enquanto a ocorrência estava em revisão de denúncia
+            ...(inc.em_revisao_denuncia && restoredPhotos.length > 0
+              ? {
+                  fotoUrl: restoredPhotos[0],
+                  fotoUrl2: restoredPhotos[1] || '',
+                  fotosUrls: restoredPhotos,
+                  maskedImageUrl: restoredPhotos[0]
+                }
+              : {})
           }
         : inc;
 
@@ -3843,6 +4058,7 @@ export async function reviewReportedIncidentInFirebase(params: {
       ? undefined
       : item.duplicidade_original_fotoUrl,
     revisada: true,
+    em_revisao_denuncia: false,
     resultado_revisao: decision,
     data_revisao: nowIso,
     revisado_por: reviewerEmail,

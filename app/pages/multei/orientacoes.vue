@@ -15,7 +15,7 @@
     <!-- Cabeçalho da Página de Orientações Beta -->
     <header class="hero-header">
       <div class="badge-group">
-        <span class="badge-pill badge-beta">🧪 Versão Beta Experimental</span>
+        <span class="badge-pill badge-beta"><span aria-hidden="true">🧪</span> Versão Beta Experimental</span>
         <span class="badge-pill">Guia do Beta Tester</span>
       </div>
       <h1 class="page-title">
@@ -39,7 +39,7 @@
         O <strong>Multei</strong> é uma plataforma colaborativa e educativa do portal <strong>Vale PcD</strong> para mapeamento de uso irregular de vagas exclusivas para Pessoas com Deficiência. Nosso objetivo é gerar conscientização cidadã e dados estatísticos sobre acessibilidade urbana — <strong>sem expor dados pessoais</strong>.
       </p>
       <p class="card-text">
-        Toda imagem enviada passa por uma camada de visão computacional e Inteligência Artificial que <strong>detecta e desfoca automaticamente placas de veículos e rostos de pessoas</strong> antes de qualquer publicação no mapa. O envio é 100% anônimo.
+        Toda imagem enviada passa por uma camada de visão computacional e Inteligência Artificial que <strong>detecta e desfoca automaticamente placas de veículos e rostos de pessoas</strong> antes de a ocorrência aparecer no mapa. O envio é 100% anônimo.
       </p>
     </section>
 
@@ -55,33 +55,33 @@
 
       <!-- Destaque da Foto Ideal -->
       <div class="photo-tip-box">
-        <div class="photo-tip-badge">📸 Regra de Ouro da Fotografia</div>
+        <div class="photo-tip-badge"><span aria-hidden="true">📸</span> Regra de Ouro da Fotografia</div>
         <h3 class="photo-tip-title">O que deve aparecer na foto?</h3>
         <p class="photo-tip-desc">
           A melhor foto para análise da IA é aquela que mostra claramente <strong>o veículo estacionado sobre a vaga junto com a sinalização vertical (placa PcD) ou a pintura de acessibilidade no chão</strong>.
         </p>
         <div class="photo-comparison-grid">
           <div class="comparison-item is-good">
-            <div class="comparison-status">✅ Foto Ideal (Recomendada)</div>
+            <div class="comparison-status"><span aria-hidden="true">✅</span> Foto Ideal (Recomendada)</div>
             <p>
               Enquadra o carro ocupando a vaga <strong>e</strong> o símbolo internacional de acesso (no asfalto ou na placa vertical
               ao fundo).
-              Nas <strong>infrações de trânsito</strong>, você também pode incluir uma <strong>2ª foto complementar</strong> (botão
-              <strong>"➕ Adicionar outra"</strong>), especialmente <strong>quando a 1ª foto for tirada da traseira do
+              Nas ocorrências de <strong>infração de trânsito</strong>, você também pode incluir uma <strong>2ª foto complementar</strong> (botão
+              <strong>"<span aria-hidden="true">➕</span> Adicionar outra"</strong>), especialmente <strong>quando a 1ª foto for tirada da traseira do
                 veículo</strong> (exceto motos): tire a 2ª foto da <strong>frente mostrando o painel sem a credencial</strong> e com
-              a <strong>placa visível nas duas fotos (para conferência da IA)</strong> para dar mais credibilidade à denúncia.
+              a <strong>placa visível nas duas fotos (para conferência da IA)</strong> para dar mais credibilidade à ocorrência.
             </p>
           </div>
           <div class="comparison-item is-bad">
-            <div class="comparison-status">⚠️ Foto Difícil para a IA</div>
+            <div class="comparison-status"><span aria-hidden="true">⚠️</span> Foto Difícil para a IA</div>
             <p>Fotos muito fechadas apenas no para-choque/vidro, sem mostrar que o local é de fato uma vaga regulamentada para PcD.</p>
           </div>
         </div>
 <div class="second-photo-tip-card">
-  <div class="comparison-status">➕ Quando e como enviar a 2ª Foto (Infrações de Trânsito)?</div>
+  <div class="comparison-status"><span aria-hidden="true">➕</span> Quando e como enviar a 2ª foto (Infração de trânsito)?</div>
   <p>
     <strong>Quando deve ocorrer:</strong> Sempre que a 1ª foto mostrar apenas a <strong>traseira do carro</strong>
-    (exceto motos) ou quando você quiser complementar o registro com um segundo ângulo. Fotografar a dianteira mostrando
+    (exceto motos) ou quando você quiser complementar a ocorrência com um segundo ângulo. Fotografar a dianteira mostrando
     o para-brisa/painel sem a credencial PcD aumenta a credibilidade da ocorrência.
   </p>
   <p class="mt-2">
@@ -97,8 +97,8 @@
       <div class="steps-grid">
         <div class="step-card">
           <span class="step-number">1</span>
-          <h3 class="step-title">Toque em "+ Incluir"</h3>
-          <p class="step-text">Na tela do mapa, clique no botão flutuante roxo no canto inferior para iniciar um novo registro.</p>
+          <h3 class="step-title">Toque em "Registrar"</h3>
+          <p class="step-text">Na tela do mapa, toque no botão flutuante roxo "Registrar", no canto inferior, para registrar uma nova ocorrência. A localização (GPS) só é solicitada quando você escolhe — ao tocar em "Registrar" ou em "Ativar GPS" —, nunca automaticamente ao abrir a página.</p>
         </div>
 
         <div class="step-card">
@@ -110,13 +110,13 @@
         <div class="step-card">
           <span class="step-number">3</span>
           <h3 class="step-title">Análise e Anonimização</h3>
-          <p class="step-text">Aguarde alguns segundos enquanto a IA verifica a infração e aplica o desfoque (blur) em placas e rostos.</p>
+          <p class="step-text">Aguarde alguns segundos enquanto a IA analisa a ocorrência e aplica o desfoque (blur) em placas e rostos.</p>
         </div>
 
         <div class="step-card">
           <span class="step-number">4</span>
           <h3 class="step-title">Confirme o Local no Mapa</h3>
-          <p class="step-text">Verifique se o pino está no endereço correto (seu GPS preenche automaticamente) e conclua a publicação!</p>
+          <p class="step-text">Verifique se o pino está no endereço correto (se você autorizou o GPS, a localização é preenchida automaticamente) e conclua o registro da ocorrência!</p>
         </div>
       </div>
     </section>
@@ -136,10 +136,10 @@
           <strong>Sistema Experimental sujeito a falhas:</strong> Esta é uma versão <em>Beta</em>. A IA pode ocasionalmente recusar uma foto válida, demorar alguns segundos extras ou não identificar um ângulo complexo de primeira.
         </li>
         <li>
-          <strong>Cotas e Limites do Google Gemini:</strong> Utilizamos a API do Google Gemini para visão computacional. Para evitar sobrecarga e manter a ferramenta gratuita para a comunidade, há um limite de requisições por minuto e um intervalo de segurança (<em>cooldown</em>) após envios consecutivos.
+          <strong>Cotas e Limites do Google Gemini:</strong> Utilizamos a API do Google Gemini para visão computacional. Para evitar sobrecarga e manter a ferramenta gratuita para a comunidade, há um limite de requisições por minuto e um intervalo de segurança (<em>cooldown</em>) após envios consecutivos. Para ajudar a custear a análise, um breve anúncio recompensado pode ser exibido a cada 3 validações de foto pela IA — registrar uma única ocorrência com até 2 fotos nunca exibe anúncio.
         </li>
         <li>
-          <strong>Moderação Comunitária Ativa:</strong> Caso perceba que alguma foto no mapa não borrou adequadamente uma placa ou rosto, clique no pino da ocorrência e utilize o botão <strong>"🚩 Reportar Ocorrência"</strong> para remoção imediata.
+          <strong>Moderação Comunitária Ativa:</strong> Caso perceba que alguma foto no mapa não borrou adequadamente uma placa ou rosto, clique no pino da ocorrência e utilize o botão <strong>"<span aria-hidden="true">🚩</span> Reportar ocorrência"</strong>. A ocorrência continua no mapa, mas com a foto oculta e o selo <strong>"Em revisão de denúncia"</strong>, até que a moderação a restaure ou a remova.
         </li>
       </ul>
     </section>
@@ -147,7 +147,7 @@
     <!-- 4. Card de Feedback Anônimo -->
     <section class="feedback-cta-card" aria-labelledby="sec-feedback">
       <div class="feedback-content">
-        <span class="feedback-badge">💬 Sua opinião constrói o Multei</span>
+        <span class="feedback-badge"><span aria-hidden="true">💬</span> Sua opinião constrói o Multei</span>
         <h2 id="sec-feedback" class="feedback-title">Encontrou um bug ou tem uma sugestão?</h2>
         <p class="feedback-desc">
           Como Beta Tester, seu relato é fundamental! Conte para nós se a IA acertou na análise da sua foto, se o GPS funcionou bem no seu aparelho ou o que podemos melhorar. O formulário é rápido e <strong>100% anônimo</strong>.
@@ -159,7 +159,7 @@
             rel="noopener noreferrer"
             class="btn-feedback-form"
           >
-            <span>📝 Responder Formulário de Feedback Anônimo</span>
+            <span><span aria-hidden="true">📝</span> Responder Formulário de Feedback Anônimo</span>
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="external-icon" aria-hidden="true">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
               <polyline points="15 3 21 3 21 9"></polyline>

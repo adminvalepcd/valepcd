@@ -16,7 +16,8 @@
         <div class="modal-header">
           <div class="modal-header-title-group">
             <h2 id="incident-modal-title" class="modal-title">
-              {{ isIncidentResolved ? '✅ Problema Urbano Corrigido' : 'Detalhes da Ocorrência' }}
+              <template v-if="isIncidentResolved"><span aria-hidden="true">✅</span> Problema Urbano Corrigido</template>
+              <template v-else>Detalhes da Ocorrência</template>
             </h2>
           </div>
           <div class="modal-header-actions">
@@ -24,8 +25,8 @@
               <button
                 type="button"
                 class="btn-share-header"
-                :disabled="isSharingIncident || !currentPhoto"
-                aria-label="Baixar para compartilhar"
+                :disabled="!canShareIncident"
+                aria-label="Compartilhar ocorrência"
                 @click="handleShareIncident('header')"
               >
                 <svg
@@ -44,41 +45,43 @@
                 class="share-action-tooltip is-bottom-tooltip"
                 :class="{
                   'is-active': activeShareTarget === 'header' && Boolean(shareTooltipState),
-                  'is-success': activeShareTarget === 'header' && shareTooltipState === 'downloaded',
+                  'is-success': activeShareTarget === 'header' && (shareTooltipState === 'downloaded' || shareTooltipState === 'shared'),
                   'is-error': activeShareTarget === 'header' && shareTooltipState === 'error'
                 }"
                 role="status"
                 aria-live="polite"
               >
                 <template v-if="activeShareTarget === 'header' && shareTooltipState === 'generating'">Gerando imagem</template>
-                <template v-else-if="activeShareTarget === 'header' && shareTooltipState === 'downloaded'">✅ Imagem baixada!</template>
+                <template v-else-if="activeShareTarget === 'header' && shareTooltipState === 'downloaded'"><span aria-hidden="true">✅</span> Imagem baixada!</template>
+                <template v-else-if="activeShareTarget === 'header' && shareTooltipState === 'shared'"><span aria-hidden="true">✅</span> Imagem compartilhada!</template>
                 <template v-else-if="activeShareTarget === 'header' && shareTooltipState === 'error'">Erro ao gerar imagem</template>
-                <template v-else>Baixar para compartilhar</template>
+                <template v-else-if="isUnderReportReview">Compartilhamento indisponível durante a revisão</template>
+                <template v-else>Compartilhar ocorrência</template>
               </span>
             </div>
-            <button class="btn-close" @click="emit('close')" aria-label="Fechar">✕</button>
+            <button type="button" class="btn-close" @click="emit('close')" aria-label="Fechar">✕</button>
           </div>
         </div>
 
-        <!-- Barra de Paginação quando houver denúncias agrupadas neste endereço ou por possível duplicidade -->
+        <!-- Barra de Paginação quando houver ocorrências agrupadas neste endereço ou por possível duplicidade -->
         <div
           v-if="totalPages > 1"
           class="incident-pagination-bar"
           role="navigation"
-          aria-label="Paginação de denúncias agrupadas neste local"
+          aria-label="Paginação de ocorrências agrupadas neste local"
         >
           <button
             type="button"
             class="btn-page-nav"
             :disabled="currentPageIndex === 0"
-            aria-label="Denúncia anterior"
+            aria-label="Ocorrência anterior"
             @click="prevPage"
           >
-            ← Anterior
+            <span aria-hidden="true">←</span> Anterior
           </button>
 
           <div class="pagination-center-info">
-            <div class="pagination-pills" role="tablist" aria-label="Selecionar registro">
+            <div class="pagination-pills" role="tablist" aria-label="Selecionar ocorrência">
               <template v-for="entry in visiblePaginationEntries" :key="entry.key">
                 <span v-if="entry.type === 'ellipsis'" class="pagination-ellipsis" aria-hidden="true">…</span>
                 <button
@@ -98,7 +101,7 @@
               </template>
             </div>
             <span class="pagination-status-text">
-              Denúncia {{ currentPageIndex + 1 }} de {{ totalPages }}
+              Ocorrência {{ currentPageIndex + 1 }} de {{ totalPages }}
               <strong v-if="isCurrentDuplicate" class="tag-duplicate-rec">
                 • Possível duplicidade
               </strong>
@@ -112,10 +115,10 @@
             type="button"
             class="btn-page-nav"
             :disabled="currentPageIndex >= totalPages - 1"
-            aria-label="Próxima denúncia"
+            aria-label="Próxima ocorrência"
             @click="nextPage"
           >
-            Próxima →
+            Próxima <span aria-hidden="true">→</span>
           </button>
         </div>
 
@@ -125,25 +128,25 @@
             <!-- Coluna ANTES -->
             <div class="ba-card ba-card-before">
               <div class="ba-card-header ba-header-before">
-                <span class="ba-tag">🚧 ANTES • Denúncia</span>
+                <span class="ba-tag"><span aria-hidden="true">🚧</span> ANTES • Ocorrência</span>
               </div>
 
               <div class="ba-photo-stage">
                 <img
                   v-if="currentPhoto"
                   :src="currentPhoto"
-                  alt="Foto de antes: problema de acesso urbano reportado"
+                  alt="Foto de antes: problema de mobilidade urbana registrado"
                   class="ba-photo-img is-clickable"
                   title="Clique para ampliar a foto do Antes"
                   @click="openExpandedPhoto(currentPhoto)"
                 />
                 <div v-else class="image-empty-placeholder">
-                  <span>📷 Foto original indisponível</span>
+                  <span><span aria-hidden="true">📷</span> Foto original indisponível</span>
                 </div>
               </div>
 
               <div class="ba-date-highlight ba-date-before">
-                <span class="ba-date-label">📅 Data da denúncia</span>
+                <span class="ba-date-label"><span aria-hidden="true">📅</span> Data da ocorrência</span>
                 <strong class="ba-date-value">{{ formattedDate || 'Não informada' }}</strong>
               </div>
 
@@ -155,25 +158,25 @@
             <!-- Coluna DEPOIS -->
             <div class="ba-card ba-card-after">
               <div class="ba-card-header ba-header-after">
-                <span class="ba-tag">✅ DEPOIS • Resolução</span>
+                <span class="ba-tag"><span aria-hidden="true">✅</span> DEPOIS • Resolução</span>
               </div>
 
               <div class="ba-photo-stage">
                 <img
                   v-if="resolvedAfterPhoto"
                   :src="resolvedAfterPhoto"
-                  alt="Foto de depois: problema de acesso urbano corrigido"
+                  alt="Foto de depois: problema de mobilidade urbana corrigido"
                   class="ba-photo-img is-clickable"
                   title="Clique para ampliar a foto do Depois"
                   @click="openExpandedPhoto(resolvedAfterPhoto)"
                 />
                 <div v-else class="image-empty-placeholder">
-                  <span>📷 Foto da resolução indisponível</span>
+                  <span><span aria-hidden="true">📷</span> Foto da resolução indisponível</span>
                 </div>
               </div>
 
               <div class="ba-date-highlight ba-date-after">
-                <span class="ba-date-label">✅ Data da resolução</span>
+                <span class="ba-date-label"><span aria-hidden="true">✅</span> Data da resolução</span>
                 <strong class="ba-date-value">{{ formattedResolutionDate || 'Confirmada' }}</strong>
               </div>
 
@@ -185,13 +188,13 @@
 
           <div class="modal-info-list ba-location-box">
             <div class="info-row">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
               </svg>
               <div>
                 <p class="info-label">Localização:</p>
-                <p v-if="activeIncident.cidade" class="info-city">📍 {{ activeIncident.cidade }}{{ activeIncident.estado ? ` - ${activeIncident.estado}` : '' }}</p>
+                <p v-if="activeIncident.cidade" class="info-city"><span aria-hidden="true">📍</span> {{ activeIncident.cidade }}{{ activeIncident.estado ? ` - ${activeIncident.estado}` : '' }}</p>
                 <p v-if="displayAddress" class="info-address">{{ displayAddress }}</p>
               </div>
             </div>
@@ -201,50 +204,68 @@
         <!-- MODO PADRÃO (Ocorrência ainda não resolvida) -->
         <template v-else>
           <div class="modal-image-wrapper">
-            <div class="photo-stage" :class="{ 'is-loading': isLoadingPhoto }">
+            <div
+              class="photo-stage"
+              :class="{ 'is-loading': isLoadingPhoto && !isUnderReportReview, 'is-under-report-review': isUnderReportReview }"
+            >
+              <!-- Ocorrência em revisão de denúncia: a foto não é renderizada até a moderação -->
               <div
-                v-if="isLoadingPhoto"
-                class="image-loading-placeholder"
-                role="status"
-                aria-live="polite"
+                v-if="isUnderReportReview"
+                class="image-report-review-placeholder"
               >
-                <LoadingSpinner />
-                <span class="image-loading-text">Carregando foto...</span>
+                <span class="report-review-seal">
+                  <span aria-hidden="true">🚩</span>
+                  <span>Em revisão de denúncia</span>
+                </span>
+                <p class="report-review-placeholder-text">
+                  Foto oculta até a análise da moderação.
+                </p>
               </div>
 
-              <img 
-                v-if="currentPhoto && !hasPhotoLoadError"
-                ref="photoImgRef"
-                :src="currentPhoto" 
-                alt="Foto da infração com dados sensíveis ocultos" 
-                class="incident-image is-clickable"
-                :class="{ 'is-hidden-while-loading': isLoadingPhoto }"
-                title="Clique para ver em tamanho original"
-                @load="handlePhotoLoaded"
-                @error="handlePhotoError"
-                @click="!isLoadingPhoto && openExpandedPhoto(currentPhoto)"
-              />
+              <template v-else>
+                <div
+                  v-if="isLoadingPhoto"
+                  class="image-loading-placeholder"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <LoadingSpinner />
+                  <span class="image-loading-text">Carregando foto...</span>
+                </div>
 
-              <div v-else-if="!isLoadingPhoto" class="image-empty-placeholder">
-                <span>📷 Foto da infração indisponível</span>
-              </div>
+                <img 
+                  v-if="currentPhoto && !hasPhotoLoadError"
+                  ref="photoImgRef"
+                  :src="currentPhoto" 
+                  alt="Foto da ocorrência com dados sensíveis ocultos" 
+                  class="incident-image is-clickable"
+                  :class="{ 'is-hidden-while-loading': isLoadingPhoto }"
+                  title="Clique para ver em tamanho original"
+                  @load="handlePhotoLoaded"
+                  @error="handlePhotoError"
+                  @click="!isLoadingPhoto && openExpandedPhoto(currentPhoto)"
+                />
+
+                <div v-else-if="!isLoadingPhoto" class="image-empty-placeholder">
+                  <span><span aria-hidden="true">📷</span> Foto da ocorrência indisponível</span>
+                </div>
+              </template>
 
               <div
                 v-if="verificationBadge"
                 class="verification-photo-badge"
                 :class="`is-${verificationBadge.type}`"
-                :title="verificationBadge.label"
               >
                 <span class="verification-badge-icon" aria-hidden="true">{{ verificationBadge.icon }}</span>
                 <span class="verification-badge-text">{{ verificationBadge.label }}</span>
               </div>
 
               <button
-                v-if="incidentPhotosList.length > 1"
+                v-if="incidentPhotosList.length > 1 && !isUnderReportReview"
                 type="button"
                 class="btn-switch-photo-corner"
-                :aria-label="`Alternar foto (${currentPhotoIndex + 1} de ${incidentPhotosList.length})`"
-                :title="`Alternar entre as fotos da denúncia (${currentPhotoIndex + 1}/${incidentPhotosList.length})`"
+                :aria-label="`Foto ${currentPhotoIndex + 1}/${incidentPhotosList.length}: alternar foto`"
+                :title="`Alternar entre as fotos da ocorrência (${currentPhotoIndex + 1}/${incidentPhotosList.length})`"
                 @click.stop="toggleIncidentPhoto"
               >
                 <span aria-hidden="true">📷</span>
@@ -255,27 +276,28 @@
               <div
                 v-if="isCurrentDuplicate"
                 class="photo-duplicity-badge"
-                title="Possível duplicidade detectada por IA (mesmo veículo sob outro ângulo)"
               >
-                <span>⚠️ {{ activeIncident.rotulo_duplicidade || 'Possível duplicidade' }}</span>
+                <span><span aria-hidden="true">⚠️</span> {{ activeIncident.rotulo_duplicidade || 'Possível duplicidade' }}</span>
               </div>
 
               <div
-                v-if="isResolutionPending"
+                v-if="isResolutionPending && !isUnderReportReview"
                 class="photo-resolution-watermark"
-                aria-label="Em revisão de resolução"
               >
                 <span class="photo-resolution-watermark-stamp">Em revisão de resolução</span>
               </div>
             </div>
-            <p class="privacy-note">
+            <p v-if="isUnderReportReview" class="privacy-note">
+              Esta ocorrência foi reportada pela comunidade e está em revisão. Ela continua no mapa, mas a foto fica oculta até a decisão da moderação.
+            </p>
+            <p v-else class="privacy-note">
               Áreas sensíveis (placas e rostos) foram ocultadas automaticamente por IA. Se seu rosto apareceu, <button type="button" class="btn-link-report" @click="handleOpenReport">reporte a ocorrência</button>.
             </p>
           </div>
 
           <div class="modal-info-list">
             <div v-if="activeIncident.descricao" class="info-row">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
               </svg>
               <div>
@@ -285,7 +307,7 @@
             </div>
 
             <div class="info-row">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
               </svg>
               <div>
@@ -295,13 +317,13 @@
             </div>
             
             <div class="info-row">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="info-icon" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
               </svg>
               <div>
                 <p class="info-label">Localização:</p>
-                <p v-if="activeIncident.cidade" class="info-city">📍 {{ activeIncident.cidade }}{{ activeIncident.estado ? ` - ${activeIncident.estado}` : '' }}</p>
+                <p v-if="activeIncident.cidade" class="info-city"><span aria-hidden="true">📍</span> {{ activeIncident.cidade }}{{ activeIncident.estado ? ` - ${activeIncident.estado}` : '' }}</p>
                 <p v-if="displayAddress" class="info-address">{{ displayAddress }}</p>
               </div>
             </div>
@@ -310,7 +332,7 @@
 
         <!-- Visualização da foto em tamanho original acima do modal -->
         <div 
-          v-if="isPhotoExpanded && expandedPhotoUrl" 
+          v-if="isPhotoExpanded && expandedPhotoUrl && !isUnderReportReview" 
           class="photo-expanded-overlay" 
           title="Clique para fechar"
           @click.stop="isPhotoExpanded = false"
@@ -325,8 +347,8 @@
               v-if="incidentPhotosList.length > 1 && !isIncidentResolved"
               type="button"
               class="btn-switch-photo-corner"
-              :aria-label="`Alternar foto (${currentPhotoIndex + 1} de ${incidentPhotosList.length})`"
-              :title="`Alternar entre as fotos da denúncia (${currentPhotoIndex + 1}/${incidentPhotosList.length})`"
+              :aria-label="`Foto ${currentPhotoIndex + 1}/${incidentPhotosList.length}: alternar foto`"
+              :title="`Alternar entre as fotos da ocorrência (${currentPhotoIndex + 1}/${incidentPhotosList.length})`"
               @click.stop="toggleIncidentPhoto"
             >
               <span aria-hidden="true">📷</span>
@@ -336,7 +358,6 @@
             <div
               v-if="isResolutionPending && !isIncidentResolved"
               class="photo-resolution-watermark"
-              aria-label="Em revisão de resolução"
             >
               <span class="photo-resolution-watermark-stamp">Em revisão de resolução</span>
             </div>
@@ -346,19 +367,18 @@
         <div class="modal-footer" :class="{ 'is-resolved-footer': isIncidentResolved }">
           <div class="modal-footer-actions">
             <button
-              v-if="!isIncidentResolved"
+              v-if="!isIncidentResolved && !isUnderReportReview"
               type="button"
               class="btn-report"
               @click="handleOpenReport"
             >
-              🚩 Reportar Ocorrência
+              <span aria-hidden="true">🚩</span> Reportar Ocorrência
             </button>
             <div class="share-btn-tooltip-wrap is-footer-share-wrap">
               <button
                 type="button"
                 class="btn-share-incident"
-                :disabled="isSharingIncident || !currentPhoto"
-                aria-label="Baixar para compartilhar"
+                :disabled="!canShareIncident"
                 @click="handleShareIncident('footer')"
               >
                 <svg
@@ -375,17 +395,18 @@
                 <span>{{ isSharingIncident && activeShareTarget === 'footer' ? 'Gerando imagem' : 'Compartilhar' }}</span>
               </button>
               <span
-                v-if="activeShareTarget === 'footer' && (shareTooltipState === 'downloaded' || shareTooltipState === 'error')"
-                class="share-action-tooltip is-top-tooltip is-active"
+                class="share-action-tooltip is-top-tooltip"
                 :class="{
-                  'is-success': shareTooltipState === 'downloaded',
+                  'is-active': activeShareTarget === 'footer' && (shareTooltipState === 'downloaded' || shareTooltipState === 'shared' || shareTooltipState === 'error'),
+                  'is-success': shareTooltipState === 'downloaded' || shareTooltipState === 'shared',
                   'is-error': shareTooltipState === 'error'
                 }"
                 role="status"
                 aria-live="polite"
               >
-                <template v-if="shareTooltipState === 'downloaded'">✅ Imagem baixada!</template>
-                <template v-else-if="shareTooltipState === 'error'">Erro ao gerar imagem</template>
+                <template v-if="activeShareTarget === 'footer' && shareTooltipState === 'downloaded'"><span aria-hidden="true">✅</span> Imagem baixada!</template>
+                <template v-else-if="activeShareTarget === 'footer' && shareTooltipState === 'shared'"><span aria-hidden="true">✅</span> Imagem compartilhada!</template>
+                <template v-else-if="activeShareTarget === 'footer' && shareTooltipState === 'error'">Erro ao gerar imagem</template>
               </span>
             </div>
             <button
@@ -422,13 +443,14 @@
             <button
               type="button"
               class="btn-close"
+              aria-label="Fechar"
               @click="handleCancelResolve"
               :disabled="isSubmittingResolve || isProcessingResolvePhoto"
             >✕</button>
           </div>
 
-          <div v-if="resolveSuccess" class="report-success-state">
-            <span class="report-success-icon">✅</span>
+          <div v-if="resolveSuccess" class="report-success-state" role="status">
+            <span class="report-success-icon" aria-hidden="true">✅</span>
             <h4 class="report-success-title">Registro Enviado!</h4>
             <p class="report-success-desc">
               A foto e a descrição foram registradas para análise e atualização da ocorrência.
@@ -465,7 +487,7 @@
                   class="btn-resolve-upload"
                   @click="showResolveCamera = true"
                 >
-                  <span>📷</span>
+                  <span aria-hidden="true">📷</span>
                   <span>Tirar Foto</span>
                 </button>
                 <button
@@ -473,7 +495,7 @@
                   class="btn-resolve-upload"
                   @click="resolveGalleryInputRef?.click()"
                 >
-                  <span>🖼️</span>
+                  <span aria-hidden="true">🖼️</span>
                   <span>Escolher da Galeria</span>
                 </button>
                 <input
@@ -508,7 +530,7 @@
               ></textarea>
             </div>
 
-            <p v-if="resolveError" class="report-error-msg">{{ resolveError }}</p>
+            <p v-if="resolveError" class="report-error-msg" role="alert">{{ resolveError }}</p>
 
             <div class="report-actions">
               <button
@@ -533,60 +555,116 @@
         </div>
       </div>
 
-      <!-- Diálogo / Modal de Denúncia -->
+      <!-- Diálogo / Modal de Reportar Ocorrência -->
       <div v-if="isReportModalOpen" class="report-overlay" @click.stop>
-        <div class="report-card">
+        <div class="report-card" role="group" aria-labelledby="report-dialog-title">
           <div class="report-header">
-            <h3 class="report-title">Reportar Ocorrência</h3>
+            <h3 id="report-dialog-title" class="report-title">Reportar Ocorrência</h3>
             <button 
               type="button" 
               class="btn-close" 
+              aria-label="Fechar"
               @click="handleCancelReport" 
-              :disabled="isSubmittingReport || isPreparingReportAd || isWatchingReportAd"
+              :disabled="isSubmittingReport"
             >✕</button>
           </div>
 
-          <div v-if="reportSuccess" class="report-success-state">
-            <span class="report-success-icon">✅</span>
-            <h4 class="report-success-title">Ocorrência Reportada!</h4>
-            <p class="report-success-desc">Esta publicação foi desativada e removida do mapa. Nossa moderação avaliará a denúncia.</p>
+          <div v-if="reportSuccess" class="report-success-state" role="status">
+            <span class="report-success-icon" aria-hidden="true">✅</span>
+            <h4 class="report-success-title">
+              {{ reportWasFlagged ? 'Ocorrência enviada para revisão!' : 'Reporte registrado!' }}
+            </h4>
+            <p class="report-success-desc">
+              <template v-if="reportWasFlagged">
+                A ocorrência foi enviada para revisão e a foto ficará oculta até a análise da moderação.
+              </template>
+              <template v-else>
+                Obrigado! Seu reporte foi registrado e será considerado pela moderação.
+              </template>
+            </p>
+            <button type="button" class="btn btn-secondary report-success-close" @click="handleCancelReport">
+              Fechar
+            </button>
           </div>
 
-          <div v-else class="report-form">
+          <form v-else class="report-form" novalidate @submit.prevent="handleSubmitReport">
             <p class="report-hint">
-              Descreva o problema com esta publicação. Ao confirmar, ela será removida do mapa comunitário e enviada para moderação.
+              Ao enviar, a ocorrência continua no mapa, mas a foto fica oculta até a análise da moderação.
             </p>
 
-            <textarea
-              v-model="reportReason"
-              class="report-textarea"
-              rows="4"
-              placeholder="Ex: Não há vaga PCD demarcada neste local, o carro possui credencial visível no painel, a foto não corresponde ao endereço, etc."
-              :disabled="isSubmittingReport || isPreparingReportAd || isWatchingReportAd"
-            ></textarea>
+            <fieldset class="report-reason-fieldset" :disabled="isSubmittingReport">
+              <legend class="report-reason-legend">Qual é o problema?</legend>
+              <div class="report-reason-options">
+                <label
+                  v-for="option in reportReasonOptions"
+                  :key="option.code"
+                  class="report-reason-option"
+                  :class="{ 'is-selected': reportReasonCode === option.code }"
+                >
+                  <input
+                    v-model="reportReasonCode"
+                    type="radio"
+                    name="report-reason"
+                    :value="option.code"
+                    class="report-reason-radio"
+                  />
+                  <span>{{ option.label }}</span>
+                </label>
+              </div>
+            </fieldset>
 
-            <p v-if="reportError" class="report-error-msg">{{ reportError }}</p>
+            <div class="report-details-field">
+              <div class="resolve-desc-header">
+                <label for="report-details-textarea" class="resolve-desc-label">
+                  {{ isReportDetailsRequired ? 'Descreva o motivo (obrigatório)' : 'Detalhes (opcional)' }}
+                </label>
+                <span class="resolve-desc-counter" aria-hidden="true">
+                  {{ reportDetails.length }}/{{ REPORT_DETAILS_MAX_LENGTH }}
+                </span>
+              </div>
+              <textarea
+                id="report-details-textarea"
+                v-model="reportDetails"
+                class="report-textarea"
+                rows="3"
+                :maxlength="REPORT_DETAILS_MAX_LENGTH"
+                :required="isReportDetailsRequired"
+                :aria-required="isReportDetailsRequired ? 'true' : 'false'"
+                :aria-invalid="reportError && isReportDetailsRequired ? 'true' : 'false'"
+                aria-describedby="report-details-hint"
+                placeholder="Ex: a foto não corresponde ao endereço informado."
+                :disabled="isSubmittingReport"
+              ></textarea>
+              <p id="report-details-hint" class="report-details-hint">
+                {{
+                  isReportDetailsRequired
+                    ? 'Mínimo de 10 caracteres. Não inclua dados pessoais.'
+                    : 'Não inclua dados pessoais.'
+                }}
+              </p>
+            </div>
+
+            <p v-if="reportError" class="report-error-msg" role="alert">{{ reportError }}</p>
 
             <div class="report-actions">
               <button
                 type="button"
                 class="btn btn-secondary"
                 @click="handleCancelReport"
-                :disabled="isSubmittingReport || isPreparingReportAd || isWatchingReportAd"
+                :disabled="isSubmittingReport"
               >
                 Cancelar
               </button>
               <button
-                type="button"
+                type="submit"
                 class="btn btn-danger"
-                @click="handleSubmitReport"
-                :disabled="isSubmittingReport || isPreparingReportAd || isWatchingReportAd"
+                :disabled="isSubmittingReport"
               >
-                <span v-if="isSubmittingReport">Enviando denúncia...</span>
-                <span v-else>{{ adClosedBeforeReward ? 'Assistir e confirmar' : 'Confirmar e Desativar' }}</span>
+                <span v-if="isSubmittingReport">Enviando...</span>
+                <span v-else>Enviar para revisão</span>
               </button>
             </div>
-          </div>
+          </form>
         </div>
       </div>
     </div>
@@ -601,20 +679,22 @@ import {
   submitUrbanResolutionToFirebase,
   normalizeVerificacao,
   getCachedIncidentImageUrl,
-  fetchIncidentImageAsBase64
+  fetchIncidentImageAsBase64,
+  buildReportReason,
+  stripPhotosFromFlaggedIncident,
+  isIncidentUnderReportReview,
+  REPORT_REASON_PRESETS,
+  REPORT_DETAILS_MAX_LENGTH
 } from '../../services/firebaseService';
 import { initializeGeminiClient, analyzeIncidentImage } from '../../services/geminiService';
 import {
   prepareImageForGemini,
   blurSensitiveContentAndCompress,
   resizeImageForServer,
-  shareIncidentWithTemplate
+  generateIncidentShareCardFile,
+  downloadGeneratedCardFile,
+  encodeIncidentShareToken
 } from '../../services/imageProcessor';
-import {
-  preloadRewardedAd,
-  prepareRewardedAdWithTimeout,
-  disposeRewardedAdSession
-} from '../../services/rewardedAdService';
 import { useModalAccessibility } from '../../composables/useModalAccessibility';
 import LoadingSpinner from './LoadingSpinner.vue';
 
@@ -761,8 +841,17 @@ const isIncidentResolved = computed(() =>
   )
 );
 
+// IDs reportados nesta sessão do modal (aplica o estado "Em revisão de denúncia" imediatamente)
+const locallyFlaggedIds = ref([]);
+
+const isUnderReportReview = computed(() => {
+  const inc = activeIncident.value;
+  if (!inc) return false;
+  return isIncidentUnderReportReview(inc) || (Boolean(inc.id) && locallyFlaggedIds.value.includes(inc.id));
+});
+
 const openExpandedPhoto = (src) => {
-  if (!src) return;
+  if (!src || isUnderReportReview.value) return;
   expandedPhotoUrl.value = src;
   isPhotoExpanded.value = true;
 };
@@ -861,16 +950,20 @@ const displayAddress = computed(() => {
 });
 
 const isReportModalOpen = ref(false);
-const reportReason = ref('');
+const reportReasonCode = ref('');
+const reportDetails = ref('');
 const isSubmittingReport = ref(false);
 const reportError = ref('');
 const reportSuccess = ref(false);
-const gamRewardedReportUnit = computed(() =>
-  String(config.public?.gamRewardedReportUnit || '/23391888447/multei_report_rewarded').trim()
+const reportWasFlagged = ref(false);
+let reportOverlayCloseTimer = null;
+
+// "Ocorrência duplicada" só é oferecida quando o próprio registro foi marcado como possível duplicidade
+const reportReasonOptions = computed(() =>
+  REPORT_REASON_PRESETS.filter((option) => option.code !== 'duplicada' || isCurrentDuplicate.value)
 );
-const isPreparingReportAd = ref(false);
-const isWatchingReportAd = ref(false);
-const adClosedBeforeReward = ref(false);
+
+const isReportDetailsRequired = computed(() => reportReasonCode.value === 'outro');
 
 const isResolveModalOpen = ref(false);
 const showResolveCamera = ref(false);
@@ -924,7 +1017,7 @@ const loadPhotoIfNeeded = async () => {
     resolvedAfterPhoto.value = '';
   }
 
-  if (!nextPhoto) {
+  if (!nextPhoto || isUnderReportReview.value) {
     currentPhoto.value = '';
     isLoadingPhoto.value = false;
     return;
@@ -974,24 +1067,30 @@ const resolveAddress = async () => {
   }
 };
 
+const clearReportOverlayTimer = () => {
+  if (reportOverlayCloseTimer) {
+    clearTimeout(reportOverlayCloseTimer);
+    reportOverlayCloseTimer = null;
+  }
+};
+
 const handleOpenReport = () => {
+  if (isUnderReportReview.value) return;
+  clearReportOverlayTimer();
   isReportModalOpen.value = true;
-  reportReason.value = isCurrentDuplicate.value ? 'Ocorrência duplicada' : '';
+  reportReasonCode.value = isCurrentDuplicate.value ? 'duplicada' : '';
+  reportDetails.value = '';
   reportError.value = '';
   reportSuccess.value = false;
-  isPreparingReportAd.value = false;
-  isWatchingReportAd.value = false;
-  adClosedBeforeReward.value = false;
-  preloadRewardedAd(gamRewardedReportUnit.value);
+  reportWasFlagged.value = false;
 };
 
 const handleCancelReport = () => {
-  if (isSubmittingReport.value || isPreparingReportAd.value || isWatchingReportAd.value) {
+  if (isSubmittingReport.value) {
     return;
   }
+  clearReportOverlayTimer();
   isReportModalOpen.value = false;
-  adClosedBeforeReward.value = false;
-  disposeRewardedAdSession();
 };
 
 const handleOpenResolve = () => {
@@ -1122,89 +1221,74 @@ const handleSubmitResolve = async () => {
   }
 };
 
-const executeReportSubmission = async () => {
+const REPORT_USER_FACING_ERROR_CODES = ['ALREADY_REPORTED', 'REPORT_RATE_LIMITED', 'INVALID_REPORT_REASON'];
+
+const handleSubmitReport = async () => {
+  if (isSubmittingReport.value) {
+    return;
+  }
+  if (!reportReasonCode.value) {
+    reportError.value = 'Selecione o motivo do reporte.';
+    return;
+  }
+
+  let composedReason = '';
+  try {
+    composedReason = buildReportReason(reportReasonCode.value, reportDetails.value);
+  } catch (err) {
+    reportError.value =
+      err?.code === 'INVALID_REPORT_REASON' && err?.message
+        ? err.message
+        : 'Verifique o motivo informado e tente novamente.';
+    return;
+  }
+
   isSubmittingReport.value = true;
   reportError.value = '';
 
   try {
     const targetIncident = activeIncident.value;
     const id = targetIncident?.id || '';
-    const res = await reportIncidentInFirebase(id, reportReason.value.trim(), targetIncident);
+    const res = await reportIncidentInFirebase(id, composedReason, targetIncident);
 
-    adClosedBeforeReward.value = false;
+    reportWasFlagged.value = Boolean(res?.flagged);
     reportSuccess.value = true;
-    // Emite imediatamente para que o mapa reflita a remoção em tempo real (a menos que já tenha sido validada como improcedente antes)
-    if (!res || res.deactivated !== false) {
-      emit('incidentReported', targetIncident);
+
+    if (res?.flagged && id) {
+      if (!locallyFlaggedIds.value.includes(id)) {
+        locallyFlaggedIds.value = [...locallyFlaggedIds.value, id];
+      }
+      isPhotoExpanded.value = false;
+      currentPhoto.value = '';
+      // Objeto atualizado (mesmo id) para o pai substituir no lugar, sem remover do mapa
+      const { groupItems: _groupItems, initialPageIndex: _initialPageIndex, ...baseIncident } = targetIncident || {};
+      const updatedIncident = stripPhotosFromFlaggedIncident({
+        ...baseIncident,
+        id,
+        ativo: true,
+        em_revisao_denuncia: true,
+        data_revisao_denuncia: res.reviewFlaggedAt || new Date().toISOString(),
+        motivo_denuncia: res.reason || composedReason
+      });
+      emit('incidentReported', updatedIncident);
     }
-    setTimeout(() => {
-      emit('close');
-    }, 1500);
+
+    nextTick(() => focusInitialElement());
+    clearReportOverlayTimer();
+    reportOverlayCloseTimer = setTimeout(() => {
+      reportOverlayCloseTimer = null;
+      isReportModalOpen.value = false;
+    }, 4000);
   } catch (err) {
-    console.error('Erro ao reportar no Firebase:', err);
-    reportError.value = 'Não foi possível registrar a denúncia no momento. Tente novamente.';
+    if (REPORT_USER_FACING_ERROR_CODES.includes(err?.code) && err?.message) {
+      reportError.value = err.message;
+    } else {
+      console.error('Erro ao reportar ocorrência:', err?.code || 'erro_desconhecido');
+      reportError.value = 'Não foi possível enviar o reporte no momento. Tente novamente.';
+    }
   } finally {
     isSubmittingReport.value = false;
   }
-};
-
-const handleSubmitReport = async () => {
-  if (isSubmittingReport.value || isPreparingReportAd.value || isWatchingReportAd.value) {
-    return;
-  }
-  if (!reportReason.value.trim()) {
-    reportError.value = 'Por favor, descreva o problema observado nesta ocorrência.';
-    return;
-  }
-
-  reportError.value = '';
-  isPreparingReportAd.value = true;
-
-  let adResult = null;
-  try {
-    adResult = await prepareRewardedAdWithTimeout(gamRewardedReportUnit.value, 5000);
-  } catch {
-    adResult = null;
-  }
-
-  if (!isReportModalOpen.value) {
-    isPreparingReportAd.value = false;
-    return;
-  }
-
-  if (adResult && adResult.status === 'ready' && typeof adResult.show === 'function') {
-    isWatchingReportAd.value = true;
-    isPreparingReportAd.value = false;
-
-    let outcome = { granted: false, failed: false };
-    try {
-      outcome = await adResult.show();
-    } catch {
-      outcome = { granted: false, failed: true };
-    }
-
-    if (!isReportModalOpen.value) {
-      isWatchingReportAd.value = false;
-      return;
-    }
-
-    if (outcome?.granted || outcome?.failed) {
-      isSubmittingReport.value = true;
-      isWatchingReportAd.value = false;
-      await executeReportSubmission();
-      return;
-    }
-
-    isWatchingReportAd.value = false;
-    adClosedBeforeReward.value = true;
-    preloadRewardedAd(gamRewardedReportUnit.value);
-    return;
-  }
-
-  // Fallback seguro: caso não haja inventário em até 5s ou haja bloqueador de anúncios
-  isSubmittingReport.value = true;
-  isPreparingReportAd.value = false;
-  await executeReportSubmission();
 };
 
 const isSharingIncident = ref(false);
@@ -1232,8 +1316,57 @@ const buildShareLocationString = () => {
   return [streetPart, cityState].filter(Boolean).join(' • ') || 'Localização registrada no mapa';
 };
 
+const canShareIncident = computed(() => {
+  if (isSharingIncident.value || isUnderReportReview.value) return false;
+  const inc = activeIncident.value;
+  return Boolean(currentPhoto.value || inc?.fotoUrl || inc?.maskedImageUrl);
+});
+
+const buildIncidentShareUrl = (inc) => {
+  const token = encodeIncidentShareToken(
+    Number(inc?.latitude),
+    Number(inc?.longitude),
+    inc?.timestamp || inc?.data
+  );
+  return token
+    ? `https://www.valepcd.com.br/multei?p=${encodeURIComponent(token)}`
+    : 'https://www.valepcd.com.br/multei';
+};
+
+/**
+ * Tenta compartilhar o arquivo pela Web Share API (Nível 2 com arquivos). Se o navegador não suportar
+ * arquivos, faz o download como antes. Retorna 'shared' | 'downloaded' | 'cancelled'.
+ */
+const shareOrDownloadCardFile = async (file, shareUrl) => {
+  const canShareFiles =
+    typeof navigator !== 'undefined' &&
+    typeof navigator.share === 'function' &&
+    typeof navigator.canShare === 'function' &&
+    navigator.canShare({ files: [file] });
+
+  if (canShareFiles) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: 'Ocorrência no Multei',
+        text: `Veja esta ocorrência no mapa do Multei: ${shareUrl}`
+      });
+      return 'shared';
+    } catch (shareErr) {
+      // Usuário cancelou a folha de compartilhamento: não exibe erro nem baixa o arquivo
+      if (shareErr?.name === 'AbortError') {
+        return 'cancelled';
+      }
+      // Ex.: NotAllowedError (ativação do usuário expirou durante a geração) → recorre ao download
+    }
+  }
+
+  downloadGeneratedCardFile(file);
+  return 'downloaded';
+};
+
 const handleShareIncident = async (target = 'header') => {
-  if (isSharingIncident.value) return;
+  if (!canShareIncident.value) return;
   const inc = activeIncident.value;
   const primaryPhoto = currentPhoto.value || inc?.fotoUrl || inc?.maskedImageUrl || '';
   if (!primaryPhoto) return;
@@ -1249,40 +1382,46 @@ const handleShareIncident = async (target = 'header') => {
       ? (resolvedAfterPhoto.value || inc?.foto_resolucao || '')
       : '';
 
-    const res = await shareIncidentWithTemplate({
-      photoUrl: primaryPhoto,
-      resolvedPhotoUrl: resolvedPhoto,
-      isResolved: isIncidentResolved.value,
-      natureza: inc?.natureza,
-      verificacao: inc?.verificacao ?? inc?.verification,
-      descricao: inc?.descricao,
-      cidade: inc?.cidade,
-      estado: inc?.estado,
-      locationText: buildShareLocationString(),
-      latitude: Number(inc?.latitude),
-      longitude: Number(inc?.longitude),
-      timestamp: inc?.timestamp || inc?.data
-    });
+    const file = await generateIncidentShareCardFile(
+      {
+        photoUrl: primaryPhoto,
+        resolvedPhotoUrl: resolvedPhoto,
+        isResolved: isIncidentResolved.value,
+        natureza: inc?.natureza,
+        verificacao: inc?.verificacao ?? inc?.verification,
+        descricao: inc?.descricao,
+        cidade: inc?.cidade,
+        estado: inc?.estado,
+        locationText: buildShareLocationString(),
+        latitude: Number(inc?.latitude),
+        longitude: Number(inc?.longitude),
+        timestamp: inc?.timestamp || inc?.data
+      },
+      'image/jpeg'
+    );
 
-    if (res?.shared) {
-      const elapsed = Date.now() - clickStartedAt;
-      const minGeneratingMs = target === 'header' ? 600 : 250;
-      const waitMs = Math.max(0, minGeneratingMs - elapsed);
-      shareFeedbackTimer = setTimeout(() => {
-        isSharingIncident.value = false;
-        shareTooltipState.value = 'downloaded';
-        shareFeedbackTimer = setTimeout(() => {
-          shareTooltipState.value = '';
-          activeShareTarget.value = '';
-        }, 3200);
-      }, waitMs);
-    } else {
+    const outcome = await shareOrDownloadCardFile(file, buildIncidentShareUrl(inc));
+
+    if (outcome === 'cancelled') {
       isSharingIncident.value = false;
       shareTooltipState.value = '';
       activeShareTarget.value = '';
+      return;
     }
+
+    const elapsed = Date.now() - clickStartedAt;
+    const minGeneratingMs = target === 'header' ? 600 : 250;
+    const waitMs = outcome === 'shared' ? 0 : Math.max(0, minGeneratingMs - elapsed);
+    shareFeedbackTimer = setTimeout(() => {
+      isSharingIncident.value = false;
+      shareTooltipState.value = outcome; // 'shared' | 'downloaded'
+      shareFeedbackTimer = setTimeout(() => {
+        shareTooltipState.value = '';
+        activeShareTarget.value = '';
+      }, 3200);
+    }, waitMs);
   } catch (err) {
-    console.error('Erro ao compartilhar denúncia:', err);
+    console.error('Erro ao compartilhar ocorrência:', err?.name || 'erro_desconhecido');
     isSharingIncident.value = false;
     shareTooltipState.value = 'error';
     shareFeedbackTimer = setTimeout(() => {
@@ -1295,8 +1434,6 @@ const handleShareIncident = async (target = 'header') => {
 const handleBackdropClick = () => {
   if (
     isSubmittingReport.value ||
-    isPreparingReportAd.value ||
-    isWatchingReportAd.value ||
     isSubmittingResolve.value ||
     isProcessingResolvePhoto.value
   ) {
@@ -1307,15 +1444,13 @@ const handleBackdropClick = () => {
 
 onUnmounted(() => {
   clearShareTooltipTimers();
-  disposeRewardedAdSession();
+  clearReportOverlayTimer();
 });
 
 const { focusInitialElement } = useModalAccessibility({
   modalRef: modalCardRef,
   canClose: () =>
     !isSubmittingReport.value &&
-    !isPreparingReportAd.value &&
-    !isWatchingReportAd.value &&
     !isSubmittingResolve.value &&
     !isProcessingResolvePhoto.value,
   onRequestClose: () => {
@@ -1372,6 +1507,14 @@ watch(currentPageIndex, () => {
   activeShareTarget.value = '';
   resolveAddress();
   loadPhotoIfNeeded();
+});
+
+watch(isUnderReportReview, (flagged) => {
+  if (!flagged) return;
+  isPhotoExpanded.value = false;
+  expandedPhotoUrl.value = '';
+  currentPhoto.value = '';
+  isLoadingPhoto.value = false;
 });
 </script>
 
@@ -1438,7 +1581,7 @@ watch(currentPageIndex, () => {
   align-self: flex-start;
   padding: 0.25rem 0.65rem;
   border-radius: 9999px;
-  font-size: 0.76rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   background-color: #fef3c7;
   color: #92400e;
@@ -1464,7 +1607,7 @@ watch(currentPageIndex, () => {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   padding: 0.35rem 0.65rem;
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -1508,7 +1651,7 @@ watch(currentPageIndex, () => {
   border: 1px solid #cbd5e1;
   background-color: #ffffff;
   color: #334155;
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
@@ -1533,7 +1676,7 @@ watch(currentPageIndex, () => {
 }
 
 .pagination-status-text {
-  font-size: 0.74rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: #475569;
   text-align: center;
@@ -1548,7 +1691,7 @@ watch(currentPageIndex, () => {
 
   .btn-page-nav {
     padding: 0.32rem 0.48rem;
-    font-size: 0.74rem;
+    font-size: 0.8125rem;
   }
 
   .pagination-pills {
@@ -1559,11 +1702,12 @@ watch(currentPageIndex, () => {
     min-width: 24px;
     height: 24px;
     padding: 0 0.3rem;
-    font-size: 0.73rem;
+    font-size: 0.8125rem;
   }
 
   .pagination-status-text {
-    font-size: 0.69rem;
+    font-size: 0.8125rem;
+    white-space: normal;
   }
 }
 
@@ -1630,7 +1774,7 @@ watch(currentPageIndex, () => {
   gap: 0.38rem;
   padding: 0.38rem 0.78rem;
   border-radius: 9999px;
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
   font-weight: 800;
   color: #ffffff;
   background: rgba(15, 23, 42, 0.85);
@@ -1660,7 +1804,7 @@ watch(currentPageIndex, () => {
   gap: 0.35rem;
   padding: 0.32rem 0.7rem;
   border-radius: 9999px;
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   color: #78350f;
   background-color: rgba(254, 243, 199, 0.95);
@@ -1812,7 +1956,7 @@ watch(currentPageIndex, () => {
 }
 
 .privacy-note {
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
   color: var(--text-muted, #475466);
   margin-top: 0.5rem;
   line-height: 1.4;
@@ -1940,7 +2084,7 @@ watch(currentPageIndex, () => {
   white-space: nowrap;
   padding: 0.36rem 0.68rem;
   border-radius: 8px;
-  font-size: 0.76rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   background-color: #1e293b;
   color: #ffffff;
@@ -2221,7 +2365,7 @@ watch(currentPageIndex, () => {
   background: transparent;
   border: 1px solid #cbd5e1;
   color: #475569;
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   padding: 0.35rem 0.75rem;
   border-radius: 9999px;
@@ -2287,7 +2431,7 @@ watch(currentPageIndex, () => {
 }
 
 .resolve-desc-counter {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-muted, #475466);
 }
@@ -2318,7 +2462,7 @@ watch(currentPageIndex, () => {
 
 .report-error-msg {
   color: #dc2626;
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
   margin-top: 0.4rem;
 }
 
@@ -2392,7 +2536,7 @@ watch(currentPageIndex, () => {
 
 .ba-card-header {
   padding: 0.5rem 0.85rem;
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 800;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -2455,7 +2599,7 @@ watch(currentPageIndex, () => {
 }
 
 .ba-date-label {
-  font-size: 0.74rem;
+  font-size: 0.8125rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -2491,5 +2635,122 @@ watch(currentPageIndex, () => {
   .ba-photo-stage {
     height: 190px;
   }
+}
+
+/* Ocorrência em revisão de denúncia: foto oculta + selo */
+.image-report-review-placeholder {
+  width: 100%;
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  padding: 2rem 1rem;
+  background: repeating-linear-gradient(
+    135deg,
+    #f1f5f9,
+    #f1f5f9 12px,
+    #e2e8f0 12px,
+    #e2e8f0 24px
+  );
+  border-radius: var(--radius-md, 12px);
+  text-align: center;
+}
+
+.report-review-seal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1.25rem;
+  background: rgba(154, 52, 18, 0.92);
+  color: #ffffff;
+  font-size: clamp(0.92rem, 2.4vw, 1.2rem);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  transform: rotate(-6deg);
+}
+
+.report-review-placeholder-text {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+/* Formulário de reportar ocorrência */
+.report-reason-fieldset {
+  border: none;
+  margin: 0 0 0.85rem;
+  padding: 0;
+  min-width: 0;
+}
+
+.report-reason-legend {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text, #1e293b);
+  margin-bottom: 0.5rem;
+  padding: 0;
+}
+
+.report-reason-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.report-reason-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: #1e293b;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.report-reason-option:hover {
+  border-color: #dc2626;
+}
+
+.report-reason-option.is-selected {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.report-reason-radio {
+  margin-top: 0.15rem;
+  accent-color: #dc2626;
+  flex-shrink: 0;
+}
+
+.report-reason-option:has(.report-reason-radio:focus-visible) {
+  outline: 2px solid #dc2626;
+  outline-offset: 2px;
+}
+
+.report-details-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.report-details-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted, #475466);
+}
+
+.report-success-close {
+  margin-top: 1rem;
 }
 </style>

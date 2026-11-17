@@ -268,7 +268,7 @@
             <span class="panel-kicker">Moderação & Governança</span>
             <h1 id="admin-heading" class="panel-main-title">Averiguação de Ocorrências Reportadas</h1>
             <p class="panel-main-subtitle">
-              Analise as ocorrências sinalizadas pela comunidade e defina se a denúncia é procedente (mantém inativa) ou improcedente (volta a ficar ativa no mapa).
+              Analise as ocorrências sinalizadas pela comunidade. Ocorrências reportadas seguem no mapa com a foto oculta (“Em revisão de denúncia”): marque como improcedente para restaurar a ocorrência e a foto, ou procedente para removê-la do mapa.
             </p>
           </div>
 
@@ -469,6 +469,14 @@
                     >
                       ⚠️ {{ item.rotulo_duplicidade || 'Possível duplicidade' }}
                     </span>
+
+                    <!-- Selo de ocorrência em revisão de denúncia (no mapa com foto oculta) -->
+                    <span
+                      v-if="item.em_revisao_denuncia && !item.revisada"
+                      class="map-visibility-badge is-map-review"
+                    >
+                      <span aria-hidden="true">🚩</span> Em revisão de denúncia
+                    </span>
                   </div>
 
                   <div class="report-item-location">
@@ -538,9 +546,21 @@
 
                   <span
                     class="map-visibility-badge"
-                    :class="selectedItem.ativo ? 'is-map-active' : 'is-map-inactive'"
+                    :class="
+                      selectedItem.ativo && selectedItem.em_revisao_denuncia && !selectedItem.revisada
+                        ? 'is-map-review'
+                        : selectedItem.ativo
+                          ? 'is-map-active'
+                          : 'is-map-inactive'
+                    "
                   >
-                    {{ selectedItem.ativo ? '🟢 Ativa no Mapa' : '🔴 Inativa no Mapa (Oculta)' }}
+                    {{
+                      selectedItem.ativo && selectedItem.em_revisao_denuncia && !selectedItem.revisada
+                        ? '🚩 No mapa • Em revisão de denúncia (foto oculta ao público)'
+                        : selectedItem.ativo
+                          ? '🟢 Ativa no Mapa'
+                          : '🔴 Inativa no Mapa (Oculta)'
+                    }}
                   </span>
                 </div>
 
@@ -782,7 +802,8 @@
                       :disabled="isSubmittingDecision"
                       @click="handleReviewDecision('improcedente')"
                     >
-                      <span class="decision-btn-title">✅ Improcedente (Ativar Ocorrência)</span>
+                      <span class="decision-btn-title">✅ Improcedente (Restaurar ocorrência e foto)</span>
+                      <span class="decision-btn-desc">Mantém no mapa e volta a exibir a foto ao público</span>
                     </button>
 
                     <button
@@ -791,13 +812,14 @@
                       :disabled="isSubmittingDecision"
                       @click="handleReviewDecision('procedente')"
                     >
-                      <span class="decision-btn-title">🚫 Procedente (Manter Inativa)</span>
+                      <span class="decision-btn-title">🚫 Procedente (Remover do mapa)</span>
+                      <span class="decision-btn-desc">Inativa a ocorrência e remove do mapa</span>
                     </button>
 <button type="button" class="btn-decision btn-procedente btn-duplicidade-common" :disabled="isSubmittingDecision"
   @click="handleReviewDecision('duplicidade')">
-  <span class="decision-btn-title">🚫 É duplicidade (Manter Inativa)</span>
-  <span class="decision-btn-desc">Marca como ocorrência duplicada quando não detectada pelo sistema e mantém
-    inativa</span>
+  <span class="decision-btn-title">🚫 É duplicidade (Remover do mapa)</span>
+  <span class="decision-btn-desc">Marca como ocorrência duplicada quando não detectada pelo sistema e remove do
+    mapa</span>
 </button>
                   </div>
                 </div>
@@ -5523,6 +5545,12 @@ select.field-input {
   background: var(--pp-red-bg);
   color: var(--pp-red-text);
   border: 1.5px solid var(--pp-red-border);
+}
+
+.is-map-review {
+  background: #fff7ed;
+  color: #9a3412;
+  border: 1.5px solid #fb923c;
 }
 
 .detail-id-code {

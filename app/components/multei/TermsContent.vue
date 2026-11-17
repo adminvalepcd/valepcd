@@ -2,7 +2,7 @@
   <div class="multei-terms-doc">
     <header class="terms-doc-header">
       <component :is="headingTag" :id="titleId" class="terms-doc-main-title">
-        TERMOS DE USO E POLÍTICA DE PRIVACIDADE DO MULTEI
+        Termos de Uso e Política de Privacidade do Multei
       </component>
       <p class="terms-doc-lead">
         Bem-vindo ao Multei! O Multei é um mapa interativo de mobilidade urbana e inteligência de dados cívicos, criado e mantido pela ONG Vale PcD. Nossa missão é mapear e registrar, de forma anônima e colaborativa, infrações de trânsito em vagas reservadas para pessoas com deficiência (PcD) e pessoas idosas, auxiliando na geração de estatísticas para a melhoria da fiscalização urbana.
@@ -17,8 +17,8 @@
     <section id="termos-de-uso" class="terms-part-section" aria-labelledby="heading-parte-1">
       <div class="terms-part-banner">
         <span class="terms-part-tag">Parte 1</span>
-        <h2 v-if="headingTag === 'h1'" id="heading-parte-1" class="terms-part-title">PARTE 1: TERMOS DE USO</h2>
-        <h3 v-else id="heading-parte-1" class="terms-part-title">PARTE 1: TERMOS DE USO</h3>
+        <h2 v-if="headingTag === 'h1'" id="heading-parte-1" class="terms-part-title">Parte 1: Termos de Uso</h2>
+        <h3 v-else id="heading-parte-1" class="terms-part-title">Parte 1: Termos de Uso</h3>
       </div>
 
       <div class="terms-clauses-list">
@@ -31,14 +31,14 @@
         </article>
 
         <article class="terms-clause-card">
-          <h3 v-if="headingTag === 'h1'" class="terms-clause-title">2. Responsabilidade da Pessoa Usuária (Quem faz a denúncia)</h3>
-          <h4 v-else class="terms-clause-title">2. Responsabilidade da Pessoa Usuária (Quem faz a denúncia)</h4>
+          <h3 v-if="headingTag === 'h1'" class="terms-clause-title">2. Responsabilidade da Pessoa Usuária (Quem registra a ocorrência)</h3>
+          <h4 v-else class="terms-clause-title">2. Responsabilidade da Pessoa Usuária (Quem registra a ocorrência)</h4>
           <ul class="terms-subitems">
             <li>
-              <strong>Segurança Física e Exercício da Cidadania:</strong> Embora o registro de imagens em vias públicas para documentar infrações seja um direito amparado pela lei (liberdade de informação e exercício da cidadania), o Multei e a ONG Vale PcD não têm como garantir a segurança física de quem usa a plataforma na rua. Nunca se coloque em risco para realizar uma denúncia. O ato de fotografar no espaço público ocorre por conta e risco de quem denuncia. A plataforma não se responsabiliza por eventuais conflitos, agressões, danos materiais (como a quebra de um celular) ou danos morais decorrentes de atritos com motoristas ou terceiros no momento do registro. Recomendamos sempre manter a discrição e colocar a sua segurança e integridade em primeiro lugar.
+              <strong>Segurança Física e Exercício da Cidadania:</strong> Embora o registro de imagens em vias públicas para documentar infrações seja um direito amparado pela lei (liberdade de informação e exercício da cidadania), o Multei e a ONG Vale PcD não têm como garantir a segurança física de quem usa a plataforma na rua. Nunca se coloque em risco para registrar uma ocorrência. O ato de fotografar no espaço público ocorre por conta e risco de quem registra a ocorrência. A plataforma não se responsabiliza por eventuais conflitos, agressões, danos materiais (como a quebra de um celular) ou danos morais decorrentes de atritos com motoristas ou terceiros no momento do registro. Recomendamos sempre manter a discrição e colocar a sua segurança e integridade em primeiro lugar.
             </li>
             <li>
-              <strong>Uso Adequado:</strong> Você se compromete a enviar apenas fotografias reais e inalteradas de veículos estacionados irregularmente. É terminantemente proibido o envio de imagens falsas, discriminatórias, pornográficas ou que não tenham relação com o objetivo do projeto. Também é expressamente proibido o envio de imagens total ou parcialmente geradas por Inteligência Artificial, bem como fotos reais que tenham sido manipuladas ou retocadas (seja por Inteligência Artificial ou programas de edição de imagem, mesmo que a intenção seja apenas apagar ou alterar um pequeno detalhe da foto original). A integridade do nosso mapa depende da veracidade absoluta dos registros.
+              <strong>Uso Adequado:</strong> Você se compromete a enviar apenas fotografias reais e inalteradas de veículos estacionados irregularmente. É terminantemente proibido o envio de imagens falsas, discriminatórias, pornográficas ou que não tenham relação com o objetivo do projeto. Também é expressamente proibido o envio de imagens total ou parcialmente geradas por Inteligência Artificial, bem como fotos reais que tenham sido manipuladas ou retocadas (seja por Inteligência Artificial ou programas de edição de imagem, mesmo que a intenção seja apenas apagar ou alterar um pequeno detalhe da foto original). A integridade do nosso mapa depende da veracidade absoluta das ocorrências.
             </li>
           </ul>
         </article>
@@ -54,7 +54,7 @@
               <strong>Licença de Uso:</strong> Ao enviar uma imagem para o Multei, você concede à ONG Vale PcD uma autorização irrestrita, gratuita e definitiva para exibir, processar e gerar relatórios estatísticos a partir desses dados.
             </li>
             <li>
-              <strong>Reporte de Abusos:</strong> Qualquer pessoa pode denunciar uma publicação no mapa. Publicações que receberem denúncias da comunidade serão ocultadas automaticamente até que passem por avaliação de uma pessoa moderadora da nossa equipe.
+              <strong>Reporte de Abusos:</strong> Qualquer pessoa pode reportar uma ocorrência publicada no mapa. Ocorrências reportadas pela comunidade permanecem no mapa com a foto ocultada e o selo "Em revisão de denúncia" até que passem por avaliação de uma pessoa moderadora da nossa equipe, que poderá restaurá-las ou removê-las.
             </li>
           </ul>
         </article>
@@ -63,7 +63,7 @@
           <h3 v-if="headingTag === 'h1'" class="terms-clause-title">4. Restrição de Idade</h3>
           <h4 v-else class="terms-clause-title">4. Restrição de Idade</h4>
           <p>
-            O uso da plataforma para envio de denúncias é recomendado para maiores de 18 (dezoito) anos. O Multei não coleta dados de registro (como data de nascimento), mas pressupõe que pessoas menores de idade estejam utilizando a ferramenta sob a supervisão de uma pessoa responsável legal.
+            O uso da plataforma para registro de ocorrências é recomendado para maiores de 18 (dezoito) anos. O Multei não coleta dados de registro (como data de nascimento), mas pressupõe que pessoas menores de idade estejam utilizando a ferramenta sob a supervisão de uma pessoa responsável legal.
           </p>
         </article>
 
@@ -80,12 +80,12 @@
     <section id="politica-de-privacidade" class="terms-part-section" aria-labelledby="heading-parte-2">
       <div class="terms-part-banner">
         <span class="terms-part-tag">Parte 2</span>
-        <h2 v-if="headingTag === 'h1'" id="heading-parte-2" class="terms-part-title">PARTE 2: POLÍTICA DE PRIVACIDADE</h2>
-        <h3 v-else id="heading-parte-2" class="terms-part-title">PARTE 2: POLÍTICA DE PRIVACIDADE</h3>
+        <h2 v-if="headingTag === 'h1'" id="heading-parte-2" class="terms-part-title">Parte 2: Política de Privacidade</h2>
+        <h3 v-else id="heading-parte-2" class="terms-part-title">Parte 2: Política de Privacidade</h3>
       </div>
 
       <p class="terms-part-intro">
-        A transparência é o nosso maior pilar. Desenvolvemos o Multei com foco em Privacidade desde a Concepção (um modelo onde a proteção de dados é a prioridade desde o desenho inicial do projeto) para proteger tanto quem denuncia quanto quem é denunciado.
+        A transparência é o nosso maior pilar. Desenvolvemos o Multei com foco em Privacidade desde a Concepção (um modelo onde a proteção de dados é a prioridade desde o desenho inicial do projeto) para proteger tanto quem registra uma ocorrência quanto quem é retratado nela.
       </p>
 
       <div class="terms-clauses-list">
@@ -104,16 +104,16 @@
         </article>
 
         <article class="terms-clause-card">
-          <h3 v-if="headingTag === 'h1'" class="terms-clause-title">2. Dados de Quem Denuncia e Rastreabilidade</h3>
-          <h4 v-else class="terms-clause-title">2. Dados de Quem Denuncia e Rastreabilidade</h4>
+          <h3 v-if="headingTag === 'h1'" class="terms-clause-title">2. Dados de Quem Registra a Ocorrência e Rastreabilidade</h3>
+          <h4 v-else class="terms-clause-title">2. Dados de Quem Registra a Ocorrência e Rastreabilidade</h4>
           <p>O envio de dados no Multei é 100% isolado e anônimo.</p>
           <ul class="terms-subitems">
             <li>Nós não exigimos criação de conta, não pedimos seu nome, e-mail ou telefone.</li>
             <li>
-              O sistema captura apenas dados de conexão temporários (necessários para o envio técnico da foto) e, somente após a sua autorização, as coordenadas de geolocalização (GPS) do momento da infração.
+              O sistema captura apenas dados de conexão temporários (necessários para o envio técnico da foto) e, somente quando você opta por ativar a localização (por exemplo, ao tocar em "Ativar GPS" ou "Registrar") e após a sua autorização, as coordenadas de geolocalização (GPS) do momento do registro da ocorrência. A localização não é solicitada automaticamente ao abrir a página.
             </li>
             <li>
-              <strong>Proteção contra retaliação:</strong> Como não guardamos nenhum vínculo entre o seu celular/computador e a denúncia após o fechamento do site, é tecnicamente impossível que o Multei identifique quem foi a pessoa autora de uma denúncia específica.
+              <strong>Proteção contra retaliação:</strong> Como não guardamos nenhum vínculo entre o seu celular/computador e a ocorrência após o fechamento do site, é tecnicamente impossível que o Multei identifique quem foi a pessoa autora de uma ocorrência específica.
             </li>
           </ul>
         </article>
@@ -126,7 +126,7 @@
           </p>
           <ul class="terms-subitems">
             <li>
-              <strong>Exclusão pelo Mapa:</strong> Como não existe uma conta de usuário ou lista de "Minhas Denúncias", a única forma de excluir uma imagem já publicada é localizando o ponto específico da infração no mapa público e utilizando o botão de reporte/exclusão.
+              <strong>Exclusão pelo Mapa:</strong> Como não existe uma conta de usuário ou lista de "Minhas Ocorrências", a única forma de solicitar a exclusão de uma imagem já publicada é localizando a ocorrência específica no mapa público e utilizando o botão "Reportar ocorrência". A ocorrência reportada tem a foto ocultada e recebe o selo "Em revisão de denúncia" até que a moderação decida restaurá-la ou removê-la.
             </li>
             <li>
               <strong>Irreversibilidade:</strong> Devido à natureza estritamente anônima do envio, não podemos atender a pedidos de exclusão enviados por e-mail (ex: "apaguem a foto que enviei ontem"), pois não temos como provar tecnicamente que a foto listada no banco de dados pertence à pessoa que está solicitando a remoção.

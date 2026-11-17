@@ -4,8 +4,7 @@
       ref="modalCardRef"
       class="modal-card"
       :class="{
-        'is-step-success': step === 'success',
-        'is-preparing-success': step === 'success' && isPreparingSuccessAd
+        'is-step-success': step === 'success'
       }"
       role="dialog"
       aria-modal="true"
@@ -13,37 +12,47 @@
     >
       <!-- Cabeçalho -->
       <div class="modal-header">
-        <h2 id="create-incident-modal-title" class="modal-title">{{ modalTitle }}</h2>
-        <button class="btn-close" @click="emit('close')" aria-label="Fechar" :disabled="isAnalyzing || isSaving || isPreparingSuccessAd">✕</button>
+        <h2 id="create-incident-modal-title" class="modal-title">
+          <span v-if="modalTitleIcon" aria-hidden="true">{{ modalTitleIcon }} </span>{{ modalTitle }}
+        </h2>
+        <!-- Durante a análise o ✕ cancela a análise e fecha; fica desabilitado apenas no salvamento final -->
+        <button type="button" class="btn-close" :aria-label="isAnalyzing ? 'Cancelar análise e fechar' : 'Fechar'"
+          :disabled="isSaving" @click="handleHeaderClose">
+          <span aria-hidden="true">✕</span>
+        </button>
       </div>
 
-      <!-- Bloqueio: Exige GPS Ativo para realizar denúncia -->
+      <!-- Bloqueio: Exige GPS Ativo para registrar a ocorrência -->
       <div v-if="!isGpsEnabled && step !== 'success'" class="step-gps-required">
         <div class="gps-required-hero">
           <div class="gps-required-icon" aria-hidden="true">📍</div>
-          <h3 class="gps-required-title">Ative seu GPS para denunciar</h3>
+          <h3 class="gps-required-title">Ative seu GPS para registrar a ocorrência</h3>
           <p class="gps-required-desc">
             O seu GPS está desativado no momento. Para garantir a veracidade das ocorrências e realizar as validações de localização, é necessário ativar o GPS antes de prosseguir.
           </p>
         </div>
 
-        <div v-if="gpsActivationError" class="gps-required-error" role="alert">
+        <!-- Permissão negada no navegador: instruções específicas por plataforma -->
+        <MulteiGpsDeniedHelp v-if="gpsPermissionDenied" :is-retrying="isActivatingGpsForReport"
+          @retry="handleActivateGpsForReport" />
+        <div v-else-if="gpsActivationError" class="gps-required-error" role="alert">
           {{ gpsActivationError }}
         </div>
 
         <button
+          v-if="!gpsPermissionDenied"
           type="button"
           class="btn btn-primary btn-activate-gps-modal"
           :disabled="isActivatingGpsForReport"
           @click="handleActivateGpsForReport"
         >
-          <span v-if="isActivatingGpsForReport">⏳ Obtendo localização GPS...</span>
-          <span v-else>📍 Ativar GPS e prosseguir</span>
+          <span v-if="isActivatingGpsForReport"><span aria-hidden="true">⏳ </span>Obtendo localização GPS...</span>
+          <span v-else><span aria-hidden="true">📍 </span>Ativar GPS e prosseguir</span>
         </button>
 
         <details class="gps-why-accordion">
           <summary class="gps-why-summary">
-            <span>🛡️ Por que precisamos do GPS ativo durante a denúncia?</span>
+            <span><span aria-hidden="true">🛡️ </span>Por que precisamos do GPS ativo durante o registro?</span>
             <span class="gps-why-chevron" aria-hidden="true">▾</span>
           </summary>
           <div class="gps-why-body">
@@ -52,10 +61,12 @@
                 <strong>Validação de autenticidade:</strong> Cruzamos a posição atual do aparelho com os dados da imagem para classificar a confiabilidade do registro (Selo A, B ou C).
               </li>
               <li>
-                <strong>Prevenção de denúncias falsas:</strong> O GPS delimita um raio máximo de segurança de 200 metros para evitar cadastros indevidos feitos à distância.
+                <strong>Prevenção de registros falsos:</strong> O GPS delimita um raio máximo de segurança de 200 metros para evitar
+                cadastros indevidos feitos à distância.
               </li>
               <li>
-                <strong>100% Anônimo e sem rastreamento:</strong> As coordenadas são usadas exclusivamente no momento do envio para posicionar o pino da infração no mapa. Não coletamos dados pessoais nem acompanhamos seus deslocamentos.
+                <strong>100% anônimo e sem rastreamento:</strong> As coordenadas são usadas exclusivamente no momento do envio para
+                posicionar o pino da ocorrência no mapa. Não coletamos dados pessoais nem acompanhamos seus deslocamentos.
               </li>
             </ul>
           </div>
@@ -65,7 +76,7 @@
       <!-- Etapa 0: Escolha do Tipo de Ocorrência -->
       <div v-else-if="step === 'category'" class="step-category">
         <div v-if="!isLocationInBrazil" class="alert alert-error mb-4" role="alert">
-          🚫 {{ OUTSIDE_BRAZIL_ERROR_MSG }}
+          <span aria-hidden="true">🚫 </span>{{ OUTSIDE_BRAZIL_ERROR_MSG }}
         </div>
         <p class="step-desc">
           Selecione o tipo de ocorrência que você deseja registrar:
@@ -109,8 +120,8 @@
         </button>
 
         <!-- Aviso de Cooldown se atingiu limite de uploads seguidos -->
-        <div v-if="cooldownSecondsLeft > 0" class="cooldown-banner">
-          <div class="cooldown-icon">⏳</div>
+        <div v-if="cooldownSecondsLeft > 0" class="cooldown-banner" role="status">
+          <div class="cooldown-icon" aria-hidden="true">⏳</div>
           <div class="cooldown-content">
             <strong class="cooldown-title">Limite de uploads atingido</strong>
             <p class="cooldown-desc">
@@ -131,7 +142,7 @@
             :class="{ 'is-disabled': cooldownSecondsLeft > 0 }"
             @click="cooldownSecondsLeft > 0 ? null : (showCamera = true)"
           >
-            <span class="btn-icon">📷</span>
+            <span class="btn-icon" aria-hidden="true">📷</span>
             <span class="btn-label">{{ cooldownSecondsLeft > 0 ? `Aguarde ${cooldownSecondsLeft}s` : 'Tirar Foto Agora' }}</span>
           </button>
 
@@ -142,7 +153,7 @@
             :class="{ 'is-disabled': cooldownSecondsLeft > 0 }"
             @click="triggerGalleryPicker"
           >
-            <span class="btn-icon">🖼️</span>
+            <span class="btn-icon" aria-hidden="true">🖼️</span>
             <span class="btn-label">{{ cooldownSecondsLeft > 0 ? `Aguarde ${cooldownSecondsLeft}s` : 'Escolher da Galeria' }}</span>
           </button>
 
@@ -159,8 +170,8 @@
         </div>
 
         <p class="privacy-note">
-          IMPORTANTE: Suas fotos são analisadas por IA. Placas e rostos serão desfocados antes de qualquer gravação. Nenhum dado
-          seu é armazenado
+          <strong>Importante:</strong> suas fotos são analisadas por IA. Placas e rostos são desfocados antes de qualquer
+          gravação. Nenhum dado pessoal seu é armazenado.
         </p>
       </div>
 
@@ -198,9 +209,9 @@
 
             <!-- Badge HUD de proteção ativa -->
             <div class="scan-hud-badge">
-              <div class="hud-shield-pulse">🛡️</div>
+              <div class="hud-shield-pulse" aria-hidden="true">🛡️</div>
               <div class="hud-badge-info">
-                <span class="hud-badge-title">Filtro de Privacidade</span>
+                <span class="hud-badge-title">Filtro de privacidade</span>
                 <span class="hud-badge-status">Anonimizando placas e rostos...</span>
               </div>
             </div>
@@ -214,36 +225,65 @@
         </div>
 
         <div class="analyzing-details">
-          <div class="analyzing-status-pill">
-            <span class="pulse-radar-dot"></span>
-            <p class="analyzing-text">{{ analyzingStatusText }}</p>
+          <!-- Região viva: leitores de tela anunciam as mudanças de status da análise -->
+          <div class="analyzing-status-live" role="status" aria-live="polite">
+            <div class="analyzing-status-pill">
+              <span class="pulse-radar-dot" aria-hidden="true"></span>
+              <p class="analyzing-text">{{ analyzingStatusText }}</p>
+              </div>
           </div>
           
-          <div class="analyzing-progress-bar">
+          <div class="analyzing-progress-bar" aria-hidden="true">
             <div class="analyzing-progress-fill"></div>
           </div>
-          <span class="analyzing-sub">Avaliando veículos, segurança e dados sensíveis...</span>
+          <span v-if="isPreparingValidationAd" class="analyzing-sub">
+            Após 3 análises por IA, exibimos um anúncio curto para manter o Multei gratuito.
+          </span>
+          <span v-else class="analyzing-sub">Avaliando veículos, segurança e dados sensíveis...</span>
+          
+          <button type="button" class="btn btn-secondary btn-cancel-analysis" @click="cancelAnalysis">
+            Cancelar análise
+          </button>
         </div>
       </div>
 
       <!-- Erro de Validação ou Instabilidade de IA -->
       <div v-if="isGpsEnabled && step === 'error'" class="step-error">
-        <div class="error-badge">{{ isApiError ? '⚡' : '⚠️' }}</div>
+        <div class="error-badge" aria-hidden="true">{{ isTimeoutError ? '⏱️' : (isApiError ? '⚡' : '⚠️') }}</div>
         <h3 class="error-heading" :class="{ 'is-api-error': isApiError }">
-          {{ isApiError ? 'Instabilidade no Serviço de IA' : 'Foto Não Aceita' }}
+          {{ isTimeoutError ? 'A análise demorou demais' : (isApiError ? 'Instabilidade no serviço de IA' : 'Foto não aceita') }}
         </h3>
-        <p class="error-explanation">{{ errorMessage }}</p>
+        <p class="error-explanation" role="alert">{{ errorMessage }}</p>
         
         <div class="modal-actions mt-4">
-          <button v-if="isApiError && lastSelectedFile" class="btn btn-primary" @click="handleRetry">
-            🔄 Tentar Novamente
+          <button v-if="isApiError && lastSelectedFile" type="button" class="btn btn-primary" @click="handleRetry">
+            <span aria-hidden="true">🔄 </span>Tentar novamente
           </button>
-          <button v-else-if="canReanalyzeRejectedPhoto && lastSelectedFile" class="btn btn-primary"
+          <button v-else-if="canReanalyzeRejectedPhoto && lastSelectedFile" type="button" class="btn btn-primary"
             :disabled="cooldownSecondsLeft > 0" @click="handleReanalyzeRejectedPhoto">
-            🔄 Analisar novamente
+            <span aria-hidden="true">🔄 </span>Analisar novamente
           </button>
-          <button class="btn btn-secondary" @click="resetToUpload">
-            {{ (isApiError || canReanalyzeRejectedPhoto) && lastSelectedFile ? 'Escolher Outra Foto' : 'Tentar Outra Foto' }}
+          <button type="button" class="btn btn-secondary" @click="resetToUpload">
+            {{ (isApiError || canReanalyzeRejectedPhoto) && lastSelectedFile ? 'Escolher outra foto' : 'Tentar outra foto' }}
+          </button>
+          </div>
+          </div>
+          
+          <!-- Anúncio premiado fechado antes da recompensa: a foto não foi analisada -->
+          <div v-if="isGpsEnabled && step === 'ad-required'" class="step-error step-ad-required">
+            <div class="error-badge" aria-hidden="true">🎬</div>
+            <h3 class="error-heading is-api-error">Anúncio não concluído</h3>
+            <p class="error-explanation" role="status">
+              A foto não foi analisada porque o anúncio foi fechado antes do fim. Após 3 análises por IA, exibimos um anúncio
+              curto para manter o Multei gratuito.
+            </p>
+            <div class="modal-actions mt-4">
+              <button type="button" class="btn btn-primary" :disabled="cooldownSecondsLeft > 0"
+                @click="handleRetryFirstPhotoWithAd">
+                Assistir anúncio e analisar
+              </button>
+              <button type="button" class="btn btn-secondary" @click="resetToUpload">
+                Escolher outra foto
           </button>
         </div>
       </div>
@@ -253,44 +293,41 @@
         <div class="preview-container">
           <img :src="currentPreviewPhoto" alt="Pré-visualização com desfoque de privacidade" class="preview-img" />
           <div
-            v-if="selectedNatureza !== 'urbana'"
-            class="verification-photo-select-wrap"
-            :class="{ 'is-empty': !detectedVerificacao }"
-            title="Tipo de infração — clique para alterar"
-            data-tooltip="clique para alterar o tipo de infração"
-          >
-            <select
-              v-model="detectedVerificacao"
-              class="verification-photo-select"
-              aria-label="Selecionar ou editar o tipo de infração de trânsito"
-              title="Tipo de infração — clique para alterar"
-            >
-              <option value="">Selecione tipo infração</option>
-              <option value="exclusiva">♿ Vaga exclusiva</option>
-              <option value="transferencia">♿️↔️ Área de transferência</option>
-              <option value="pedestre">🚷 Faixa de pedestres</option>
-            </select>
-            <span class="verification-select-chevron" aria-hidden="true">▾</span>
-          </div>
-          <div
-            v-else-if="previewVerificationBadge"
+            v-if="selectedNatureza === 'urbana' && previewVerificationBadge"
             class="verification-photo-badge"
             :class="`is-${previewVerificationBadge.type}`"
-            :title="previewVerificationBadge.label"
           >
             <span class="verification-badge-icon" aria-hidden="true">{{ previewVerificationBadge.icon }}</span>
             <span class="verification-badge-text">{{ previewVerificationBadge.label }}</span>
           </div>
           <button v-if="previewPhotosList.length > 1" type="button" class="btn-switch-photo-corner"
-            :aria-label="`Alternar foto (${activePreviewPhotoIndex + 1} de ${previewPhotosList.length})`"
-            :title="`Alternar entre as fotos da denúncia (${activePreviewPhotoIndex + 1}/${previewPhotosList.length})`"
             @click="togglePreviewPhoto">
             <span aria-hidden="true">📷</span>
             <span>Foto {{ activePreviewPhotoIndex + 1 }}/{{ previewPhotosList.length }}</span>
+            <span class="visually-hidden">: alternar entre as fotos da ocorrência</span>
             <span aria-hidden="true">⇄</span>
           </button>
-          <span class="badge-blur">Filtro privacidade aplicado</span>
+          <span class="badge-blur">Filtro de privacidade aplicado</span>
         </div>
+
+        <!-- Tipo de infração (opcional, somente Infração de trânsito): pré-selecionado pela IA quando identificado -->
+        <fieldset v-if="selectedNatureza !== 'urbana'" class="verification-chip-group">
+          <legend class="verification-chip-legend">
+            Tipo de infração <span class="verification-chip-optional">(opcional)</span>
+          </legend>
+          <div class="verification-chip-list">
+            <label v-for="opt in VERIFICATION_OPTIONS" :key="opt.value || 'nao-sei'" class="verification-chip"
+              :class="{ 'is-selected': detectedVerificacao === opt.value }">
+              <input v-model="detectedVerificacao" type="radio" name="incident-verification-type"
+                class="verification-chip-input" :value="opt.value" />
+              <span v-if="opt.icon" class="verification-chip-icon" aria-hidden="true">{{ opt.icon }}</span>
+              <span>{{ opt.label }}</span>
+            </label>
+          </div>
+          <p v-if="aiSuggestedVerificacao && detectedVerificacao === aiSuggestedVerificacao" class="verification-chip-hint">
+            Sugerido pela análise da IA. Altere se não estiver correto.
+          </p>
+        </fieldset>
 
         <!-- Seção de 2ª Foto (exclusiva para Infrações de Trânsito, até 2 fotos) -->
         <div v-if="selectedNatureza !== 'urbana'" class="second-photo-section">
@@ -307,11 +344,11 @@
             <div v-else class="second-photo-picker-inline">
               <button type="button" class="btn btn-primary btn-second-picker" :disabled="cooldownSecondsLeft > 0"
                 @click="triggerSecondCamera">
-                📸 Tirar 2ª Foto
+                <span aria-hidden="true">📸 </span>Tirar 2ª foto
               </button>
               <button type="button" class="btn btn-secondary btn-second-picker" :disabled="cooldownSecondsLeft > 0"
                 @click="triggerSecondGalleryPicker">
-                🖼️ Galeria
+                <span aria-hidden="true">🖼️ </span>Galeria
               </button>
               <button type="button" class="btn-cancel-second-picker" @click="showSecondPhotoPicker = false">
                 Cancelar
@@ -320,7 +357,7 @@
           </div>
         
           <div v-else class="second-photo-added-bar">
-            <span class="second-photo-added-badge">✅ 2/2 fotos adicionadas</span>
+            <span class="second-photo-added-badge"><span aria-hidden="true">✅ </span>2/2 fotos adicionadas</span>
             <button type="button" class="btn-remove-second-photo" @click="removeSecondPhoto">
               Remover 2ª foto
             </button>
@@ -331,10 +368,23 @@
             <span class="rear-view-alert-icon" aria-hidden="true">💡</span>
             <p class="rear-view-alert-text">
               Como a foto é da traseira, que tal incluir uma foto da frente do carro mostrando o painel sem a credencial? Isso
-              dá mais credibilidade para a denúncia.
+              dá mais credibilidade para a ocorrência.
             </p>
           </div>
-        
+
+          <!-- Anúncio premiado fechado antes da recompensa: a 2ª foto não foi analisada -->
+          <div v-if="secondPhotoAdBlocked" class="second-photo-error-alert" role="status">
+            <span class="second-photo-error-icon" aria-hidden="true">🎬</span>
+            <div class="second-photo-error-body">
+              <p class="second-photo-error-text">
+                A 2ª foto não foi analisada porque o anúncio foi fechado antes do fim.
+              </p>
+              <button type="button" class="btn-reanalyze-second-photo" :disabled="cooldownSecondsLeft > 0"
+                @click="handleRetrySecondPhotoWithAd">
+                Assistir anúncio e analisar
+              </button>
+            </div>
+          </div>
           <!-- Erro ao tentar validar a 2ª foto (mantém a 1ª foto preservada) -->
           <div v-if="secondPhotoError" class="second-photo-error-alert" role="alert">
             <span class="second-photo-error-icon" aria-hidden="true">⚠️</span>
@@ -342,7 +392,7 @@
               <p class="second-photo-error-text">{{ secondPhotoError }}</p>
               <button v-if="canReanalyzeSecondPhoto && lastSecondSelectedFile" type="button" class="btn-reanalyze-second-photo"
                 :disabled="cooldownSecondsLeft > 0" @click="handleReanalyzeSecondPhoto">
-                🔄 Analisar novamente
+                <span aria-hidden="true">🔄 </span>Analisar novamente
               </button>
             </div>
           </div>
@@ -385,41 +435,48 @@
 
         <div class="location-box glass">
           <div class="location-header">
-            <span class="loc-icon">📍</span>
+            <span class="loc-icon" aria-hidden="true">📍</span>
             <div class="loc-text">
               <div class="loc-title-row">
-                <strong>Localização da Infração:</strong>
-                <span v-if="locationSource === 'exif'" class="source-badge is-exif" title="Coordenadas obtidas dos metadados da imagem">
-                  📷 Da foto
+                <strong>Local da ocorrência</strong>
+                <span v-if="locationSource === 'exif'" class="source-badge is-exif">
+                  <span aria-hidden="true">📷 </span>Da foto
                 </span>
-                <span v-else-if="locationSource === 'device'" class="source-badge is-gps" title="Coordenadas obtidas do GPS do navegador">
-                  📡 GPS do dispositivo
+                <span v-else-if="locationSource === 'device'" class="source-badge is-gps">
+                  <span aria-hidden="true">📡 </span>GPS do dispositivo
                 </span>
-                <span v-else-if="locationSource === 'manual'" class="source-badge is-manual" title="Coordenadas ajustadas manualmente no mapa">
-                  ✏️ Ajustado no mapa
+                <span v-else-if="locationSource === 'manual'" class="source-badge is-manual">
+                  <span aria-hidden="true">✏️ </span>Ajustado no mapa
                 </span>
-                <span v-else class="source-badge is-fallback" title="Posição aproximada/padrão">
-                  ⚠️ Posição aproximada
+                <span v-else class="source-badge is-fallback">
+                  <span aria-hidden="true">⚠️ </span>Posição aproximada
                 </span>
               </div>
-              <p v-if="addressText" class="loc-address">
-                <span v-if="isResolvingAddress" class="loc-loading">⏳ </span>
+              <p v-if="addressText" class="loc-address" aria-live="polite">
+                <span v-if="isResolvingAddress" class="loc-loading" aria-hidden="true">⏳ </span>
                 {{ addressText }}
               </p>
             </div>
           </div>
 
+          <!-- Divulgação progressiva: por padrão mostra só o endereço; "Corrigir local" revela as ações -->
+          <button v-if="isLocationValid && !isEditingAddress && !isAdjustingLocation" type="button"
+            class="btn-link-correct-location" :aria-expanded="showLocationActions ? 'true' : 'false'"
+            aria-controls="incident-location-actions" @click="showLocationActions = !showLocationActions">
+            {{ showLocationActions ? 'Ocultar opções de local' : 'Corrigir local' }}
+          </button>
+
           <!-- Ações de localização (GPS, Mapa e Editar Endereço) -->
-          <div v-if="isLocationValid || isEditingAddress" class="location-actions-bar">
+          <div v-if="(isLocationValid || isEditingAddress) && (showLocationActions || isEditingAddress || isAdjustingLocation)"
+            id="incident-location-actions" class="location-actions-bar">
             <button 
               type="button" 
               class="btn-loc-action btn-refresh-gps" 
               :disabled="isRefreshingGps"
               @click="handleRefreshGps"
-              title="Obter coordenadas atuais do GPS deste aparelho"
             >
-              <span v-if="isRefreshingGps">⏳ Obtendo GPS...</span>
-              <span v-else>📍 Usar Meu GPS Atual</span>
+              <span v-if="isRefreshingGps"><span aria-hidden="true">⏳ </span>Obtendo GPS...</span>
+              <span v-else><span aria-hidden="true">📍 </span>Usar meu GPS atual</span>
             </button>
 
             <button 
@@ -428,7 +485,8 @@
               :class="{ 'is-active': isAdjustingLocation }"
               @click="toggleAdjustLocation"
             >
-              {{ isAdjustingLocation ? '✓ Concluir Ajuste' : '🗺️ Ajustar no Mapa' }}
+              <span v-if="isAdjustingLocation"><span aria-hidden="true">✓ </span>Concluir ajuste</span>
+              <span v-else><span aria-hidden="true">🗺️ </span>Ajustar no mapa</span>
             </button>
 
             <button 
@@ -437,7 +495,8 @@
               :class="{ 'is-active': isEditingAddress }"
               @click="toggleEditAddress"
             >
-              {{ isEditingAddress ? '✓ Concluir Edição' : '✏️ Editar Endereço' }}
+              <span v-if="isEditingAddress"><span aria-hidden="true">✓ </span>Concluir edição</span>
+              <span v-else><span aria-hidden="true">✏️ </span>Editar endereço</span>
             </button>
           </div>
 
@@ -484,20 +543,20 @@
               </div>
             </div>
 
-            <p v-if="isValidatingAddress" class="edit-address-status">
-              ⏳ Verificando se o endereço está dentro do raio de {{ MAX_ADJUST_RADIUS_METERS }}m do GPS...
+            <p v-if="isValidatingAddress" class="edit-address-status" role="status">
+              <span aria-hidden="true">⏳ </span>Verificando se o endereço está dentro do raio de {{ MAX_ADJUST_RADIUS_METERS }}m do GPS...
             </p>
             <div v-else-if="addressEditError" class="edit-address-error" role="alert">
-              ⚠️ {{ addressEditError }}
+              <span aria-hidden="true">⚠️ </span>{{ addressEditError }}
             </div>
           </div>
 
           <!-- Alerta Destacado: Endereço não identificado automaticamente (oculto durante o ajuste no mapa para evitar piscadas na UX) -->
           <div v-if="!isLocationValid && !isResolvingAddress && !isAdjustingLocation" class="loc-required-alert">
             <div class="loc-alert-header">
-              <span class="loc-alert-badge">⚠️ Endereço Incompleto</span>
+              <span class="loc-alert-badge"><span aria-hidden="true">⚠️ </span>Endereço incompleto</span>
               <p class="loc-alert-msg">
-                A <strong>Cidade</strong> e o <strong>Estado</strong> precisam ser identificados. Escolha uma das opções abaixo para
+                A <strong>cidade</strong> e o <strong>estado</strong> precisam ser identificados. Escolha uma das opções abaixo para
                 definir o local:
               </p>
             </div>
@@ -509,9 +568,9 @@
                 :disabled="isRefreshingGps"
                 @click="handleRefreshGps"
               >
-                <span class="btn-prominent-icon">📍</span>
+                <span class="btn-prominent-icon" aria-hidden="true">📍</span>
                 <span class="btn-prominent-text">
-                  <span class="btn-prominent-title">{{ isRefreshingGps ? 'Consultando GPS...' : 'Usar Meu GPS Atual' }}</span>
+                  <span class="btn-prominent-title">{{ isRefreshingGps ? 'Consultando GPS...' : 'Usar meu GPS atual' }}</span>
                   <span class="btn-prominent-sub">Obtém a posição exata do seu aparelho</span>
                 </span>
               </button>
@@ -522,16 +581,16 @@
                 :class="{ 'is-active': isAdjustingLocation }"
                 @click="toggleAdjustLocation"
               >
-                <span class="btn-prominent-icon">🗺️</span>
+                <span class="btn-prominent-icon" aria-hidden="true">🗺️</span>
                 <span class="btn-prominent-text">
-                  <span class="btn-prominent-title">{{ isAdjustingLocation ? '✓ Concluir Escolha' : 'Escolher no Mapa' }}</span>
-                  <span class="btn-prominent-sub">Arraste o pino para a rua da infração</span>
+                  <span class="btn-prominent-title">{{ isAdjustingLocation ? 'Concluir escolha' : 'Escolher no mapa' }}</span>
+                  <span class="btn-prominent-sub">Arraste o pino para a rua da ocorrência</span>
                 </span>
               </button>
             </div>
           </div>
 
-          <p v-if="gpsStatusMessage" class="gps-msg" :class="{ 'is-error': gpsStatusIsError }">
+          <p v-if="gpsStatusMessage" class="gps-msg" :class="{ 'is-error': gpsStatusIsError }" role="status" aria-live="polite">
             {{ gpsStatusMessage }}
           </p>
 
@@ -539,7 +598,7 @@
           <div v-if="isAdjustingLocation" class="mini-map-container">
             <div class="mini-map-header-row">
               <p class="mini-map-hint">
-                Arraste o mapa para posicionar o pino no local da infração (limite máximo de <strong>{{ MAX_ADJUST_RADIUS_METERS }}m</strong> do GPS).
+                Arraste o mapa para posicionar o pino no local da ocorrência (limite máximo de <strong>{{ MAX_ADJUST_RADIUS_METERS }}m</strong> do GPS).
               </p>
             </div>
             <div class="mini-map-frame">
@@ -557,33 +616,55 @@
           </div>
         </div>
 
-        <div v-if="saveError" class="alert alert-error">
+        <div v-if="saveError" class="alert alert-error" role="alert">
           {{ saveError }}
         </div>
 
-        <div class="modal-actions">
-          <button class="btn btn-secondary" @click="resetToUpload" :disabled="isSaving">
+        <!-- Confirmação inline antes de descartar fotos e endereço (sem confirm() nativo) -->
+        <div
+          v-if="showRestartConfirm"
+          class="modal-actions preview-actions"
+        >
+          <div class="restart-confirm" role="group" aria-labelledby="restart-confirm-text">
+            <p id="restart-confirm-text" class="restart-confirm-text">Descartar as fotos e recomeçar?</p>
+            <div class="restart-confirm-actions">
+              <button ref="restartCancelBtnRef" type="button" class="btn btn-secondary" @click="cancelRestart">
+                Cancelar
+              </button>
+              <button type="button" class="btn btn-discard" @click="confirmRestart">
+                Descartar
+              </button>
+            </div>
+          </div>
+        </div>
+        <div v-else class="modal-actions preview-actions">
+          <button ref="restartBtnRef" type="button" class="btn-link-restart" :disabled="isSaving" @click="requestRestart">
             Recomeçar
           </button>
           <button 
+            type="button"
             class="btn btn-primary btn-save-incident" 
             :class="{ 'is-disabled-lock': !!addressEditError || !isLocationInBrazil }"
             @click="handleSaveIncident" 
             :disabled="isSaving || isResolvingAddress || isValidatingAddress || !!addressEditError || !isLocationInBrazil"
           >
-            <span v-if="isSaving">Processando...</span>
+            <span v-if="isSaving">Salvando...</span>
             <span v-else-if="isResolvingAddress">Obtendo endereço...</span>
             <span v-else-if="isValidatingAddress">Validando endereço...</span>
-            <span v-else>Salvar denúncia</span>
+            <span v-else>Salvar ocorrência</span>
           </button>
         </div>
+        <!-- Explica por que o ✕ fica desabilitado durante o salvamento final -->
+        <p v-if="isSaving" class="saving-note" role="status" aria-live="polite">
+          Salvando a ocorrência. Aguarde, não feche esta janela.
+        </p>
 
         <!-- Modal de confirmação quando um veículo em infração é detectado na foto de Mobilidade Urbana -->
         <div v-if="showSwitchToTrafficModal" class="switch-natureza-overlay" @click.stop>
           <div class="switch-natureza-card" role="dialog" aria-modal="true" aria-labelledby="switch-natureza-title">
             <div class="switch-natureza-icon" aria-hidden="true">🚗</div>
             <h3 id="switch-natureza-title" class="switch-natureza-title">
-              Parece que tem um veículo na imagem, quer alterar o tipo de denúncia para infração de trânsito?
+              Parece que tem um veículo na imagem. Quer alterar o tipo de ocorrência para infração de trânsito?
             </h3>
             <div class="switch-natureza-actions">
               <button
@@ -605,28 +686,30 @@
         </div>
       </div>
 
-      <!-- Etapa 4: Sucesso -->
-      <div
-        v-if="step === 'success'"
-        class="step-success"
-        :aria-hidden="isPreparingSuccessAd ? 'true' : undefined"
-      >
-        <div class="success-icon">✅</div>
-        <h3 class="success-title">Ocorrência Registrada!</h3>
+      <!-- Etapa 4: Sucesso (exibida imediatamente, sem véu de carregamento) -->
+      <div v-if="step === 'success'" class="step-success">
+        <div class="success-icon" aria-hidden="true">✅</div>
+        <h3 class="success-title">Ocorrência registrada!</h3>
         <p v-if="savedForCredentialReview" class="success-desc">
           A ocorrência foi enviada para validação porque há suspeita de credencial válida na foto. Ela ficará visível no mapa após a revisão.
         </p>
         <p v-else class="success-desc">
-          A infração foi salva e já está visível no mapa.
+          {{ successDescription }}
         </p>
 
-        <!-- Banner pequeno (320x50) acima dos botões Compartilhar / Fechar -->
-        <div v-if="successAdSlot" class="success-ad-banner-slot">
+        <!-- Banner pequeno (320x50) com espaço FIXO reservado desde o primeiro quadro, acima dos botões:
+             o carregamento do anúncio nunca desloca os botões; se não for preenchido, o espaço permanece neutro. -->
+        <div
+          v-if="successAdSlot"
+          class="success-ad-banner-slot"
+          :aria-hidden="isSuccessAdFilled ? undefined : 'true'"
+        >
           <AdSenseBanner
             :ad-slot="successAdSlot"
             :width="320"
             :height="50"
             :timeout-ms="2500"
+            label=""
             @ready="handleSuccessAdReady"
           />
         </div>
@@ -640,7 +723,7 @@
               type="button"
               class="btn btn-share-created"
               :disabled="isSharingCreatedIncident"
-              aria-label="Baixar para compartilhar"
+              :aria-busy="isSharingCreatedIncident ? 'true' : undefined"
               @click="handleShareCreatedIncident"
             >
               <svg
@@ -654,7 +737,7 @@
                 <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
                 <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
               </svg>
-              <span>{{ isSharingCreatedIncident ? 'Gerando imagem' : 'Compartilhar denúncia' }}</span>
+              <span>{{ isSharingCreatedIncident ? 'Gerando imagem...' : 'Compartilhar ocorrência' }}</span>
             </button>
             <span
               v-if="createdShareFeedback"
@@ -670,18 +753,6 @@
           </button>
         </div>
       </div>
-
-      <!-- Camada de carregamento exibida enquanto a propaganda da tela de sucesso é preparada -->
-      <div
-        v-if="step === 'success' && isPreparingSuccessAd"
-        class="success-ad-loading-veil"
-        role="status"
-        aria-live="polite"
-      >
-        <LoadingSpinner />
-        <p class="success-ad-loading-title">Finalizando registro...</p>
-        <span class="success-ad-loading-sub">Preparando confirmação da ocorrência</span>
-      </div>
     </div>
   </div>
 </template>
@@ -689,6 +760,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import LoadingSpinner from './LoadingSpinner.vue';
+import MulteiGpsDeniedHelp from './GpsDeniedHelp.vue';
 import AdSenseBanner from '../AdSenseBanner.vue';
 import {
   initializeGeminiClient,
@@ -703,9 +775,14 @@ import {
   prepareImageForGemini,
   resizeImageForServer,
   areImagesVisuallyIdentical,
-  shareIncidentWithTemplate
+              generateIncidentShareCardFile
 } from '../../services/imageProcessor';
 import {
+              preloadRewardedAd,
+              prepareRewardedAdWithTimeout,
+              disposeRewardedAdSession
+            } from '../../services/rewardedAdService';
+            import {
   saveIncidentToFirebase,
   normalizeVerificacao,
   findRecentNearbyTrafficIncidents,
@@ -763,23 +840,48 @@ const triggerGalleryPicker = () => {
   galleryInputRef.value?.click();
 };
 
+      // Título do modal separado em ícone decorativo (aria-hidden) + texto
+      const modalTitleIcon = computed(() => {
+        if (!props.isGpsEnabled && step.value !== 'success') return '📍';
+        if (step.value === 'category') return '';
+        return selectedNatureza.value === 'urbana' ? '🚧' : '♿';
+      });
+
 const modalTitle = computed(() => {
   if (!props.isGpsEnabled && step.value !== 'success') {
-    return '📍 GPS Necessário';
+    return 'GPS necessário';
   }
   if (step.value === 'category') {
-    return 'Incluir Ocorrência';
+    return 'Registrar ocorrência';
   }
   return selectedNatureza.value === 'urbana'
-    ? '🚧 Mobilidade Urbana'
-    : '♿ Infração de Trânsito';
+    ? 'Mobilidade urbana'
+    : 'Infração de trânsito';
 });
+
+      // Permissão de localização negada pelo navegador: exibe instruções específicas (MulteiGpsDeniedHelp)
+      const gpsPermissionDenied = ref(false);
+
+      const isGeolocationPermissionDenied = async (err) => {
+        // GeolocationPositionError.PERMISSION_DENIED === 1
+        if (err && Number(err.code) === 1) return true;
+        try {
+          if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
+            const status = await navigator.permissions.query({ name: 'geolocation' });
+            return status?.state === 'denied';
+          }
+        } catch {
+          // API de permissões indisponível: trata como falha genérica
+        }
+        return false;
+      };
 
 const handleActivateGpsForReport = async () => {
   isActivatingGpsForReport.value = true;
   gpsActivationError.value = '';
   try {
     const coords = await requestUserLocation();
+    gpsPermissionDenied.value = false;
     selectedLocation.latitude = coords.latitude;
     selectedLocation.longitude = coords.longitude;
     setGpsAnchorLocation(coords.latitude, coords.longitude);
@@ -794,9 +896,12 @@ const handleActivateGpsForReport = async () => {
     updateAddress(coords.latitude, coords.longitude);
     emit('gpsEnabled', coords);
   } catch (err) {
-    console.warn('[CreateIncidentModal] Falha ao ativar GPS:', err);
-    gpsActivationError.value =
-      'Não foi possível acessar o GPS. Verifique se a permissão de localização está liberada no navegador e no aparelho.';
+    console.warn('[CreateIncidentModal] Falha ao ativar GPS:', err?.code ?? err?.name ?? 'erro');
+    const denied = await isGeolocationPermissionDenied(err);
+    gpsPermissionDenied.value = denied;
+    gpsActivationError.value = denied
+      ? ''
+      : 'Não foi possível acessar o GPS. Verifique se a permissão de localização está liberada no navegador e no aparelho.';
   } finally {
     isActivatingGpsForReport.value = false;
   }
@@ -811,6 +916,7 @@ const handleSelectCategory = (natureza) => {
 const confirmSwitchToTraffic = () => {
   selectedNatureza.value = 'infracao_veicular';
   detectedVerificacao.value = pendingVehicleVerification.value;
+  aiSuggestedVerificacao.value = pendingVehicleVerification.value;
   urbanDescricao.value = '';
   showSwitchToTrafficModal.value = false;
 };
@@ -826,20 +932,23 @@ const declineSwitchToTraffic = () => {
 };
 const isAnalyzing = ref(false);
 const isSaving = ref(false);
-const isPreparingSuccessAd = ref(false);
-let successAdSafetyTimer = null;
+      const isTimeoutError = ref(false);
+      const secondPhotoAdBlocked = ref(false);
+      const showLocationActions = ref(false);
+      const aiSuggestedVerificacao = ref('');
 
-const handleSuccessAdReady = () => {
-  if (successAdSafetyTimer) {
-    clearTimeout(successAdSafetyTimer);
-    successAdSafetyTimer = null;
-  }
-  isPreparingSuccessAd.value = false;
-};
+      // Opções do tipo de infração (opcional) — mesmos valores do v-model detectedVerificacao
+      const VERIFICATION_OPTIONS = [
+        { value: 'exclusiva', icon: '♿', label: 'Vaga exclusiva' },
+        { value: 'transferencia', icon: '♿↔', label: 'Área de transferência' },
+        { value: 'pedestre', icon: '🚷', label: 'Faixa de pedestres' },
+        { value: '', icon: '', label: 'Não sei' }
+      ];
 
 const { focusInitialElement } = useModalAccessibility({
   modalRef: modalCardRef,
-  canClose: () => !isAnalyzing.value && !isSaving.value && !isPreparingSuccessAd.value,
+  // Durante a análise, Esc cancela a análise e fecha; só fica bloqueado durante o salvamento final
+  canClose: () => !isSaving.value,
   onRequestClose: () => {
     if (showCamera.value) {
       showCamera.value = false;
@@ -850,15 +959,21 @@ const { focusInitialElement } = useModalAccessibility({
       declineSwitchToTraffic();
       return 'subview';
     }
+    if (showRestartConfirm.value) {
+      cancelRestart();
+      return 'subview';
+    }
+    if (isAnalyzing.value) {
+      cancelAnalysis();
+    }
     emit('close');
     return 'closed';
   }
 });
 
 watch(
-  [step, isPreparingSuccessAd, showCamera, showSwitchToTrafficModal, () => props.isGpsEnabled],
+  [step, showCamera, showSwitchToTrafficModal, () => props.isGpsEnabled],
   () => {
-    if (isPreparingSuccessAd.value) return;
     nextTick(() => {
       focusInitialElement();
     });
@@ -1628,6 +1743,221 @@ const successAdSlot = computed(() =>
   String(config.public.adsenseSuccessSlot || '5711602967').trim()
 );
 
+      // Status do banner da tela de sucesso: o espaço é sempre reservado; quando não preenchido,
+      // o espaço fica neutro e oculto para tecnologias assistivas (aria-hidden).
+      const successAdStatus = ref('');
+      const isSuccessAdFilled = computed(() =>
+        successAdStatus.value === 'filled' || successAdStatus.value === 'dev-preview'
+      );
+      const handleSuccessAdReady = (payload) => {
+        successAdStatus.value = String(payload?.status || '');
+      };
+
+      // --- Anúncio premiado após 3 validações de imagem por IA ---
+      // Regra: toda validação realmente enviada à IA incrementa o contador (cache local não conta).
+      // Validações da 1ª foto (incl. reanálises/novas tentativas) exigem anúncio quando count >= 3;
+      // após recompensa (ou falha aberta) o contador volta a 0. Validações da 2ª foto nunca exigem anúncio,
+      // garantindo que uma ocorrência com 2 fotos nunca seja interrompida por anúncio.
+      const AI_VALIDATION_COUNT_KEY = 'multei_ai_validation_count';
+      const AI_VALIDATIONS_PER_AD = 3;
+      const isPreparingValidationAd = ref(false);
+      let hasPreparedValidationAd = false;
+
+// Usa um bloco dedicado se configurado; caso contrário reutiliza o bloco premiado do fluxo de denúncia de ocorrência
+      const validationAdUnit = computed(() =>
+        String(
+          config.public?.gamRewardedValidationUnit ||
+          config.public?.gamRewardedReportUnit ||
+          '/23391888447/multei_report_rewarded'
+        ).trim()
+      );
+
+      const readAiValidationCount = () => {
+        if (typeof window === 'undefined') return 0;
+        try {
+          const n = parseInt(localStorage.getItem(AI_VALIDATION_COUNT_KEY) || '0', 10);
+          return Number.isFinite(n) && n >= 0 ? n : 0;
+        } catch {
+          return 0;
+        }
+      };
+
+      const writeAiValidationCount = (n) => {
+        if (typeof window === 'undefined') return;
+        try {
+          localStorage.setItem(AI_VALIDATION_COUNT_KEY, String(Math.max(0, Math.floor(n))));
+        } catch {
+          // localStorage indisponível (modo privado/cota): segue sem persistir
+        }
+      };
+
+      const isAdRequiredBeforeNextValidation = () => {
+        return readAiValidationCount() >= AI_VALIDATIONS_PER_AD;
+      };
+
+      const registerAiValidationSent = () => {
+        const next = readAiValidationCount() + 1;
+        writeAiValidationCount(next);
+        // A próxima validação de 1ª foto exigirá anúncio: pré-carrega em segundo plano para reduzir a espera
+        if (next >= AI_VALIDATIONS_PER_AD) {
+          try {
+            preloadRewardedAd(validationAdUnit.value);
+            hasPreparedValidationAd = true;
+          } catch {
+            // Monetização não deve quebrar o fluxo
+          }
+        }
+      };
+
+      /**
+       * Exibe o anúncio premiado quando exigido antes de uma validação por IA da 1ª foto
+       * (validações da 2ª foto nunca são bloqueadas por anúncio).
+       * Retorna 'proceed' (seguir com a validação), 'blocked' (usuário fechou antes da recompensa)
+       * ou 'stale' (a análise foi cancelada/expirou enquanto o anúncio era preparado).
+       * Falha ABERTA: se o anúncio estiver indisponível (adblock, sem inventário, sem consentimento), segue.
+       * Após recompensa ou falha aberta, o contador volta a 0 (a validação seguinte conta como 1).
+       */
+      const ensureRewardedAdBeforeValidation = async (runId) => {
+        if (!isAdRequiredBeforeNextValidation()) return 'proceed';
+
+        // O tempo do anúncio não conta para o limite de tempo da análise
+        clearAnalysisTimeout();
+        isPreparingValidationAd.value = true;
+        analyzingStatusText.value = 'Carregando um anúncio rápido antes da análise...';
+        hasPreparedValidationAd = true;
+
+        let adResult = null;
+        try {
+          adResult = await prepareRewardedAdWithTimeout(validationAdUnit.value, 5000);
+        } catch {
+          adResult = null;
+        }
+
+        if (runId !== analysisRunId) {
+          try { adResult?.dispose?.(); } catch { }
+          return 'stale';
+        }
+        isPreparingValidationAd.value = false;
+
+        if (!adResult || adResult.status !== 'ready' || typeof adResult.show !== 'function') {
+          writeAiValidationCount(0);
+          startAnalysisTimeout(runId);
+          return 'proceed';
+        }
+
+        analyzingStatusText.value = 'Exibindo anúncio...';
+        let outcome = { granted: false, failed: false };
+        try {
+          outcome = await adResult.show();
+        } catch {
+          outcome = { granted: false, failed: true };
+        }
+
+        if (runId !== analysisRunId) return 'stale';
+
+        if (outcome?.granted || outcome?.failed) {
+          writeAiValidationCount(0);
+          startAnalysisTimeout(runId);
+          return 'proceed';
+        }
+
+        // Fechou antes da recompensa: não valida e pré-carrega para uma nova tentativa
+        try { preloadRewardedAd(validationAdUnit.value); } catch { }
+        return 'blocked';
+      };
+
+      // --- Cancelamento e limite de tempo da análise por IA ---
+      // O serviço de IA não aceita AbortSignal; usamos um identificador de execução para descartar
+      // resultados que cheguem após cancelamento/timeout.
+      const ANALYSIS_TIMEOUT_MS = 45000;
+      let analysisRunId = 0;
+      let analysisTimeoutTimer = null;
+      let secondPhotoRunRestore = null;
+      const analyzingTarget = ref('first');
+
+      const clearAnalysisTimeout = () => {
+        if (analysisTimeoutTimer) {
+          clearTimeout(analysisTimeoutTimer);
+          analysisTimeoutTimer = null;
+        }
+      };
+
+      const startAnalysisTimeout = (runId) => {
+        clearAnalysisTimeout();
+        analysisTimeoutTimer = setTimeout(() => {
+          analysisTimeoutTimer = null;
+          if (runId !== analysisRunId) return;
+          handleAnalysisTimeout();
+        }, ANALYSIS_TIMEOUT_MS);
+      };
+
+      const beginAnalysisRun = (target) => {
+        analysisRunId += 1;
+        analyzingTarget.value = target;
+        isPreparingValidationAd.value = false;
+        startAnalysisTimeout(analysisRunId);
+        return analysisRunId;
+      };
+
+      const invalidateAnalysisRun = () => {
+        analysisRunId += 1;
+        clearAnalysisTimeout();
+        isAnalyzing.value = false;
+        isPreparingValidationAd.value = false;
+      };
+
+      const restoreAfterSecondPhotoRun = () => {
+        if (!secondPhotoRunRestore) return;
+        const { previousRawPreviewUrl } = secondPhotoRunRestore;
+        secondPhotoRunRestore = null;
+        if (rawPreviewUrl.value && rawPreviewUrl.value !== previousRawPreviewUrl) {
+          URL.revokeObjectURL(rawPreviewUrl.value);
+        }
+        rawPreviewUrl.value = previousRawPreviewUrl;
+      };
+
+      const handleAnalysisTimeout = () => {
+        const target = analyzingTarget.value;
+        invalidateAnalysisRun();
+        if (target === 'second') {
+          restoreAfterSecondPhotoRun();
+          canReanalyzeSecondPhoto.value = true;
+          secondPhotoError.value =
+            'A análise da 2ª foto demorou mais que o esperado. Tente novamente ou escolha outra foto.';
+          step.value = 'preview';
+          return;
+        }
+        isApiError.value = true;
+        isTimeoutError.value = true;
+        canReanalyzeRejectedPhoto.value = false;
+        errorMessage.value =
+          'A análise demorou mais que o esperado. Verifique sua conexão e tente novamente ou escolha outra foto.';
+        step.value = 'error';
+      };
+
+      const cancelAnalysis = () => {
+        if (!isAnalyzing.value) return;
+        const target = analyzingTarget.value;
+        invalidateAnalysisRun();
+        if (target === 'second') {
+          restoreAfterSecondPhotoRun();
+          step.value = 'preview';
+          return;
+        }
+        // Descarta a busca de endereço pendente da foto cancelada
+        latestAddressRequestId += 1;
+        isResolvingAddress.value = false;
+        resetToUpload();
+      };
+
+      const handleHeaderClose = () => {
+        if (isSaving.value) return;
+        if (isAnalyzing.value) {
+          cancelAnalysis();
+        }
+        emit('close');
+      };
+
 let latestAddressRequestId = 0;
 const lastGeocodedCoords = reactive({
   latitude: null,
@@ -1865,6 +2195,7 @@ onMounted(async () => {
       detectedPossibleCredential.value = Boolean(firstPhotoPossibleCredential.value);
       activePreviewPhotoIndex.value = 0;
       secondPhotoError.value = '';
+      secondPhotoAdBlocked.value = false;
       canReanalyzeSecondPhoto.value = false;
       lastSecondSelectedFile.value = null;
       showSecondPhotoPicker.value = false;
@@ -1894,9 +2225,12 @@ onBeforeUnmount(() => {
     clearTimeout(addressValidationTimer);
     addressValidationTimer = null;
   }
-  if (successAdSafetyTimer) {
-    clearTimeout(successAdSafetyTimer);
-    successAdSafetyTimer = null;
+  // Ignora resultados tardios de análises em andamento e libera o anúncio premiado preparado
+  analysisRunId += 1;
+  clearAnalysisTimeout();
+  if (hasPreparedValidationAd) {
+    disposeRewardedAdSession();
+    hasPreparedValidationAd = false;
   }
   if (createdShareTimer) {
     clearTimeout(createdShareTimer);
@@ -1929,6 +2263,11 @@ const resetToUpload = () => {
   }
   step.value = 'upload';
   isApiError.value = false;
+  isTimeoutError.value = false;
+  showRestartConfirm.value = false;
+  showLocationActions.value = false;
+  secondPhotoAdBlocked.value = false;
+  aiSuggestedVerificacao.value = '';
   canReanalyzeRejectedPhoto.value = false;
   errorMessage.value = '';
   saveError.value = '';
@@ -1999,6 +2338,47 @@ const handleRetry = async () => {
     }
   };
 
+        // Usuário fechou o anúncio premiado antes da recompensa: permite assistir novamente e analisar
+        const handleRetryFirstPhotoWithAd = async () => {
+          if (!lastSelectedFile.value) {
+            resetToUpload();
+            return;
+          }
+          if (!rawPreviewUrl.value) {
+            rawPreviewUrl.value = URL.createObjectURL(lastSelectedFile.value);
+          }
+          await processSelectedImage(lastSelectedFile.value);
+        };
+
+        const handleRetrySecondPhotoWithAd = async () => {
+          if (!lastSecondSelectedFile.value) {
+            secondPhotoAdBlocked.value = false;
+            return;
+          }
+          await processSecondSelectedImage(lastSecondSelectedFile.value);
+        };
+
+        // --- "Recomeçar" com confirmação inline (descarta fotos e endereço) ---
+        const showRestartConfirm = ref(false);
+        const restartBtnRef = ref(null);
+        const restartCancelBtnRef = ref(null);
+
+        const requestRestart = () => {
+          if (isSaving.value) return;
+          showRestartConfirm.value = true;
+          nextTick(() => restartCancelBtnRef.value?.focus());
+        };
+
+        const cancelRestart = () => {
+          showRestartConfirm.value = false;
+          nextTick(() => restartBtnRef.value?.focus());
+        };
+
+        const confirmRestart = () => {
+          showRestartConfirm.value = false;
+          resetToUpload();
+        };
+
 const handleFileSelected = async (e) => {
   const target = e.target;
   const file = target.files?.[0];
@@ -2053,15 +2433,20 @@ const processSelectedImage = async (file) => {
   // Registra o upload e dispara cooldown de 1 min se atingir 5 fotos seguidas
   registerUploadAttempt();
 
+  const runId = beginAnalysisRun('first');
+  const isStale = () => runId !== analysisRunId;
+
   step.value = 'analyzing';
   isAnalyzing.value = true;
   isApiError.value = false;
+  isTimeoutError.value = false;
   canReanalyzeRejectedPhoto.value = false;
   errorMessage.value = '';
   secondProcessedImageWebp.value = '';
   activePreviewPhotoIndex.value = 0;
   showSecondPhotoPicker.value = false;
   secondPhotoError.value = '';
+  secondPhotoAdBlocked.value = false;
   canReanalyzeSecondPhoto.value = false;
   lastSecondSelectedFile.value = null;
   firstPhotoHash.value = '';
@@ -2076,9 +2461,11 @@ const processSelectedImage = async (file) => {
   try {
     // 1. Tentar obter metadados EXIF da foto (coordenadas GPS + data/hora de captura)
     const exifMetadata = await extractPhotoMetadata(file);
+    if (isStale()) return;
     let exifLocation = exifMetadata.location;
     if (exifLocation) {
       const exifInBrazil = await checkIfCoordsInBrazil(exifLocation.latitude, exifLocation.longitude);
+      if (isStale()) return;
       if (!exifInBrazil) {
         // Se o EXIF da imagem apontar para fora do Brasil (ex: metadado corrompido ou imagem sem EXIF local válido),
         // descarta o EXIF para priorizar o GPS real do dispositivo/mapa
@@ -2125,11 +2512,13 @@ const processSelectedImage = async (file) => {
         locationSource.value = isDefaultSP ? 'fallback' : 'device';
       }
     }
+    if (isStale()) return;
 
     // Trava geográfica: rejeita imediatamente se a localização selecionada ou âncora estiverem fora do Brasil
     if (locationSource.value !== 'fallback') {
       const inBrazil = await checkIfCoordsInBrazil(selectedLocation.latitude, selectedLocation.longitude);
       const anchorInBrazil = await checkIfCoordsInBrazil(gpsAnchorLocation.latitude, gpsAnchorLocation.longitude);
+      if (isStale()) return;
       if (!inBrazil || !anchorInBrazil) {
         isLocationInBrazil.value = false;
         isApiError.value = false;
@@ -2158,6 +2547,7 @@ const processSelectedImage = async (file) => {
     // 2. Redimensionar previamente a imagem para envio rápido e leve à IA (~250KB)
     analyzingStatusText.value = 'Otimizando imagem...';
     const optimizedBase64 = await prepareImageForGemini(file);
+    if (isStale()) return;
 
     // 3. Cache diário (permite até 2 análises por foto/dia se recusada na 1ª tentativa, exceto foto inapropriada)
     let cacheKey = null;
@@ -2201,13 +2591,25 @@ const processSelectedImage = async (file) => {
     } catch (hashErr) {
       console.warn('[CreateIncidentModal] Erro ao consultar cache da imagem:', hashErr);
     }
+    if (isStale()) return;
 
     // Se não estiver em cache (ou se for a 2ª tentativa permitida), chama a IA do Google Gemini
     if (!analysis) {
+      // Anúncio premiado a cada 3 validações por IA (antes da 4ª, 7ª, 10ª...)
+      const gate = await ensureRewardedAdBeforeValidation(runId);
+      if (gate === 'stale' || isStale()) return;
+      if (gate === 'blocked') {
+        invalidateAnalysisRun();
+        step.value = 'ad-required';
+        return;
+      }
+
       analyzingStatusText.value = selectedNatureza.value === 'urbana'
         ? 'Analisando acessibilidade urbana e segurança com IA...'
         : 'Analisando veículo e segurança com IA...';
+      registerAiValidationSent();
       analysis = await analyzeIncidentImage(geminiClient, optimizedBase64, selectedNatureza.value);
+      if (isStale()) return;
       attemptsUsed = attemptsUsed + 1;
 
       // Salva no cache local de 24h caso a chamada tenha sido bem-sucedida
@@ -2283,6 +2685,7 @@ const processSelectedImage = async (file) => {
       }
 
       detectedVerificacao.value = normalizedVerif;
+      aiSuggestedVerificacao.value = normalizedVerif;
       firstPhotoPossibleCredential.value = Boolean(analysis.possibleCredential);
       secondPhotoPossibleCredential.value = false;
       detectedPossibleCredential.value = firstPhotoPossibleCredential.value;
@@ -2302,6 +2705,7 @@ const processSelectedImage = async (file) => {
       analysis.plates,
       analysis.faces
     );
+    if (isStale()) return;
 
     if (currentAddressPromise) {
       analyzingStatusText.value = 'Obtendo endereço e numeração...';
@@ -2311,25 +2715,33 @@ const processSelectedImage = async (file) => {
           new Promise((resolve) => setTimeout(resolve, 3500))
         ]);
       } catch {}
+      if (isStale()) return;
     }
 
     processedImageWebp.value = finalWebp;
     activePreviewPhotoIndex.value = 0;
     step.value = 'preview';
   } catch (err) {
-    console.error('Erro no processamento da imagem:', err);
+    if (isStale()) return;
+    console.error('Erro no processamento da imagem:', err?.name || 'erro');
     isApiError.value = true;
     canReanalyzeRejectedPhoto.value = false;
     step.value = 'error';
-    errorMessage.value = err?.message || 'Falha ao processar e anonimizar a foto enviada.';
+    errorMessage.value = 'Falha ao processar e anonimizar a foto enviada. Tente novamente.';
   } finally {
-    isAnalyzing.value = false;
+    // Execuções canceladas/expiradas já tiveram o estado tratado por quem as invalidou
+    if (!isStale()) {
+      clearAnalysisTimeout();
+      isAnalyzing.value = false;
+      isPreparingValidationAd.value = false;
+    }
   }
 };
 
     const processSecondSelectedImage = async (file) => {
       lastSecondSelectedFile.value = file;
       secondPhotoError.value = '';
+      secondPhotoAdBlocked.value = false;
       canReanalyzeSecondPhoto.value = false;
       showSecondPhotoPicker.value = false;
 
@@ -2356,7 +2768,10 @@ const processSelectedImage = async (file) => {
 
       registerUploadAttempt();
 
+      const runId = beginAnalysisRun('second');
+      const isStale = () => runId !== analysisRunId;
       const previousRawPreviewUrl = rawPreviewUrl.value;
+      secondPhotoRunRestore = { previousRawPreviewUrl };
       rawPreviewUrl.value = URL.createObjectURL(file);
       step.value = 'analyzing';
       isAnalyzing.value = true;
@@ -2364,12 +2779,14 @@ const processSelectedImage = async (file) => {
 
       try {
         const secondOptimizedBase64 = await prepareImageForGemini(file);
+        if (isStale()) return;
 
         if (firstPhotoOptimizedBase64.value) {
           const visuallySame = await areImagesVisuallyIdentical(
             firstPhotoOptimizedBase64.value,
             secondOptimizedBase64
           );
+          if (isStale()) return;
           if (visuallySame) {
             secondPhotoError.value = 'A 2ª foto é igual ou muito semelhante à 1ª foto. Envie uma foto diferente do veículo.';
             step.value = 'preview';
@@ -2418,8 +2835,11 @@ const processSelectedImage = async (file) => {
         }
 
         if (!secondAnalysis) {
+          // Validações da 2ª foto contam no contador, mas nunca são bloqueadas por anúncio
           analyzingStatusText.value = 'Verificando placa, credencial e aplicando máscaras na 2ª foto...';
+          registerAiValidationSent();
           secondAnalysis = await analyzeSecondTrafficPhoto(geminiClient, secondOptimizedBase64);
+          if (isStale()) return;
           secondAttemptsUsed = secondAttemptsUsed + 1;
           if (secondCacheKey && secondAnalysis && !secondAnalysis.apiError) {
             saveGeminiAnalysisCache(secondCacheKey, secondAnalysis, secondAttemptsUsed);
@@ -2477,6 +2897,7 @@ const processSelectedImage = async (file) => {
           secondAnalysis.plates,
           secondAnalysis.faces
         );
+        if (isStale()) return;
 
         secondPhotoPossibleCredential.value = Boolean(secondAnalysis.possibleCredential);
         detectedPossibleCredential.value = Boolean(
@@ -2488,16 +2909,19 @@ const processSelectedImage = async (file) => {
         canReanalyzeSecondPhoto.value = false;
         step.value = 'preview';
       } catch (err) {
-        console.error('Erro no processamento da 2ª imagem:', err);
+        if (isStale()) return;
+        console.error('Erro no processamento da 2ª imagem:', err?.name || 'erro');
         canReanalyzeSecondPhoto.value = true;
-        secondPhotoError.value = err?.message || 'Falha ao processar e anonimizar a 2ª foto enviada.';
+        secondPhotoError.value = 'Falha ao processar e anonimizar a 2ª foto enviada. Tente novamente.';
         step.value = 'preview';
       } finally {
-        if (rawPreviewUrl.value && rawPreviewUrl.value !== previousRawPreviewUrl) {
-          URL.revokeObjectURL(rawPreviewUrl.value);
+        // Se a execução foi cancelada/expirou, o estado já foi restaurado por quem a invalidou
+        if (!isStale()) {
+          restoreAfterSecondPhotoRun();
+          clearAnalysisTimeout();
+          isAnalyzing.value = false;
+          isPreparingValidationAd.value = false;
         }
-        rawPreviewUrl.value = previousRawPreviewUrl;
-        isAnalyzing.value = false;
       }
     };
 
@@ -2858,7 +3282,7 @@ const handleSaveIncident = async () => {
       possivel_duplicidade: Boolean(saveResult.possivel_duplicidade ?? possivelDuplicidade),
       duplicidade_de_id: saveResult.duplicidade_de_id || duplicidadeDeId,
       rotulo_duplicidade: saveResult.rotulo_duplicidade || rotuloDuplicidade,
-      description: [finalRua, finalBairro, [finalCidade, finalEstado].filter(Boolean).join(' - ')].filter(Boolean).join(' - ') || addressText.value || 'Infração registrada via colaboração cidadã'
+      description: [finalRua, finalBairro, [finalCidade, finalEstado].filter(Boolean).join(' - ')].filter(Boolean).join(' - ') || addressText.value || 'Ocorrência registrada via colaboração cidadã'
     };
 
     if (newIncident.rua) currentRua.value = newIncident.rua;
@@ -2876,21 +3300,11 @@ const handleSaveIncident = async () => {
       localPreviewPhoto: processedImageWebp.value || serverImageWebp || newIncident.fotoUrl || newIncident.maskedImageUrl
     };
     createdShareFeedback.value = '';
+    successAdStatus.value = '';
     emit('incidentCreated', newIncident);
 
-    if (successAdSafetyTimer) {
-      clearTimeout(successAdSafetyTimer);
-      successAdSafetyTimer = null;
-    }
-    if (successAdSlot.value) {
-      isPreparingSuccessAd.value = true;
-      successAdSafetyTimer = setTimeout(() => {
-        isPreparingSuccessAd.value = false;
-        successAdSafetyTimer = null;
-      }, 3000);
-    } else {
-      isPreparingSuccessAd.value = false;
-    }
+    // Conteúdo de sucesso exibido imediatamente: o banner ocupa um espaço fixo reservado,
+    // então não é preciso aguardar o anúncio carregar (sem véu de "Finalizando registro...").
     step.value = 'success';
   } catch (err) {
     console.error('Erro ao salvar no Firebase:', err);
@@ -2901,6 +3315,12 @@ const handleSaveIncident = async () => {
 };
 
 const lastCreatedIncident = ref(null);
+      const successDescription = computed(() => {
+        const natureza = lastCreatedIncident.value?.natureza || selectedNatureza.value;
+        return natureza === 'urbana'
+          ? 'A ocorrência de mobilidade urbana foi salva e já está visível no mapa.'
+          : 'A ocorrência de infração de trânsito foi salva e já está visível no mapa.';
+      });
 const isSharingCreatedIncident = ref(false);
 const createdShareFeedback = ref('');
 let createdShareTimer = null;
@@ -2928,7 +3348,7 @@ const handleShareCreatedIncident = async () => {
     const cityState = [inc.cidade, inc.estado].filter(Boolean).join(' - ');
     const locationText = [streetPart, cityState].filter(Boolean).join(' • ') || inc.description || 'Localização registrada no mapa';
 
-    const res = await shareIncidentWithTemplate({
+    const file = await generateIncidentShareCardFile({
       photoSrc,
       isResolved: false,
       natureza: inc.natureza,
@@ -2940,17 +3360,42 @@ const handleShareCreatedIncident = async () => {
       latitude: Number(inc.latitude),
       longitude: Number(inc.longitude),
       timestamp: inc.timestamp
-    });
+    }, 'image/jpeg');
 
-    if (res?.shared) {
-      createdShareFeedback.value = '✅ Imagem baixada!';
-      createdShareTimer = setTimeout(() => {
-        createdShareFeedback.value = '';
-      }, 3200);
+    let feedback = '';
+    const canShareFiles =
+      typeof navigator !== 'undefined' &&
+      typeof navigator.share === 'function' &&
+      typeof navigator.canShare === 'function' &&
+      navigator.canShare({ files: [file] });
+
+    if (canShareFiles) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: 'Ocorrência no Multei',
+          text: 'Veja esta ocorrência registrada no Multei.'
+        });
+        feedback = 'Imagem compartilhada!';
+      } catch (shareErr) {
+        // Usuário fechou a folha de compartilhamento: não faz nada
+        if (shareErr?.name === 'AbortError') return;
+        // Outros erros (ex.: perda da ativação do usuário): baixa a imagem como alternativa
+        downloadShareFile(file);
+        feedback = 'Imagem baixada!';
+      }
+    } else {
+      downloadShareFile(file);
+      feedback = 'Imagem baixada!';
     }
+
+    createdShareFeedback.value = feedback;
+    createdShareTimer = setTimeout(() => {
+      createdShareFeedback.value = '';
+    }, 3200);
   } catch (err) {
-    console.error('Erro ao compartilhar denúncia criada:', err);
-    createdShareFeedback.value = 'Erro ao gerar imagem';
+    console.error('Erro ao compartilhar ocorrência criada:', err?.name || 'erro');
+    createdShareFeedback.value = 'Não foi possível gerar a imagem';
     createdShareTimer = setTimeout(() => {
       createdShareFeedback.value = '';
     }, 3200);
@@ -2958,6 +3403,20 @@ const handleShareCreatedIncident = async () => {
     isSharingCreatedIncident.value = false;
   }
 };
+
+  const downloadShareFile = (file) => {
+    if (typeof document === 'undefined' || !file) return;
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = file.name || 'multei_ocorrencia.jpg';
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  };
 </script>
 
 <style scoped>
@@ -2986,10 +3445,6 @@ const handleShareCreatedIncident = async () => {
   overscroll-behavior: contain;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
   border: 1px solid var(--border, rgba(0, 0, 0, 0.1));
-}
-
-.modal-card.is-preparing-success {
-  overflow: hidden;
 }
 
 .modal-header {
@@ -3330,14 +3785,14 @@ const handleShareCreatedIncident = async () => {
 }
 
 .hud-badge-title {
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 800;
   color: #ffffff;
   letter-spacing: 0.3px;
 }
 
 .hud-badge-status {
-  font-size: 0.68rem;
+  font-size: 0.8125rem;
   color: #cbd5e1;
   font-weight: 500;
 }
@@ -3528,7 +3983,7 @@ const handleShareCreatedIncident = async () => {
   gap: 0.4rem;
   padding: 0.35rem 0.75rem;
   border-radius: 9999px;
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   color: #ffffff;
   background-color: var(--primary, #86007D);
@@ -3549,93 +4004,6 @@ const handleShareCreatedIncident = async () => {
   letter-spacing: 0.01em;
 }
 
-.verification-photo-select-wrap {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 9999px;
-  background-color: var(--primary, #86007D);
-  backdrop-filter: blur(6px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.38);
-  z-index: 6;
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
-}
-
-.verification-photo-select-wrap.is-empty {
-  background-color: rgba(15, 23, 42, 0.88);
-  border-color: rgba(255, 255, 255, 0.55);
-}
-
-.verification-photo-select-wrap:hover,
-.verification-photo-select-wrap:focus-within {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
-  border-color: rgba(255, 255, 255, 0.75);
-}
-
-.verification-photo-select-wrap::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  white-space: nowrap;
-  padding: 0.3rem 0.6rem;
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.94);
-  color: #ffffff;
-  font-size: 0.7rem;
-  font-weight: 600;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-2px);
-  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
-  pointer-events: none;
-  z-index: 8;
-}
-
-.verification-photo-select-wrap:hover::after,
-.verification-photo-select-wrap:focus-within::after {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
-.verification-photo-select {
-  appearance: none;
-  -webkit-appearance: none;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #ffffff;
-  font-size: 0.78rem;
-  font-weight: 700;
-  line-height: 1.2;
-  padding: 0.38rem 1.75rem 0.38rem 0.75rem;
-  border-radius: 9999px;
-  cursor: pointer;
-}
-
-.verification-photo-select option {
-  background: #ffffff;
-  color: #0f172a;
-  font-weight: 600;
-}
-
-.verification-select-chevron {
-  position: absolute;
-  right: 0.65rem;
-  color: #ffffff;
-  font-size: 0.78rem;
-  line-height: 1;
-  pointer-events: none;
-}
-
 .btn-switch-photo-corner {
   position: absolute;
   top: 12px;
@@ -3645,7 +4013,7 @@ const handleShareCreatedIncident = async () => {
   gap: 0.38rem;
   padding: 0.38rem 0.78rem;
   border-radius: 9999px;
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 800;
   color: #ffffff;
   background: rgba(15, 23, 42, 0.85);
@@ -3675,7 +4043,7 @@ const handleShareCreatedIncident = async () => {
   color: #ffffff;
   padding: 0.35rem 0.75rem;
   border-radius: 9999px;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 
@@ -3770,7 +4138,7 @@ const handleShareCreatedIncident = async () => {
   background: transparent;
   border: 1px solid #fca5a5;
   color: #b91c1c;
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   padding: 0.28rem 0.65rem;
   border-radius: 9999px;
@@ -3849,7 +4217,7 @@ const handleShareCreatedIncident = async () => {
   border: 1px solid #dc2626;
   background: #ffffff;
   color: #b91c1c;
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -3888,7 +4256,7 @@ const handleShareCreatedIncident = async () => {
 }
 
 .source-badge {
-  font-size: 0.72rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   padding: 0.2rem 0.55rem;
   border-radius: 9999px;
@@ -4033,7 +4401,7 @@ const handleShareCreatedIncident = async () => {
 }
 
 .edit-field-label {
-  font-size: 0.76rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   color: #475569;
   text-transform: uppercase;
@@ -4115,7 +4483,7 @@ const handleShareCreatedIncident = async () => {
 }
 
 .mini-map-hint {
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
   color: var(--text-muted, #475466);
   margin: 0;
   flex: 1;
@@ -4272,7 +4640,7 @@ const handleShareCreatedIncident = async () => {
 }
 
 .loc-alert-badge {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -4331,7 +4699,7 @@ const handleShareCreatedIncident = async () => {
 }
 
 .btn-prominent-sub {
-  font-size: 0.72rem;
+  font-size: 0.8125rem;
   line-height: 1.3;
 }
 
@@ -4424,7 +4792,7 @@ const handleShareCreatedIncident = async () => {
 }
 
 .urban-desc-counter {
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-muted, #475466);
 }
@@ -4682,39 +5050,25 @@ const handleShareCreatedIncident = async () => {
   font-weight: 500;
 }
 
+/* Espaço do banner reservado com tamanho FIXO desde o primeiro quadro:
+   o carregamento (ou a ausência) do anúncio nunca desloca os botões abaixo. */
 .success-ad-banner-slot {
   width: 100%;
+  max-width: 320px;
+  height: 50px;
+  min-height: 50px;
+  margin: 0.75rem auto 0.35rem;
   display: flex;
-  justify-content: center;
-  margin-top: 0.35rem;
-  margin-bottom: 0.35rem;
-}
-
-.success-ad-loading-veil {
-  position: absolute;
-  inset: 0;
-  z-index: 35;
-  background: var(--surface, #ffffff);
-  border-radius: inherit;
-  display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.65rem;
-  padding: 2rem 1.25rem;
-  text-align: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #f8fafc;
+  flex-shrink: 0;
 }
 
-.success-ad-loading-title {
-  margin: 0.25rem 0 0;
-  font-size: 1.08rem;
-  font-weight: 800;
-  color: var(--text, #0f172a);
-}
-
-.success-ad-loading-sub {
-  font-size: 0.86rem;
-  color: var(--text-muted, #475569);
+.success-ad-banner-slot :deep(.manual-adsense-wrapper) {
+  margin: 0;
 }
 
 @media (max-width: 460px) {
@@ -4788,12 +5142,217 @@ const handleShareCreatedIncident = async () => {
   white-space: nowrap;
   padding: 0.36rem 0.68rem;
   border-radius: 8px;
-  font-size: 0.76rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   background-color: #50004b;
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.22);
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.22);
   pointer-events: none;
+}
+
+/* Texto apenas para leitores de tela */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- Tipo de infração (opcional): grupo de chips de rádio abaixo da foto --- */
+.verification-chip-group {
+  border: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  min-width: 0;
+}
+
+.verification-chip-legend {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+  margin-bottom: 0.5rem;
+  padding: 0;
+}
+
+.verification-chip-optional {
+  font-weight: 500;
+  color: var(--text-muted, #475466);
+}
+
+.verification-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.verification-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0.45rem 0.9rem;
+  border-radius: 9999px;
+  border: 1.5px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.verification-chip:hover {
+  border-color: var(--primary, #86007D);
+}
+
+.verification-chip.is-selected {
+  border-color: var(--primary, #86007D);
+  background: var(--primary, #86007D);
+  color: #ffffff;
+}
+
+.verification-chip:focus-within {
+  outline: 3px solid rgba(134, 0, 125, 0.45);
+  outline-offset: 2px;
+}
+
+.verification-chip-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
+.verification-chip-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.verification-chip-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted, #475466);
+}
+
+/* --- Local da ocorrência: divulgação progressiva das ações --- */
+.btn-link-correct-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  padding: 0.25rem 0;
+  background: transparent;
+  border: none;
+  color: var(--primary, #86007D);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.btn-link-correct-location:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* --- Ações da pré-visualização: Recomeçar discreto + confirmação inline --- */
+.preview-actions {
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.btn-link-restart {
+  background: transparent;
+  border: none;
+  padding: 0.5rem 0.25rem;
+  color: var(--text-muted, #475466);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.btn-link-restart:hover:not(:disabled) {
+  color: #b91c1c;
+}
+
+.btn-link-restart:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.preview-actions .btn-save-incident {
+  margin-left: auto;
+  min-width: 190px;
+  font-weight: 800;
+  box-shadow: 0 6px 16px -6px rgba(134, 0, 125, 0.55);
+}
+
+.restart-confirm {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: 1.5px solid #fca5a5;
+  background: #fef2f2;
+}
+
+.restart-confirm-text {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #7f1d1d;
+}
+
+.restart-confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.btn-discard {
+  background: #b91c1c;
+  border: 1.5px solid #b91c1c;
+  color: #ffffff;
+}
+
+.btn-discard:hover {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+
+.saving-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.875rem;
+  color: var(--text-muted, #475466);
+  text-align: right;
+}
+
+/* --- Análise: botão de cancelar --- */
+.btn-cancel-analysis {
+  margin-top: 0.75rem;
+}
+
+.analyzing-status-live {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
 }
 </style>

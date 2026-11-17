@@ -12,7 +12,7 @@
       </NuxtLink>
 
       <NuxtLink to="/multei/orientacoes" class="btn-guide-link">
-        <span>📖 Como usar o Multei</span>
+        <span><span aria-hidden="true">📖</span> Como usar o Multei</span>
       </NuxtLink>
     </div>
 
@@ -27,7 +27,7 @@
         O Impacto do <span class="gradient-text">Multei</span> nas Cidades
       </h1>
       <p class="page-subtitle">
-        Mapeamento cidadão colaborativo com Inteligência Artificial para denunciar desrespeito às vagas PcD e barreiras de acessibilidade urbana — 100% anônimo.
+        Mapeamento cidadão colaborativo com Inteligência Artificial para registrar ocorrências de desrespeito às vagas PcD e de barreiras de acessibilidade urbana — 100% anônimo.
       </p>
     </header>
 
@@ -46,7 +46,7 @@
         <div class="metric-hero-content">
           <div class="metric-hero-tag">
             <span class="metric-hero-icon" aria-hidden="true">📍</span>
-            <span>Total Geral de Registros Ativos</span>
+            <span>Total Geral de Ocorrências Ativas</span>
           </div>
           <div class="metric-hero-value-row">
             <div class="metric-hero-value" :class="{ 'is-loading': isLoadingStats }">
@@ -76,7 +76,7 @@
         <!-- 1. Infrações de Trânsito -->
         <article class="metric-card card-transito" :class="{ 'is-live-pulsing': activePulses.infracoesTransito }">
           <div class="metric-card-top">
-            <span class="metric-badge badge-transito">🚗 Trânsito</span>
+            <span class="metric-badge badge-transito"><span aria-hidden="true">🚗</span> Trânsito</span>
             <span class="metric-icon-circle" aria-hidden="true">🚨</span>
           </div>
           <div class="metric-number-row">
@@ -99,7 +99,7 @@
         <!-- 2. Mobilidade Urbana -->
         <article class="metric-card card-urbana" :class="{ 'is-live-pulsing': activePulses.mobilidadeUrbana }">
           <div class="metric-card-top">
-            <span class="metric-badge badge-urbana">♿ Acessibilidade</span>
+            <span class="metric-badge badge-urbana"><span aria-hidden="true">♿</span> Acessibilidade</span>
             <span class="metric-icon-circle" aria-hidden="true">🚧</span>
           </div>
           <div class="metric-number-row">
@@ -122,7 +122,7 @@
         <!-- 3. Resolvidos -->
         <article class="metric-card card-resolvidos" :class="{ 'is-live-pulsing': activePulses.resolvidos }">
           <div class="metric-card-top">
-            <span class="metric-badge badge-resolvidos">✅ Transformação</span>
+            <span class="metric-badge badge-resolvidos"><span aria-hidden="true">✅</span> Transformação</span>
             <span class="metric-icon-circle" aria-hidden="true">🎉</span>
           </div>
           <div class="metric-number-row">
@@ -148,7 +148,7 @@
     <section class="about-pillars-section" aria-labelledby="pillars-heading">
       <div class="section-header-center">
         <span class="section-tag">Por dentro da plataforma</span>
-        <h2 id="pillars-heading" class="section-title">Como o Multei transforma denúncias em conscientização</h2>
+        <h2 id="pillars-heading" class="section-title">Como o Multei transforma ocorrências em conscientização</h2>
       </div>
 
       <div class="pillars-grid">
@@ -164,7 +164,7 @@
           <div class="pillar-icon" aria-hidden="true">🛡️</div>
           <h3 class="pillar-title">Privacidade e Anonimato</h3>
           <p class="pillar-text">
-            Placas de veículos e rostos de pedestres são detectados e borrados automaticamente. Nenhum dado pessoal de quem envia a denúncia é coletado ou exibido.
+            Placas de veículos e rostos de pedestres são detectados e borrados automaticamente. Nenhum dado pessoal de quem registra a ocorrência é coletado ou exibido.
           </p>
         </div>
 
@@ -202,14 +202,14 @@
               exclusivamente para inteligência e estatística de fiscalização urbana.
             </p>
             <ul class="legal-list">
-              <li><strong>Segurança em primeiro lugar:</strong> Nunca se coloque em risco para registrar uma infração. O ato de
-                fotografar em via pública ocorre por conta e risco de quem denuncia, sem responsabilidade da plataforma por conflitos
-                ou danos.</li>
+              <li><strong>Segurança em primeiro lugar:</strong> Nunca se coloque em risco para registrar uma ocorrência. O ato de
+                fotografar em via pública ocorre por conta e risco de quem registra a ocorrência, sem responsabilidade da plataforma por
+                conflitos ou danos.</li>
               <li><strong>Apenas fotos reais e inalteradas:</strong> É proibido enviar conteúdo falso, discriminatório, pornográfico,
                 imagens geradas total ou parcialmente por IA ou fotos reais manipuladas/retocadas por editores ou IA.</li>
               <li><strong>Moderação, licença e idade:</strong> Imagens impróprias são bloqueadas automaticamente por IA, os envios
-                concedem licença gratuita para fins estatísticos, denúncias da comunidade ocultam o pino para revisão humana e o uso é
-                recomendado para maiores de 18 anos.</li>
+                concedem licença gratuita para fins estatísticos, ocorrências reportadas pela comunidade permanecem no mapa com a foto
+                oculta e o selo "Em revisão de denúncia" até a revisão humana e o uso é recomendado para maiores de 18 anos.</li>
               <li><strong>Disponibilidade:</strong> Fornecido no estado em que se encontra, podendo sofrer interrupções ou
                 descontinuação a qualquer momento sem aviso prévio.</li>
             </ul>
@@ -227,17 +227,17 @@
           <div class="legal-card-body">
             <p class="legal-paragraph">
               Desenvolvido com foco em <strong>Privacidade desde a Concepção</strong>, o Multei não armazena dados capazes de
-              identificar pessoas, protegendo tanto quem denuncia quanto quem é denunciado:
+              identificar pessoas, protegendo tanto quem registra uma ocorrência quanto quem é retratado nela:
             </p>
             <ul class="legal-list">
               <li><strong>Censura imediata de rostos e placas:</strong> Nossa IA aplica tarja automática sobre rostos humanos e placas
                 veiculares diretamente na imagem. Apenas a versão já censurada é salva; a foto original nunca é armazenada.</li>
               <li><strong>Envio 100% isolado e anônimo:</strong> Não pedimos conta, nome, e-mail ou telefone. Capturamos apenas dados
-                técnicos temporários de conexão e, mediante sua autorização, o GPS da ocorrência — sendo impossível identificar quem
-                fez a denúncia.</li>
+                técnicos temporários de conexão e, somente se você optar por ativá-lo e autorizar, o GPS da ocorrência — sendo
+                impossível identificar quem a registrou.</li>
               <li><strong>Direito de exclusão pelo mapa (Art. 12 da LGPD):</strong> Por não haver vínculo com quem enviou, a exclusão
-                é feita exclusivamente pelo botão de reporte no pino do mapa, não sendo tecnicamente possível atender pedidos de
-                remoção por e-mail.</li>
+                é solicitada exclusivamente pelo botão "Reportar ocorrência" no mapa (a foto fica oculta durante a revisão da
+                moderação), não sendo tecnicamente possível atender pedidos de remoção por e-mail.</li>
               <li><strong>Infraestrutura e contato:</strong> Dados anônimos podem ser processados em nuvem global segura fora do
                 Brasil. Contato institucional: <a href="mailto:multei@valepcd.com.br"
                   class="legal-inline-mail">multei@valepcd.com.br</a>.</li>
@@ -370,11 +370,11 @@ let animationFrameIds = {};
   const announceForScreenReader = (category) => {
     let message = '';
     if (category === 'infracoesTransito') {
-      message = '+1 ocorrência de infração de trânsito foi criada';
+      message = '+1 ocorrência de infração de trânsito foi registrada';
     } else if (category === 'mobilidadeUrbana') {
-      message = '+1 ocorrência de mobilidade urbana foi criada';
+      message = '+1 ocorrência de mobilidade urbana foi registrada';
     } else if (category === 'resolvidos') {
-      message = '+1 registro de problema resolvido foi criado';
+      message = '+1 ocorrência foi marcada como resolvida';
     }
     if (!message) return;
 
