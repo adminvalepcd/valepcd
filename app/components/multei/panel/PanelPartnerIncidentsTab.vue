@@ -1,8 +1,8 @@
 <template>
   <div v-if="active" class="partner-denuncias-section" :class="{ 'is-mobile': isMobile }">
     <!-- ABA: OCORRÊNCIAS DA CIDADE (Parcerias: cidade cadastrada + Ao meu redor 5 km; Admin: todas) -->
-    <header class="panel-header">
-      <div>
+    <header class="panel-header partner-panel-header">
+      <div class="partner-header-text">
         <span class="panel-kicker">
           <template v-if="isAdminRole">Visão administrativa • Todas as cidades</template>
           <template v-else-if="userProfile?.cidade">Parceria municipal • {{ partnerCityLabel }}</template>
@@ -1713,8 +1713,35 @@ defineExpose({
 
 <style scoped>
 /* Cabeçalho: área (Cidade | Ao meu redor) e atualização */
+/* Texto mais estreito para os botões (Todas / Ao meu redor / Atualizar) ficarem na mesma linha */
+.partner-panel-header {
+  flex-wrap: nowrap;
+}
+
+.partner-header-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 560px;
+}
+
 .partner-header-actions {
   align-items: flex-end;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 960px) {
+  .partner-panel-header {
+    flex-wrap: wrap;
+  }
+
+  .partner-header-text {
+    max-width: none;
+  }
+
+  .partner-header-actions {
+    flex-wrap: wrap;
+  }
 }
 
 .scope-toggle,

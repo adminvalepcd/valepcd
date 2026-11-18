@@ -2777,17 +2777,8 @@ export async function resolveMulteiPanelUserProfile(
         if (fallbackDocData) {
           break;
         }
-
-        // Fallback legado: caso exista apenas 1 documento na coleção sem vínculo de email/uid
-        if (snap.docs.length === 1) {
-          const onlyRaw = snap.docs[0].data() || {};
-          const onlyNorm = normalizeDocFields(onlyRaw);
-          const onlyEmail = String(onlyNorm.email || onlyNorm['e-mail'] || '').trim();
-          const onlyUid = String(onlyNorm.uid || '').trim();
-          if (!onlyEmail && !onlyUid) {
-            fallbackDocData = onlyRaw;
-          }
-        }
+        // Removido o fallback legado que aceitava "o único documento da coleção" sem vínculo de e-mail/uid:
+        // ele podia conceder acesso a uma conta que não corresponde a nenhum cadastro.
       } catch (err: any) {
         if (err?.code === 'auth/user-disabled') {
           throw err;
@@ -2800,14 +2791,14 @@ export async function resolveMulteiPanelUserProfile(
       return buildProfileFromDoc(fallbackDocData);
     }
 
-    return {
-      uid: user.uid,
-      email,
-      nome: authDisplayName || undefined,
-      nomeCompleto: authDisplayName || undefined,
-      role: 'admin',
-      ativo: true
-    };
+    // Falha fechada: conta autenticada sem cadastro no painel (ex.: usuário excluído) NÃO recebe acesso.
+    // Antes, a ausência de cadastro resultava em perfil "admin" por padrão.
+    await signOut(auth);
+    const noAccessErr: any = new Error(
+      'Seu acesso ao painel não está cadastrado ou foi removido. Entre em contato com a Vale PCD.'
+    );
+    noAccessErr.code = 'auth/user-disabled';
+    throw noAccessErr;
   };
 
   const promise = runResolve().then((resolved) => {
@@ -3360,7 +3351,7 @@ export async function createPanelUserInFirebase(
   let inviteSent = false;
   if (shouldSendInvite) {
     try {
-      await sendPasswordResetEmail(auth, cleanEmail);
+      await sendPanelAuthEmailInPortuguese(auth, cleanEmail);
       inviteSent = true;
     } catch (inviteErr: any) {
       console.warn('[firebaseService] Falha ao enviar convite de definição de senha.', inviteErr?.code || '');
@@ -3493,7 +3484,7 @@ export async function sendPanelUserPasswordReset(email: string): Promise<void> {
   if (!cleanEmail) {
     throw new Error('E-mail inválido para redefinição de senha.');
   }
-  await sendPasswordResetEmail(auth, cleanEmail);
+  await sendPanelAuthEmailInPortuguese(auth, cleanEmail);
 }
 
 const PANEL_RESET_RATE_LIMIT_STORAGE_KEY = 'multei_panel_reset_log_v1';
@@ -3522,6 +3513,20 @@ function readPanelResetLog(now: number): Record<string, number> {
     return out;
   } catch {
     return {};
+  }
+}
+
+/**
+ * Envia o e-mail de definição/redefinição de senha do Firebase Auth sempre em português (Brasil),
+ * independentemente do idioma padrão configurado no Console. O idioma anterior é restaurado depois.
+ */
+async function sendPanelAuthEmailInPortuguese(auth: Auth, email: string): Promise<void> {
+  const previousLanguage = auth.languageCode;
+  auth.languageCode = 'pt-BR';
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } finally {
+    auth.languageCode = previousLanguage;
   }
 }
 
@@ -3562,7 +3567,7 @@ export async function requestPanelPasswordReset(
 
   try {
     const { auth } = getFirebaseServices();
-    await sendPasswordResetEmail(auth, cleanEmail);
+    await sendPanelAuthEmailInPortuguese(auth, cleanEmail);
   } catch (err: any) {
     // Não revela existência da conta: apenas registra o código (sem o e-mail) para diagnóstico
     console.warn('[firebaseService] Pedido de redefinição de senha não concluído.', err?.code || '');
