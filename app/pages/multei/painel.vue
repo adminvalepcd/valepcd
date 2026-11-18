@@ -1629,6 +1629,15 @@ const handleLogin = async () => {
     ) {
       loginError.value = 'E-mail ou senha incorretos. Verifique suas credenciais e tente novamente.';
       loginErrorField.value = 'both';
+    } else if (rawError.includes('password-does-not-meet-requirements')) {
+      // Política de senha do Firebase com "forçar atualização no login": a senha atual é antiga/fraca
+      loginError.value =
+        'Por segurança, sua senha precisa ser atualizada: use pelo menos 6 caracteres, com letra maiúscula, letra minúscula, número e caractere especial. Enviamos abaixo a opção de criar uma nova senha por e-mail.';
+      loginErrorField.value = 'password';
+      forgotEmail.value = loginEmail.value.trim();
+      if (!showForgotPassword.value) {
+        await toggleForgotPassword();
+      }
     } else if (rawError.includes('invalid-email')) {
       loginError.value = 'O formato do e-mail informado é inválido. Verifique e tente novamente.';
       loginErrorField.value = 'email';

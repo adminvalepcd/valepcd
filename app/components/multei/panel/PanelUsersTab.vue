@@ -591,6 +591,9 @@ const translateUserCrudError = (err: any): string => {
   if (raw.includes('invalid-email')) {
     return 'O formato do e-mail informado é inválido.';
   }
+  if (raw.includes('password-does-not-meet-requirements') || raw.includes('weak-password')) {
+    return 'A senha não atende à política de segurança: pelo menos 6 caracteres, com letra maiúscula, letra minúscula, número e caractere especial.';
+  }
   if (raw.includes('network-request-failed')) {
     return 'Falha de conexão com a internet. Verifique sua rede e tente novamente.';
   }

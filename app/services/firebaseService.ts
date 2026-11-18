@@ -3240,7 +3240,21 @@ const GENERATED_PASSWORD_ALPHABET =
  * Gera uma senha aleatória forte com `crypto.getRandomValues` (amostragem por rejeição, sem viés de módulo).
  * A senha nunca é exibida nem persistida: a pessoa define a sua pelo e-mail de convite.
  */
+// Política de senha do Firebase Auth (Console): maiúscula, minúscula, número e caractere especial
+const PASSWORD_POLICY_CHECKS: RegExp[] = [/[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/];
+const meetsPanelPasswordPolicy = (value: string): boolean =>
+  value.length >= 6 && PASSWORD_POLICY_CHECKS.every((re) => re.test(value));
+
 export function generateStrongRandomPassword(length = GENERATED_PASSWORD_LENGTH): string {
+  // Repete até atender à política (com 32 caracteres isso ocorre quase sempre na 1ª tentativa)
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const candidate = generateRandomPasswordCandidate(length);
+    if (meetsPanelPasswordPolicy(candidate)) return candidate;
+  }
+  throw new Error('Não foi possível gerar uma senha temporária segura.');
+}
+
+function generateRandomPasswordCandidate(length: number): string {
   const cryptoObj: Crypto | undefined = (globalThis as any).crypto;
   if (!cryptoObj || typeof cryptoObj.getRandomValues !== 'function') {
     throw new Error('Gerador seguro de números aleatórios indisponível.');
@@ -3293,8 +3307,10 @@ export async function createPanelUserInFirebase(
   if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
     throw new Error('Informe um endereço de e-mail válido.');
   }
-  if (providedPassword && providedPassword.length < 6) {
-    throw new Error('A senha deve ter pelo menos 6 caracteres.');
+  if (providedPassword && !meetsPanelPasswordPolicy(providedPassword)) {
+    throw new Error(
+      'A senha deve ter pelo menos 6 caracteres, com letra maiúscula, letra minúscula, número e caractere especial.'
+    );
   }
   if (!cleanCidade) {
     throw new Error('Informe a cidade do usuário.');
