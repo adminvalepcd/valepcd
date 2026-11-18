@@ -119,17 +119,6 @@
           ← Alterar tipo de ocorrência
         </button>
 
-        <!-- Aviso de Cooldown se atingiu limite de uploads seguidos -->
-        <div v-if="cooldownSecondsLeft > 0" class="cooldown-banner" role="status">
-          <div class="cooldown-icon" aria-hidden="true">⏳</div>
-          <div class="cooldown-content">
-            <strong class="cooldown-title">Limite de uploads atingido</strong>
-            <p class="cooldown-desc">
-              Você enviou 5 fotos em sequência. Aguarde <b>{{ cooldownSecondsLeft }} segundos</b> para poder enviar novamente.
-            </p>
-          </div>
-        </div>
-
         <p class="step-desc">
           {{ selectedNatureza === 'urbana' ? 'Tire uma foto ou envie uma imagem do problema de acessibilidade.' : 'Tire uma foto ou envie uma imagem da infração.' }}
         </p>
@@ -138,23 +127,19 @@
           <button 
             type="button" 
             class="btn-upload btn-camera" 
-            :disabled="cooldownSecondsLeft > 0"
-            :class="{ 'is-disabled': cooldownSecondsLeft > 0 }"
-            @click="cooldownSecondsLeft > 0 ? null : (showCamera = true)"
+            @click="showCamera = true"
           >
             <span class="btn-icon" aria-hidden="true">📷</span>
-            <span class="btn-label">{{ cooldownSecondsLeft > 0 ? `Aguarde ${cooldownSecondsLeft}s` : 'Tirar Foto Agora' }}</span>
+            <span class="btn-label">Tirar Foto Agora</span>
           </button>
 
           <button
             type="button"
             class="btn-upload btn-gallery"
-            :disabled="cooldownSecondsLeft > 0"
-            :class="{ 'is-disabled': cooldownSecondsLeft > 0 }"
             @click="triggerGalleryPicker"
           >
             <span class="btn-icon" aria-hidden="true">🖼️</span>
-            <span class="btn-label">{{ cooldownSecondsLeft > 0 ? `Aguarde ${cooldownSecondsLeft}s` : 'Escolher da Galeria' }}</span>
+            <span class="btn-label">Escolher da Galeria</span>
           </button>
 
           <input 
@@ -162,7 +147,6 @@
             type="file" 
             accept="image/jpeg,image/png,image/webp" 
             class="hidden-file-input" 
-            :disabled="cooldownSecondsLeft > 0"
             tabindex="-1"
             aria-hidden="true"
             @change="handleFileSelected" 
@@ -237,7 +221,7 @@
             <div class="analyzing-progress-fill"></div>
           </div>
           <span v-if="isPreparingValidationAd" class="analyzing-sub">
-            Após 3 análises por IA, exibimos um anúncio curto para manter o Multei gratuito.
+            A cada 2 ocorrências registradas, exibimos um anúncio curto para manter o Multei gratuito.
           </span>
           <span v-else class="analyzing-sub">Avaliando veículos, segurança e dados sensíveis...</span>
           
@@ -260,7 +244,7 @@
             <span aria-hidden="true">🔄 </span>Tentar novamente
           </button>
           <button v-else-if="canReanalyzeRejectedPhoto && lastSelectedFile" type="button" class="btn btn-primary"
-            :disabled="cooldownSecondsLeft > 0" @click="handleReanalyzeRejectedPhoto">
+            @click="handleReanalyzeRejectedPhoto">
             <span aria-hidden="true">🔄 </span>Analisar novamente
           </button>
           <button type="button" class="btn btn-secondary" @click="resetToUpload">
@@ -274,11 +258,11 @@
             <div class="error-badge" aria-hidden="true">🎬</div>
             <h3 class="error-heading is-api-error">Anúncio não concluído</h3>
             <p class="error-explanation" role="status">
-              A foto não foi analisada porque o anúncio foi fechado antes do fim. Após 3 análises por IA, exibimos um anúncio
-              curto para manter o Multei gratuito.
+              A foto não foi analisada porque o anúncio foi fechado antes do fim. A cada 2 ocorrências registradas, exibimos
+              um anúncio curto para manter o Multei gratuito.
             </p>
             <div class="modal-actions mt-4">
-              <button type="button" class="btn btn-primary" :disabled="cooldownSecondsLeft > 0"
+              <button type="button" class="btn btn-primary"
                 @click="handleRetryFirstPhotoWithAd">
                 Assistir anúncio e analisar
               </button>
@@ -335,18 +319,18 @@
             tabindex="-1" aria-hidden="true" @change="handleSecondFileSelected" />
         
           <div v-if="!secondProcessedImageWebp" class="second-photo-add-wrap">
-            <button v-if="!showSecondPhotoPicker" type="button" class="btn-add-second-photo" :disabled="cooldownSecondsLeft > 0"
+            <button v-if="!showSecondPhotoPicker" type="button" class="btn-add-second-photo"
               @click="openSecondPhotoPicker">
               <span aria-hidden="true">➕</span>
               <span>Adicionar outra</span>
             </button>
         
             <div v-else class="second-photo-picker-inline">
-              <button type="button" class="btn btn-primary btn-second-picker" :disabled="cooldownSecondsLeft > 0"
+              <button type="button" class="btn btn-primary btn-second-picker"
                 @click="triggerSecondCamera">
                 <span aria-hidden="true">📸 </span>Tirar 2ª foto
               </button>
-              <button type="button" class="btn btn-secondary btn-second-picker" :disabled="cooldownSecondsLeft > 0"
+              <button type="button" class="btn btn-secondary btn-second-picker"
                 @click="triggerSecondGalleryPicker">
                 <span aria-hidden="true">🖼️ </span>Galeria
               </button>
@@ -379,7 +363,7 @@
               <p class="second-photo-error-text">
                 A 2ª foto não foi analisada porque o anúncio foi fechado antes do fim.
               </p>
-              <button type="button" class="btn-reanalyze-second-photo" :disabled="cooldownSecondsLeft > 0"
+              <button type="button" class="btn-reanalyze-second-photo"
                 @click="handleRetrySecondPhotoWithAd">
                 Assistir anúncio e analisar
               </button>
@@ -391,7 +375,7 @@
             <div class="second-photo-error-body">
               <p class="second-photo-error-text">{{ secondPhotoError }}</p>
               <button v-if="canReanalyzeSecondPhoto && lastSecondSelectedFile" type="button" class="btn-reanalyze-second-photo"
-                :disabled="cooldownSecondsLeft > 0" @click="handleReanalyzeSecondPhoto">
+                @click="handleReanalyzeSecondPhoto">
                 <span aria-hidden="true">🔄 </span>Analisar novamente
               </button>
             </div>
@@ -836,7 +820,6 @@ const isActivatingGpsForReport = ref(false);
 const gpsActivationError = ref('');
 
 const triggerGalleryPicker = () => {
-  if (cooldownSecondsLeft.value > 0) return;
   galleryInputRef.value?.click();
 };
 
@@ -1542,77 +1525,6 @@ const computeFileSha256 = async (file) => {
   }
 };
 
-// --- Trava de Segurança 3: Rate Limiting & Cooldown contra Spam (5 fotos seguidas -> 1 minuto) ---
-const COOLDOWN_UNTIL_KEY = 'multei_upload_cooldown_until';
-const RECENT_UPLOADS_KEY = 'multei_recent_upload_timestamps';
-const MAX_UPLOADS_BEFORE_COOLDOWN = 5;
-const COOLDOWN_SECONDS = 60;
-const UPLOAD_WINDOW_MS = 5 * 60 * 1000; // Janela de 5 minutos
-
-const cooldownSecondsLeft = ref(0);
-let cooldownTimer = null;
-
-const startCooldownCountdown = (seconds) => {
-  if (cooldownTimer) clearInterval(cooldownTimer);
-  cooldownSecondsLeft.value = Math.max(0, Math.ceil(seconds));
-
-  if (cooldownSecondsLeft.value <= 0) return;
-
-  cooldownTimer = setInterval(() => {
-    if (typeof window === 'undefined') return;
-    const until = Number(localStorage.getItem(COOLDOWN_UNTIL_KEY) || 0);
-    const remaining = Math.ceil((until - Date.now()) / 1000);
-
-    if (remaining <= 0) {
-      cooldownSecondsLeft.value = 0;
-      clearInterval(cooldownTimer);
-      cooldownTimer = null;
-      localStorage.removeItem(COOLDOWN_UNTIL_KEY);
-    } else {
-      cooldownSecondsLeft.value = remaining;
-    }
-  }, 1000);
-};
-
-const checkExistingCooldown = () => {
-  if (typeof window === 'undefined') return;
-  const until = Number(localStorage.getItem(COOLDOWN_UNTIL_KEY) || 0);
-  const now = Date.now();
-  if (until > now) {
-    const remaining = Math.ceil((until - now) / 1000);
-    startCooldownCountdown(remaining);
-  } else if (until > 0) {
-    localStorage.removeItem(COOLDOWN_UNTIL_KEY);
-  }
-};
-
-const registerUploadAttempt = () => {
-  if (typeof window === 'undefined') return;
-  const now = Date.now();
-  let timestamps = [];
-  try {
-    const raw = localStorage.getItem(RECENT_UPLOADS_KEY);
-    if (raw) timestamps = JSON.parse(raw);
-    if (!Array.isArray(timestamps)) timestamps = [];
-  } catch {
-    timestamps = [];
-  }
-
-  // Filtrar apenas uploads realizados dentro da janela de 5 minutos
-  timestamps = timestamps.filter(t => now - t < UPLOAD_WINDOW_MS);
-  timestamps.push(now);
-
-  if (timestamps.length >= MAX_UPLOADS_BEFORE_COOLDOWN) {
-    // Atingiu 5 uploads seguidos: bloqueia por 1 minuto mesmo se recarregar a página
-    const until = now + (COOLDOWN_SECONDS * 1000);
-    localStorage.setItem(COOLDOWN_UNTIL_KEY, String(until));
-    localStorage.removeItem(RECENT_UPLOADS_KEY);
-    startCooldownCountdown(COOLDOWN_SECONDS);
-  } else {
-    localStorage.setItem(RECENT_UPLOADS_KEY, JSON.stringify(timestamps));
-  }
-};
-
 const UF_MAP = {
   'acre': 'AC', 'alagoas': 'AL', 'amapá': 'AP', 'amapa': 'AP',
   'amazonas': 'AM', 'bahia': 'BA', 'ceará': 'CE', 'ceara': 'CE',
@@ -1760,6 +1672,11 @@ const successAdSlot = computed(() =>
       // garantindo que uma ocorrência com 2 fotos nunca seja interrompida por anúncio.
       const AI_VALIDATION_COUNT_KEY = 'multei_ai_validation_count';
       const AI_VALIDATIONS_PER_AD = 3;
+      // Regra principal: a cada 2 ocorrências salvas, a próxima ocorrência começa com um anúncio premiado
+      // (substitui a antiga espera de 1 minuto após 5 fotos). O limite de 3 validações acima continua
+      // valendo só como proteção contra tentativas repetidas de fotos recusadas.
+      const SAVED_OCCURRENCES_COUNT_KEY = 'multei_saved_occurrences_since_ad';
+      const SAVED_OCCURRENCES_PER_AD = 2;
       const isPreparingValidationAd = ref(false);
       let hasPreparedValidationAd = false;
 
@@ -1791,8 +1708,49 @@ const successAdSlot = computed(() =>
         }
       };
 
+      const readSavedOccurrencesCount = () => {
+        if (typeof window === 'undefined') return 0;
+        try {
+          const n = parseInt(localStorage.getItem(SAVED_OCCURRENCES_COUNT_KEY) || '0', 10);
+          return Number.isFinite(n) && n >= 0 ? n : 0;
+        } catch {
+          return 0;
+        }
+      };
+
+      const writeSavedOccurrencesCount = (n) => {
+        if (typeof window === 'undefined') return;
+        try {
+          localStorage.setItem(SAVED_OCCURRENCES_COUNT_KEY, String(Math.max(0, Math.floor(n))));
+        } catch {
+          // localStorage indisponível: segue sem persistir
+        }
+      };
+
+      // Zera os dois contadores após o anúncio (recompensa concedida ou falha aberta)
+      const resetAdCounters = () => {
+        writeAiValidationCount(0);
+        writeSavedOccurrencesCount(0);
+      };
+
+      const registerOccurrenceSaved = () => {
+        const next = readSavedOccurrencesCount() + 1;
+        writeSavedOccurrencesCount(next);
+        if (next >= SAVED_OCCURRENCES_PER_AD) {
+          try {
+            preloadRewardedAd(validationAdUnit.value);
+            hasPreparedValidationAd = true;
+          } catch {
+            // Monetização não deve quebrar o fluxo
+          }
+        }
+      };
+
       const isAdRequiredBeforeNextValidation = () => {
-        return readAiValidationCount() >= AI_VALIDATIONS_PER_AD;
+        return (
+          readSavedOccurrencesCount() >= SAVED_OCCURRENCES_PER_AD ||
+          readAiValidationCount() >= AI_VALIDATIONS_PER_AD
+        );
       };
 
       const registerAiValidationSent = () => {
@@ -1840,7 +1798,7 @@ const successAdSlot = computed(() =>
         isPreparingValidationAd.value = false;
 
         if (!adResult || adResult.status !== 'ready' || typeof adResult.show !== 'function') {
-          writeAiValidationCount(0);
+          resetAdCounters();
           startAnalysisTimeout(runId);
           return 'proceed';
         }
@@ -1856,7 +1814,7 @@ const successAdSlot = computed(() =>
         if (runId !== analysisRunId) return 'stale';
 
         if (outcome?.granted || outcome?.failed) {
-          writeAiValidationCount(0);
+          resetAdCounters();
           startAnalysisTimeout(runId);
           return 'proceed';
         }
@@ -2108,9 +2066,6 @@ const handleRefreshGps = async () => {
 };
 
 onMounted(async () => {
-  // Verifica se há cooldown ativo persistido no localStorage (inclusive após F5 / recarregar a página)
-  checkExistingCooldown();
-
   if (!props.isGpsEnabled) {
     locationSource.value = 'fallback';
     return;
@@ -2162,7 +2117,6 @@ onMounted(async () => {
     };
 
     const openSecondPhotoPicker = () => {
-      if (cooldownSecondsLeft.value > 0) return;
       secondPhotoError.value = '';
       if (!firstPhotoVehiclePlate.value) {
         secondPhotoError.value =
@@ -2173,7 +2127,6 @@ onMounted(async () => {
     };
 
     const triggerSecondCamera = () => {
-      if (cooldownSecondsLeft.value > 0) return;
       showSecondPhotoPicker.value = false;
       secondPhotoError.value = '';
       canReanalyzeSecondPhoto.value = false;
@@ -2182,7 +2135,6 @@ onMounted(async () => {
     };
 
     const triggerSecondGalleryPicker = () => {
-      if (cooldownSecondsLeft.value > 0) return;
       showSecondPhotoPicker.value = false;
       secondPhotoError.value = '';
       canReanalyzeSecondPhoto.value = false;
@@ -2213,10 +2165,6 @@ onBeforeUnmount(() => {
   }
   firstPhotoVehiclePlate.value = '';
   sessionPlateMemoryCache.clear();
-  if (cooldownTimer) {
-    clearInterval(cooldownTimer);
-    cooldownTimer = null;
-  }
   if (geocodeDebounceTimer) {
     clearTimeout(geocodeDebounceTimer);
     geocodeDebounceTimer = null;
@@ -2423,16 +2371,6 @@ const handlePhotoTaken = async (file) => {
 };
 
 const processSelectedImage = async (file) => {
-  // Trava de Segurança: se o cooldown estiver ativo, bloqueia o envio
-  if (cooldownSecondsLeft.value > 0) {
-    errorMessage.value = `Limite atingido. Aguarde ${cooldownSecondsLeft.value} segundos antes de enviar novas fotos.`;
-    step.value = 'upload';
-    return;
-  }
-
-  // Registra o upload e dispara cooldown de 1 min se atingir 5 fotos seguidas
-  registerUploadAttempt();
-
   const runId = beginAnalysisRun('first');
   const isStale = () => runId !== analysisRunId;
 
@@ -2595,7 +2533,7 @@ const processSelectedImage = async (file) => {
 
     // Se não estiver em cache (ou se for a 2ª tentativa permitida), chama a IA do Google Gemini
     if (!analysis) {
-      // Anúncio premiado a cada 3 validações por IA (antes da 4ª, 7ª, 10ª...)
+      // Anúncio premiado a cada 2 ocorrências salvas (ou após 3 validações sem salvar, contra abuso)
       const gate = await ensureRewardedAdBeforeValidation(runId);
       if (gate === 'stale' || isStale()) return;
       if (gate === 'blocked') {
@@ -2745,11 +2683,6 @@ const processSelectedImage = async (file) => {
       canReanalyzeSecondPhoto.value = false;
       showSecondPhotoPicker.value = false;
 
-      if (cooldownSecondsLeft.value > 0) {
-        secondPhotoError.value = `Limite atingido. Aguarde ${cooldownSecondsLeft.value} segundos antes de enviar novas fotos.`;
-        return;
-      }
-
       if (!firstPhotoVehiclePlate.value) {
         secondPhotoError.value =
           'Não foi possível identificar a placa legível do veículo na 1ª foto. Para enviar 2 fotos, a placa precisa estar visível e legível nas duas fotos.';
@@ -2765,8 +2698,6 @@ const processSelectedImage = async (file) => {
         secondPhotoError.value = 'A 2ª foto precisa ser diferente da 1ª foto.';
         return;
       }
-
-      registerUploadAttempt();
 
       const runId = beginAnalysisRun('second');
       const isStale = () => runId !== analysisRunId;
@@ -3302,6 +3233,7 @@ const handleSaveIncident = async () => {
     createdShareFeedback.value = '';
     successAdStatus.value = '';
     emit('incidentCreated', newIncident);
+    registerOccurrenceSaved();
 
     // Conteúdo de sucesso exibido imediatamente: o banner ocupa um espaço fixo reservado,
     // então não é preciso aguardar o anúncio carregar (sem véu de "Finalizando registro...").
@@ -4572,43 +4504,10 @@ const handleShareCreatedIncident = async () => {
 }
 
 /* --- Cooldown Banner & Disabled Upload Buttons --- */
-.cooldown-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.85rem;
-  background: #fff7ed;
-  border: 1.5px solid #fb923c;
-  border-radius: 14px;
-  padding: 1rem 1.15rem;
-  margin-bottom: 1.25rem;
-  box-shadow: 0 4px 12px rgba(251, 146, 60, 0.12);
-  animation: fadeIn 0.25s ease-out;
-}
 
-.cooldown-icon {
-  font-size: 1.75rem;
-  line-height: 1;
-  flex-shrink: 0;
-}
 
-.cooldown-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
 
-.cooldown-title {
-  font-size: 0.98rem;
-  font-weight: 800;
-  color: #9a3412;
-}
 
-.cooldown-desc {
-  font-size: 0.88rem;
-  color: #c2410c;
-  line-height: 1.45;
-  margin: 0;
-}
 
 .btn-upload.is-disabled {
   opacity: 0.55;
