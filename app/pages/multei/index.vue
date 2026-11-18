@@ -294,6 +294,12 @@
                       <span>Termos e Privacidade</span>
                     </button>
                   </li>
+                  <li>
+                    <button type="button" class="help-menu-item" @click="openConsentPreferences">
+                      <span class="help-menu-icon" aria-hidden="true">🍪</span>
+                      <span>Preferências de cookies</span>
+                    </button>
+                  </li>
                 </ul>
               </nav>
             </Transition>
@@ -316,13 +322,19 @@
           aria-label="Preferências de cookies e privacidade"
         >
           <p class="multei-consent-text">
+            <span v-if="currentConsentChoice" class="multei-consent-current">
+              Sua escolha atual: <strong>{{ currentConsentChoice === 'all' ? 'Aceitar todos' : 'Apenas essenciais' }}</strong>.
+              Você pode mudar quando quiser.
+            </span>
             Utilizamos cookies essenciais para o mapa funcionar, e cookies do Google para exibir anúncios e métricas que mantêm o projeto gratuito.
             Saiba mais nos <button type="button" class="multei-consent-link" @click="openTermsModal">Termos de Uso e Política de Privacidade</button>.
           </p>
           <div class="multei-consent-actions">
             <button
+              ref="consentFirstButtonRef"
               type="button"
               class="btn-multei-consent-essential"
+              :aria-pressed="currentConsentChoice ? (currentConsentChoice === 'essentials' ? 'true' : 'false') : undefined"
               @click="acceptOnlyEssentials"
             >
               Apenas Essenciais
@@ -330,6 +342,7 @@
             <button
               type="button"
               class="btn-multei-consent-all"
+              :aria-pressed="currentConsentChoice ? (currentConsentChoice === 'all' ? 'true' : 'false') : undefined"
               @click="acceptAll"
             >
               Aceitar Todos
@@ -680,7 +693,7 @@
 </template>
 
 <script setup>
-  import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+  import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
   import { useRoute } from 'vue-router';
   import {
     fetchIncidentsByVisibleArea,
@@ -892,6 +905,19 @@ const handleOpenCreateModal = async () => {
 
   // Consentimento de Cookies do Multei (Apenas Essenciais vs Aceitar Todos — validade de 1 mês)
   const isConsentVisible = ref(false);
+  // Escolha já salva (null na primeira visita). Usada ao reabrir a barra pelo menu "Dúvidas?"
+  const currentConsentChoice = ref(null);
+  const consentFirstButtonRef = ref(null);
+
+  // Revogação tão fácil quanto o consentimento (LGPD): reabre a barra a partir do menu de ajuda
+  const openConsentPreferences = () => {
+    isHelpMenuOpen.value = false;
+    currentConsentChoice.value = getMulteiConsent();
+    isConsentVisible.value = true;
+    nextTick(() => {
+      consentFirstButtonRef.value?.focus?.();
+    });
+  };
 
   const disableNonEssentialCookies = () => {
     if (typeof window === 'undefined') return;
@@ -932,13 +958,20 @@ const handleOpenCreateModal = async () => {
   };
 
   const acceptOnlyEssentials = () => {
+    const previousChoice = currentConsentChoice.value;
     setMulteiConsent('essentials');
+    currentConsentChoice.value = 'essentials';
     isConsentVisible.value = false;
     disableNonEssentialCookies();
+    // Scripts de anúncio já carregados só deixam de rodar após recarregar a página
+    if (previousChoice === 'all' && typeof window !== 'undefined') {
+      window.location.reload();
+    }
   };
 
   const acceptAll = () => {
     setMulteiConsent('all');
+    currentConsentChoice.value = 'all';
     isConsentVisible.value = false;
     // Reserva o espaço do anúncio âncora ANTES de ele carregar, para os botões não "pularem" sob o dedo
     startAdSpaceReservation();
@@ -3706,6 +3739,17 @@ onMounted(async () => {
     padding: 1rem 1.5rem calc(1rem + env(safe-area-inset-bottom, 0px));
     gap: 1.25rem;
   }
+}
+
+.multei-consent-current {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #bfdbfe;
+}
+
+.btn-multei-consent-essential[aria-pressed='true'],
+.btn-multei-consent-all[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px #111827, 0 0 0 4px #93c5fd;
 }
 
 .multei-consent-text {
