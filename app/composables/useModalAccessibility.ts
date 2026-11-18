@@ -151,6 +151,13 @@ export function useModalAccessibility(options: UseModalAccessibilityOptions) {
 
   const handlePopState = () => {
     if (!isTopMostModal(instanceId)) return;
+    // O anúncio premiado (GPT) usa o histórico (#goog_rewarded) para abrir/fechar: não é um "voltar" do usuário
+    if (
+      typeof document !== 'undefined' &&
+      (document.documentElement.hasAttribute('data-rewarded-ad-open') || /^#goog_/i.test(window.location.hash || ''))
+    ) {
+      return;
+    }
     if (programmaticBackCount > 0) {
       programmaticBackCount--;
       return;

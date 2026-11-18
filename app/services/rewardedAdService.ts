@@ -95,6 +95,46 @@ let listenersBound = false;
 let sessionSequence = 0;
 let activeSession: InternalRewardedSession | null = null;
 
+// Diagnóstico apenas em desenvolvimento (localhost): ajuda a entender o ciclo do anúncio premiado
+const debugRewarded = (...args: unknown[]) => {
+  if (typeof window === 'undefined' || !import.meta.dev) return;
+  try {
+    console.info('[rewardedAd]', ...args);
+  } catch {
+    // ignore
+  }
+};
+
+/**
+ * Enquanto o anúncio premiado está aberto, o GPT altera o histórico (hash `#goog_rewarded`)
+ * e usa "voltar" para fechá-lo. Marcamos o <html> para que modais do app ignorem esses
+ * eventos de histórico (popstate) e não fechem/cancelem o fluxo por engano.
+ */
+const REWARDED_OPEN_ATTR = 'data-rewarded-ad-open';
+let rewardedOpenReleaseTimer: ReturnType<typeof setTimeout> | null = null;
+
+const markRewardedAdOpen = (open: boolean) => {
+  if (typeof document === 'undefined') return;
+  if (rewardedOpenReleaseTimer) {
+    clearTimeout(rewardedOpenReleaseTimer);
+    rewardedOpenReleaseTimer = null;
+  }
+  if (open) {
+    document.documentElement.setAttribute(REWARDED_OPEN_ATTR, 'true');
+    return;
+  }
+  // Mantém a marca por um instante: o popstate do fechamento pode chegar logo depois do evento "closed"
+  rewardedOpenReleaseTimer = setTimeout(() => {
+    document.documentElement.removeAttribute(REWARDED_OPEN_ATTR);
+    rewardedOpenReleaseTimer = null;
+  }, 800);
+};
+
+export const isRewardedAdOpen = (): boolean => {
+  if (typeof document === 'undefined') return false;
+  return document.documentElement.hasAttribute(REWARDED_OPEN_ATTR);
+};
+
 const isLocalDevHost = (): boolean => {
   if (typeof window === 'undefined') return false;
   const host = String(window.location.hostname || '').toLowerCase();
@@ -242,11 +282,19 @@ const buildReadyResult = (session: InternalRewardedSession): PreparedRewardedAdR
     session.granted = false;
 
     return new Promise<{ granted: boolean; failed?: boolean }>((resolve) => {
-      session.closeResolver = resolve;
+      session.closeResolver = (outcome) => {
+        markRewardedAdOpen(false);
+        debugRewarded('resultado', outcome);
+        resolve(outcome);
+      };
       try {
+        markRewardedAdOpen(true);
+        debugRewarded('makeRewardedVisible', session.adUnitPath);
         session.readyEvent?.makeRewardedVisible();
-      } catch {
+      } catch (err) {
+        debugRewarded('makeRewardedVisible falhou', err);
         session.closeResolver = null;
+        markRewardedAdOpen(false);
         disposeRewardedAdSession();
         resolve({ granted: false, failed: true });
       }
@@ -285,6 +333,7 @@ const ensurePubAdsListenersBound = (gt: GoogleTagGlobal) => {
     }
     session.readyEvent = event;
     session.status = 'ready';
+    debugRewarded('rewardedSlotReady');
     settleSessionPreparation(session, buildReadyResult(session));
   });
 
@@ -292,12 +341,14 @@ const ensurePubAdsListenersBound = (gt: GoogleTagGlobal) => {
     const session = activeSession;
     if (!session || session.slot !== event.slot) return;
     session.granted = true;
+    debugRewarded('rewardedSlotGranted');
   });
 
   pubads.addEventListener('rewardedSlotClosed', (event) => {
     const session = activeSession;
     if (!session || session.slot !== event.slot) return;
     const wasGranted = Boolean(session.granted);
+    debugRewarded('rewardedSlotClosed', { granted: wasGranted });
     const resolver = session.closeResolver;
     session.closeResolver = null;
     disposeRewardedAdSession();
@@ -309,6 +360,7 @@ const ensurePubAdsListenersBound = (gt: GoogleTagGlobal) => {
   pubads.addEventListener('slotRenderEnded', (event) => {
     const session = activeSession;
     if (!session || session.slot !== event.slot) return;
+    debugRewarded('slotRenderEnded', { isEmpty: event.isEmpty });
     if (event.isEmpty && session.status === 'loading') {
       session.status = 'unavailable';
       const slotToDestroy = session.slot;
@@ -325,6 +377,7 @@ const ensurePubAdsListenersBound = (gt: GoogleTagGlobal) => {
 export const disposeRewardedAdSession = (): void => {
   const prev = activeSession;
   if (!prev) return;
+  debugRewarded('dispose', { status: prev.status });
   activeSession = null;
   prev.status = 'disposed';
   prev.readyEvent = null;
