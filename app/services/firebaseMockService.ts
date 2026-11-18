@@ -38,7 +38,15 @@ import {
   type ResolvedIncidentPanelItem,
   type ResolutionReviewDecision,
   type MulteiLiveCategory,
-  type MulteiLiveEventMeta
+  type MulteiLiveEventMeta,
+  normalizeCityKey,
+  buildCityStateKeys,
+  type CreatePanelUserResult,
+  type CityKeysBackfillProgress,
+  type CityKeysBackfillCollection,
+  type SubscribePanelChangesOptions,
+  type PanelChangeEvent,
+  type PanelChangeCollection
 } from './firebaseService';
 
 export const MOCK_BH_DEFAULT_CENTER = {
@@ -341,6 +349,7 @@ function ensureCrossTabMockListeners() {
         if (parsed && parsed.ocorrencias && parsed.estatisticas) {
           inMemoryMockStore = parsed;
           notifyMockStatsSubscribers(parsed.estatisticas);
+          dispatchMockPanelChanges(parsed);
         }
       } catch {}
     } else if (evt.key === MOCK_STORE_STORAGE_KEY && !evt.newValue) {
@@ -361,6 +370,9 @@ function persistMockStore(store: MockFirebaseStoreState) {
     localStorage.setItem(MOCK_STORE_STORAGE_KEY, JSON.stringify(store));
   } catch (err) {
     console.warn('[firebaseMockService] Limite de localStorage atingido; mantendo estado em memória.', err);
+  }
+  if (mockPanelChangeListeners.size > 0) {
+    setTimeout(() => dispatchMockPanelChanges(inMemoryMockStore), 0);
   }
 }
 
@@ -510,6 +522,8 @@ function mapMockRecordToIncident(docId: string, rawData: Record<string, any>): R
     bairro: bairroVal,
     cidade: cidadeVal,
     estado: estadoVal,
+    cidade_key: data.cidade_key ? String(data.cidade_key) : normalizeCityKey(cidadeVal),
+    estado_key: data.estado_key ? String(data.estado_key) : buildCityStateKeys('', estadoVal).estado_key,
     classificacao: classificacaoVal,
     verificacao: verificacaoVal,
     fotoUrl: isUnderReportReview ? '' : fotoUrl,
@@ -864,6 +878,7 @@ export async function mockSaveIncidentToFirebase(
     possivel_credencial: isPossivelCredencial,
     cidade: resolvedCidade,
     estado: resolvedEstado,
+    ...buildCityStateKeys(resolvedCidade, resolvedEstado),
     rua: resolvedRua,
     bairro: resolvedBairro,
     classificacao: resolvedClassificacao,
@@ -895,6 +910,7 @@ export async function mockSaveIncidentToFirebase(
       bairro: resolvedBairro,
       cidade: resolvedCidade,
       estado: resolvedEstado,
+      ...buildCityStateKeys(resolvedCidade, resolvedEstado),
       classificacao: resolvedClassificacao,
       verificacao: resolvedVerificacao,
       ativo: false,
@@ -942,6 +958,7 @@ export async function mockSaveIncidentToFirebase(
       bairro: resolvedBairro,
       cidade: resolvedCidade,
       estado: resolvedEstado,
+      ...buildCityStateKeys(resolvedCidade, resolvedEstado),
       classificacao: resolvedClassificacao,
       verificacao: resolvedVerificacao,
       ativo: docData.ativo,
@@ -1148,6 +1165,10 @@ export async function mockReportIncidentInFirebase(
     bairro: existingData.bairro ?? existingReportData.bairro ?? incidentData?.bairro ?? '',
     cidade: existingData.cidade ?? existingReportData.cidade ?? incidentData?.cidade ?? '',
     estado: existingData.estado ?? existingReportData.estado ?? incidentData?.estado ?? '',
+    ...buildCityStateKeys(
+      existingData.cidade ?? existingReportData.cidade ?? incidentData?.cidade ?? '',
+      existingData.estado ?? existingReportData.estado ?? incidentData?.estado ?? ''
+    ),
     classificacao:
       existingData.classificacao ??
       existingReportData.classificacao ??
@@ -1278,6 +1299,10 @@ export async function mockSubmitUrbanResolutionToFirebase(
     bairro: currentData.bairro || inc.bairro || '',
     cidade: currentData.cidade || inc.cidade || 'Belo Horizonte',
     estado: currentData.estado || inc.estado || 'MG',
+    ...buildCityStateKeys(
+      currentData.cidade || inc.cidade || 'Belo Horizonte',
+      currentData.estado || inc.estado || 'MG'
+    ),
     ocorrenciaFotoUrl: resolveMockPhotoUrl(
       currentData.fotoUrl || inc.fotoUrl || inc.maskedImageUrl || ''
     ),
@@ -1652,7 +1677,7 @@ export async function mockFetchPanelUsersFromFirebase(): Promise<MulteiPanelMana
 
 export async function mockCreatePanelUserInFirebase(
   payload: CreatePanelUserPayload
-): Promise<MulteiPanelManagedUser> {
+): Promise<CreatePanelUserResult> {
   const cleanRole: 'admin' | 'parceria' = payload.role === 'parceria' ? 'parceria' : 'admin';
   const cleanNome = (payload.nome || '').trim();
   const cleanSobrenome = (payload.sobrenome || '').trim();
@@ -1662,13 +1687,14 @@ export async function mockCreatePanelUserInFirebase(
   const rawEstado = (payload.estado || '').trim();
   const cleanEstado = (normalizeState(rawEstado) || rawEstado).toUpperCase();
   const isAtivo = payload.ativo !== false;
+  const shouldSendInvite = payload.sendInvite ?? !rawPassword;
 
   if (!cleanNome) throw new Error('Informe o nome do usuário.');
   if (!cleanSobrenome) throw new Error('Informe o sobrenome do usuário.');
   if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
     throw new Error('Informe um endereço de e-mail válido.');
   }
-  if (!rawPassword || rawPassword.length < 6) {
+  if (rawPassword && rawPassword.length < 6) {
     throw new Error('A senha deve ter pelo menos 6 caracteres.');
   }
   if (!cleanCidade) throw new Error('Informe a cidade do usuário.');
@@ -1717,7 +1743,8 @@ export async function mockCreatePanelUserInFirebase(
     estado: cleanEstado,
     ativo: isAtivo,
     createdAt: nowIso,
-    updatedAt: nowIso
+    updatedAt: nowIso,
+    inviteSent: shouldSendInvite
   };
 }
 
@@ -1788,6 +1815,11 @@ export async function mockSendPanelUserPasswordReset(email: string): Promise<voi
   if (!cleanEmail) {
     throw new Error('E-mail inválido para redefinição de senha.');
   }
+}
+
+/** Mock do "Esqueci minha senha": nunca revela se a conta existe e não envia nada. */
+export async function mockRequestPanelPasswordReset(_email: string): Promise<void> {
+  await new Promise((r) => setTimeout(r, 300));
 }
 
 function parseResultadoRevisao(raw: unknown): ReportReviewDecision | '' {
@@ -2146,13 +2178,171 @@ export async function mockReviewReportedIncidentInFirebase(params: {
   };
 }
 
-function normalizeCityKey(raw?: string): string {
-  if (!raw) return '';
-  return raw
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+/**
+ * Mock do backfill de `cidade_key`/`estado_key` (somente admin da sessão mock). Idempotente.
+ */
+export async function mockBackfillCityKeys(options?: {
+  onProgress?: (progress: CityKeysBackfillProgress) => void;
+}): Promise<{ updated: number; scanned: number }> {
+  const session = getValidMockSession();
+  if (!session?.profile || session.profile.role !== 'admin' || session.profile.ativo === false) {
+    const err = new Error('Ação permitida apenas para administradores.') as Error & { code?: string };
+    err.code = 'PERMISSION_DENIED';
+    throw err;
+  }
+  const store = getMockStore();
+  let scanned = 0;
+  let updated = 0;
+  const collections: CityKeysBackfillCollection[] = ['ocorrencias', 'resolvidos', 'reportadas'];
+  for (const colName of collections) {
+    const bucket = store[colName];
+    for (const [docId, rawDoc] of Object.entries(bucket)) {
+      scanned++;
+      const keys = buildCityStateKeys(rawDoc?.cidade, rawDoc?.estado);
+      if (rawDoc?.cidade_key !== keys.cidade_key || rawDoc?.estado_key !== keys.estado_key) {
+        bucket[docId] = { ...rawDoc, ...keys };
+        updated++;
+      }
+    }
+    try {
+      options?.onProgress?.({ collection: colName, scanned, updated });
+    } catch {}
+  }
+  if (updated > 0) persistMockStore(store);
+  return { updated, scanned };
+}
+
+// ---------------------------------------------------------------------------
+// Tempo real do painel (mock): compara o estado do store a cada gravação local
+// (`persistMockStore`) ou de outra aba (evento `storage`) e emite os eventos.
+// ---------------------------------------------------------------------------
+interface MockPanelChangeListener {
+  options: SubscribePanelChangesOptions;
+  onChange: (evt: PanelChangeEvent) => void;
+}
+
+const mockPanelChangeListeners = new Set<MockPanelChangeListener>();
+let mockPanelLastSnapshot: Record<PanelChangeCollection, Map<string, string>> | null = null;
+
+function buildMockPanelSnapshot(
+  store: MockFirebaseStoreState
+): Record<PanelChangeCollection, Map<string, string>> {
+  const snap = {
+    ocorrencias: new Map<string, string>(),
+    reportadas: new Map<string, string>(),
+    resolvidos: new Map<string, string>()
+  } as Record<PanelChangeCollection, Map<string, string>>;
+  (Object.keys(snap) as PanelChangeCollection[]).forEach((col) => {
+    for (const [id, docData] of Object.entries(store[col] || {})) {
+      try {
+        snap[col].set(id, JSON.stringify(docData));
+      } catch {}
+    }
+  });
+  return snap;
+}
+
+function mockPanelEventMatches(
+  listener: MockPanelChangeListener,
+  collectionName: PanelChangeCollection,
+  docData: Record<string, any> | undefined
+): boolean {
+  if (!docData) return true;
+  const { role, cidadeKey, sinceIso } = listener.options;
+  const key = normalizeCityKey(cidadeKey);
+  const docCityKey = String(docData.cidade_key || normalizeCityKey(docData.cidade));
+  const geSince = (v: unknown) => typeof v === 'string' && v >= sinceIso;
+  if (role === 'parceria') {
+    if (!key || docCityKey !== key) return false;
+    if (collectionName === 'ocorrencias') return geSince(docData.data) || geSince(docData[REPORT_REVIEW_DATE_FIELD]);
+    if (collectionName === 'resolvidos') return geSince(docData.data);
+    return false;
+  }
+  if (collectionName === 'reportadas') return geSince(docData.ultima_data_report);
+  if (collectionName === 'resolvidos') return geSince(docData.data);
+  return Boolean(key) && docCityKey === key && geSince(docData.data);
+}
+
+function dispatchMockPanelChanges(store: MockFirebaseStoreState | null) {
+  if (mockPanelChangeListeners.size === 0 || !store) return;
+  const next = buildMockPanelSnapshot(store);
+  const prev = mockPanelLastSnapshot;
+  mockPanelLastSnapshot = next;
+  if (!prev) return;
+  (Object.keys(next) as PanelChangeCollection[]).forEach((col) => {
+    const events: Array<{ type: PanelChangeEvent['type']; id: string; data?: any; matchData?: any }> = [];
+    for (const [id, serialized] of next[col]) {
+      const before = prev[col].get(id);
+      if (before === serialized) continue;
+      const data = store[col][id];
+      events.push({ type: before === undefined ? 'added' : 'modified', id, data, matchData: data });
+    }
+    for (const [id, before] of prev[col]) {
+      if (next[col].has(id)) continue;
+      let matchData: any;
+      try {
+        matchData = JSON.parse(before);
+      } catch {}
+      events.push({ type: 'removed', id, matchData });
+    }
+    for (const evt of events) {
+      for (const listener of mockPanelChangeListeners) {
+        if (!mockPanelEventMatches(listener, col, evt.matchData)) continue;
+        try {
+          listener.onChange({
+            collection: col,
+            type: evt.type,
+            id: evt.id,
+            data: evt.type === 'removed' ? undefined : evt.data
+          });
+        } catch {}
+      }
+    }
+  });
+}
+
+/** Mock de `subscribePanelChanges`: mesma semântica (ignora o estado inicial; filtra por cidade/data). */
+export function mockSubscribePanelChanges(
+  options: SubscribePanelChangesOptions,
+  onChange: (evt: PanelChangeEvent) => void
+): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const sinceIso = String(options?.sinceIso || '').trim();
+  if (!sinceIso) return () => {};
+  const listener: MockPanelChangeListener = {
+    options: {
+      role: options?.role === 'admin' ? 'admin' : 'parceria',
+      cidadeKey: options?.cidadeKey,
+      sinceIso
+    },
+    onChange
+  };
+  if (mockPanelChangeListeners.size === 0) {
+    mockPanelLastSnapshot = buildMockPanelSnapshot(getMockStore());
+  }
+  mockPanelChangeListeners.add(listener);
+  return () => {
+    mockPanelChangeListeners.delete(listener);
+    if (mockPanelChangeListeners.size === 0) mockPanelLastSnapshot = null;
+  };
+}
+
+function restoreMockStaffPhotos(
+  incident: ReportedIncident,
+  rawData: Record<string, any>
+): ReportedIncident {
+  const data = normalizeMockPhotoFields(rawData || {});
+  const fotoUrl = resolveMockPhotoUrl(data.fotoUrl || data.foto || data.image || '');
+  const fotoUrl2 = data.fotoUrl2
+    ? resolveMockPhotoUrl(String(data.fotoUrl2).trim())
+    : Array.isArray(data.fotosUrls) && data.fotosUrls.length > 1
+      ? resolveMockPhotoUrl(String(data.fotosUrls[1] || '').trim())
+      : '';
+  const fotosUrls =
+    Array.isArray(data.fotosUrls) && data.fotosUrls.length > 0
+      ? data.fotosUrls.map((u: unknown) => resolveMockPhotoUrl(String(u || '').trim())).filter(Boolean)
+      : [fotoUrl, fotoUrl2].filter(Boolean);
+  return { ...incident, fotoUrl, fotoUrl2, fotosUrls, maskedImageUrl: fotoUrl, em_revisao_denuncia: true };
 }
 
 export async function mockFetchPartnerIncidentsFromFirebase(
@@ -2161,6 +2351,7 @@ export async function mockFetchPartnerIncidentsFromFirebase(
     estado?: string;
     center?: { latitude: number; longitude: number } | null;
     radiusKm?: number;
+    includeStaffPhotos?: boolean;
   } = {}
 ): Promise<ReportedIncident[]> {
   const store = getMockStore();
@@ -2170,8 +2361,12 @@ export async function mockFetchPartnerIncidentsFromFirebase(
 
   const results: ReportedIncident[] = [];
   for (const [docId, rawData] of Object.entries(store.ocorrencias)) {
-    const incident = mapMockRecordToIncident(docId, rawData);
-    if (!incident) continue;
+    const mapped = mapMockRecordToIncident(docId, rawData);
+    if (!mapped) continue;
+    const incident =
+      options?.includeStaffPhotos && mapped.em_revisao_denuncia
+        ? restoreMockStaffPhotos(mapped, rawData)
+        : mapped;
     if (incident.possivel_duplicidade) continue;
 
     if (targetCityKey) {
@@ -2249,6 +2444,13 @@ export async function mockResolveUrbanIncidentByPartnerInFirebase(
 
   const store = getMockStore();
   const existingData = store.ocorrencias[ocorrenciaId] || {};
+  if (isIncidentUnderReportReview(existingData)) {
+    const reviewErr = new Error(
+      'Esta ocorrência está em revisão de denúncia. Aguarde a moderação para declarar a correção.'
+    ) as Error & { code?: string };
+    reviewErr.code = 'UNDER_REPORT_REVIEW';
+    throw reviewErr;
+  }
   const prevStatsResolvidos = store.estatisticas.resolvidos;
 
   const fotoResolucaoUrl = payload.foto;
@@ -2290,6 +2492,10 @@ export async function mockResolveUrbanIncidentByPartnerInFirebase(
     bairro: existingData.bairro || inc.bairro || '',
     cidade: existingData.cidade || inc.cidade || 'Belo Horizonte',
     estado: existingData.estado || inc.estado || 'MG',
+    ...buildCityStateKeys(
+      existingData.cidade || inc.cidade || 'Belo Horizonte',
+      existingData.estado || inc.estado || 'MG'
+    ),
     ocorrenciaFotoUrl: resolveMockPhotoUrl(
       existingData.fotoUrl || inc.fotoUrl || inc.maskedImageUrl || ''
     ),

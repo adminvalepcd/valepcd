@@ -65,6 +65,10 @@ export interface ReportedIncident {
   descricao?: string;
   cidade?: string;
   estado?: string;
+  /** Cidade normalizada (minúsculas, sem acento, espaços colapsados) — ver `normalizeCityKey`. */
+  cidade_key?: string;
+  /** Sigla da UF em maiúsculas — ver `normalizeStateKey`. */
+  estado_key?: string;
   rua?: string;
   bairro?: string;
   classificacao?: 'A' | 'B' | 'C' | string;

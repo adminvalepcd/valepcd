@@ -18,7 +18,14 @@ import {
   orderBy,
   startAt,
   endAt,
-  type Firestore
+  startAfter,
+  limit,
+  writeBatch,
+  documentId,
+  type Firestore,
+  type QueryConstraint,
+  type QueryDocumentSnapshot,
+  type DocumentData
 } from 'firebase/firestore';
 import {
   getStorage,
@@ -88,10 +95,14 @@ import {
   mockFetchPartnerIncidentsFromFirebase,
   mockResolveUrbanIncidentByPartnerInFirebase,
   mockFetchResolvedIncidentsForPanel,
-  mockReviewResolvedIncidentInFirebase
+  mockReviewResolvedIncidentInFirebase,
+  mockBackfillCityKeys,
+  mockSubscribePanelChanges,
+  mockRequestPanelPasswordReset
 } from './firebaseMockService';
 
 export { isFirebaseMockEnabled, resetFirebaseMockStore, MOCK_BH_DEFAULT_CENTER };
+export { normalizeState };
 
 export const OCORRENCIAS_COLLECTION = 'ocorrencias';
 export const RESOLVIDOS_COLLECTION = 'resolvidos';
@@ -427,6 +438,47 @@ export function normalizeVerificacao(raw?: unknown): 'exclusiva' | 'transferenci
 }
 
 /**
+ * Chave normalizada de cidade gravada em `cidade_key`: minúsculas, sem acentos e com espaços colapsados.
+ * Ex.: "  São   Paulo " → "sao paulo".
+ */
+export function normalizeCityKey(raw?: unknown): string {
+  if (raw === null || raw === undefined) return '';
+  return String(raw)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Chave normalizada de estado gravada em `estado_key`: sigla da UF em MAIÚSCULAS (ex.: "MG").
+ * Aceita sigla ou nome por extenso (com ou sem acento). Retorna '' quando não for uma UF válida.
+ */
+export function normalizeStateKey(raw?: unknown): string {
+  if (raw === null || raw === undefined) return '';
+  const trimmed = String(raw).replace(/\s+/g, ' ').trim();
+  if (!trimmed) return '';
+  const direct = normalizeState(trimmed).trim().toUpperCase();
+  if (isValidBrazilUF(direct)) return direct;
+  const deaccented = trimmed.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const viaDeaccented = normalizeState(deaccented).trim().toUpperCase();
+  if (isValidBrazilUF(viaDeaccented)) return viaDeaccented;
+  return '';
+}
+
+/** Monta o par `{ cidade_key, estado_key }` gravado nos documentos de `ocorrencias`, `resolvidos` e `reportadas`. */
+export function buildCityStateKeys(
+  cidade?: unknown,
+  estado?: unknown
+): { cidade_key: string; estado_key: string } {
+  return {
+    cidade_key: normalizeCityKey(cidade),
+    estado_key: normalizeStateKey(estado)
+  };
+}
+
+/**
  * Obtém as instâncias do Firestore ($db), Storage ($storage) e Auth ($auth) do plugin Nuxt
  * ou diretamente do app Firebase inicializado (seguro após chamadas await).
  */
@@ -551,6 +603,8 @@ function mapDocToIncident(docId: string, data: Record<string, any>): ReportedInc
     bairro: bairroVal,
     cidade: cidadeVal,
     estado: estadoVal,
+    cidade_key: data.cidade_key ? String(data.cidade_key) : normalizeCityKey(cidadeVal),
+    estado_key: data.estado_key ? String(data.estado_key) : normalizeStateKey(estadoVal),
     classificacao: classificacaoVal,
     verificacao: verificacaoVal,
     fotoUrl: isUnderReportReview ? '' : fotoUrl,
@@ -1182,6 +1236,7 @@ export async function saveIncidentToFirebase(
     : incident.motivo_denuncia || '';
 
   // 4. Monta e salva o documento na coleção "ocorrencias"
+  const cityStateKeys = buildCityStateKeys(resolvedCidade, resolvedEstado);
   const docData: Record<string, any> = {
     id,
     data: dataIso,
@@ -1198,6 +1253,7 @@ export async function saveIncidentToFirebase(
     possivel_credencial: isPossivelCredencial,
     cidade: resolvedCidade,
     estado: resolvedEstado,
+    ...cityStateKeys,
     rua: resolvedRua,
     bairro: resolvedBairro,
     classificacao: resolvedClassificacao,
@@ -1233,6 +1289,7 @@ export async function saveIncidentToFirebase(
           bairro: resolvedBairro,
           cidade: resolvedCidade,
           estado: resolvedEstado,
+          ...cityStateKeys,
           classificacao: resolvedClassificacao,
           verificacao: resolvedVerificacao,
           ativo: false,
@@ -1297,6 +1354,7 @@ export async function saveIncidentToFirebase(
           bairro: resolvedBairro,
           cidade: resolvedCidade,
           estado: resolvedEstado,
+          ...cityStateKeys,
           classificacao: resolvedClassificacao,
           verificacao: resolvedVerificacao,
           ativo: docData.ativo,
@@ -1582,6 +1640,10 @@ export async function reportIncidentInFirebase(
     bairro: existingData.bairro ?? existingReportData.bairro ?? incidentData?.bairro ?? '',
     cidade: existingData.cidade ?? existingReportData.cidade ?? incidentData?.cidade ?? '',
     estado: existingData.estado ?? existingReportData.estado ?? incidentData?.estado ?? '',
+    ...buildCityStateKeys(
+      existingData.cidade ?? existingReportData.cidade ?? incidentData?.cidade ?? '',
+      existingData.estado ?? existingReportData.estado ?? incidentData?.estado ?? ''
+    ),
     classificacao: existingData.classificacao ?? existingReportData.classificacao ?? incidentData?.classificacao ?? '',
     verificacao: existingData.verificacao ?? existingReportData.verificacao ?? incidentData?.verificacao ?? '',
     possivel_duplicidade: wasPossibleDuplicate,
@@ -1742,6 +1804,7 @@ export async function submitUrbanResolutionToFirebase(
     bairro: inc.bairro || '',
     cidade: inc.cidade || '',
     estado: inc.estado || '',
+    ...buildCityStateKeys(inc.cidade || '', inc.estado || ''),
     ocorrenciaFotoUrl: inc.fotoUrl || inc.maskedImageUrl || '',
     ocorrenciaDescricao: inc.descricao || '',
     contabilizado_estatisticas: true
@@ -3151,11 +3214,22 @@ export interface CreatePanelUserPayload {
   nome: string;
   sobrenome: string;
   email: string;
-  senha: string;
+  /**
+   * Opcional (compatibilidade). Quando ausente/vazia, gera uma senha aleatória forte que nunca é exibida
+   * e envia o e-mail de definição de senha (convite).
+   */
+  senha?: string;
   cidade: string;
   estado: string;
   ativo?: boolean;
+  /** Força (ou suprime) o envio do convite. Padrão: envia apenas quando `senha` não foi informada. */
+  sendInvite?: boolean;
 }
+
+export type CreatePanelUserResult = MulteiPanelManagedUser & {
+  /** `true` quando o e-mail de definição de senha (convite) foi enviado com sucesso. */
+  inviteSent: boolean;
+};
 
 export interface UpdatePanelUserPayload {
   role: 'admin' | 'parceria';
@@ -3167,28 +3241,57 @@ export interface UpdatePanelUserPayload {
   ativo: boolean;
 }
 
+const GENERATED_PASSWORD_LENGTH = 32;
+const GENERATED_PASSWORD_ALPHABET =
+  'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*-_=+?';
+
+/**
+ * Gera uma senha aleatória forte com `crypto.getRandomValues` (amostragem por rejeição, sem viés de módulo).
+ * A senha nunca é exibida nem persistida: a pessoa define a sua pelo e-mail de convite.
+ */
+export function generateStrongRandomPassword(length = GENERATED_PASSWORD_LENGTH): string {
+  const cryptoObj: Crypto | undefined = (globalThis as any).crypto;
+  if (!cryptoObj || typeof cryptoObj.getRandomValues !== 'function') {
+    throw new Error('Gerador seguro de números aleatórios indisponível.');
+  }
+  const alphabet = GENERATED_PASSWORD_ALPHABET;
+  const max = Math.floor(256 / alphabet.length) * alphabet.length;
+  const out: string[] = [];
+  const buf = new Uint8Array(Math.max(64, length * 2));
+  while (out.length < length) {
+    cryptoObj.getRandomValues(buf);
+    for (let i = 0; i < buf.length && out.length < length; i++) {
+      const v = buf[i]!;
+      if (v < max) out.push(alphabet[v % alphabet.length]!);
+    }
+  }
+  return out.join('');
+}
+
 /**
  * Cria um novo usuário no Firebase Authentication usando uma instância secundária isolada
  * (para não desconectar o administrador logado) e grava os metadados na coleção `usuarios`
  * SEM salvar a senha no Firestore.
+ * Fluxo de convite: sem `senha`, gera uma senha aleatória forte e envia o e-mail de definição de senha.
  */
 export async function createPanelUserInFirebase(
   payload: CreatePanelUserPayload
-): Promise<MulteiPanelManagedUser> {
+): Promise<CreatePanelUserResult> {
   if (isFirebaseMockEnabled()) {
     return mockCreatePanelUserInFirebase(payload);
   }
-  const { db } = getFirebaseServices();
+  const { db, auth } = getFirebaseServices();
 
   const cleanRole: 'admin' | 'parceria' = payload.role === 'parceria' ? 'parceria' : 'admin';
   const cleanNome = (payload.nome || '').trim();
   const cleanSobrenome = (payload.sobrenome || '').trim();
   const cleanEmail = (payload.email || '').trim().toLowerCase();
-  const rawPassword = payload.senha || '';
+  const providedPassword = payload.senha || '';
   const cleanCidade = (payload.cidade || '').trim();
   const rawEstado = (payload.estado || '').trim();
   const cleanEstado = (normalizeState(rawEstado) || rawEstado).toUpperCase();
   const isAtivo = payload.ativo !== false;
+  const shouldSendInvite = payload.sendInvite ?? !providedPassword;
 
   if (!cleanNome) {
     throw new Error('Informe o nome do usuário.');
@@ -3199,7 +3302,7 @@ export async function createPanelUserInFirebase(
   if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
     throw new Error('Informe um endereço de e-mail válido.');
   }
-  if (!rawPassword || rawPassword.length < 6) {
+  if (providedPassword && providedPassword.length < 6) {
     throw new Error('A senha deve ter pelo menos 6 caracteres.');
   }
   if (!cleanCidade) {
@@ -3208,6 +3311,7 @@ export async function createPanelUserInFirebase(
   if (!cleanEstado || cleanEstado.length !== 2) {
     throw new Error('Informe a UF (estado com 2 letras, ex: SP).');
   }
+  const rawPassword = providedPassword || generateStrongRandomPassword();
 
   // Usa um App Firebase secundário com persistência em memória para criar o usuário no Firebase Auth
   // sem alterar a sessão do administrador autenticado no app principal.
@@ -3252,6 +3356,17 @@ export async function createPanelUserInFirebase(
 
   await setDoc(doc(db, USUARIOS_COLLECTION, createdUid), firestoreDocData, { merge: true });
 
+  // Convite: e-mail oficial do Firebase Auth para a pessoa definir a própria senha no primeiro acesso.
+  let inviteSent = false;
+  if (shouldSendInvite) {
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      inviteSent = true;
+    } catch (inviteErr: any) {
+      console.warn('[firebaseService] Falha ao enviar convite de definição de senha.', inviteErr?.code || '');
+    }
+  }
+
   return {
     id: createdUid,
     uid: createdUid,
@@ -3264,7 +3379,8 @@ export async function createPanelUserInFirebase(
     estado: cleanEstado,
     ativo: isAtivo,
     createdAt: nowIso,
-    updatedAt: nowIso
+    updatedAt: nowIso,
+    inviteSent
   };
 }
 
@@ -3378,6 +3494,80 @@ export async function sendPanelUserPasswordReset(email: string): Promise<void> {
     throw new Error('E-mail inválido para redefinição de senha.');
   }
   await sendPasswordResetEmail(auth, cleanEmail);
+}
+
+const PANEL_RESET_RATE_LIMIT_STORAGE_KEY = 'multei_panel_reset_log_v1';
+export const PANEL_RESET_COOLDOWN_MS = 60_000;
+
+function hashEmailForRateLimit(email: string): string {
+  // FNV-1a 32 bits: evita guardar o e-mail em texto puro no sessionStorage
+  let h = 0x811c9dc5;
+  for (let i = 0; i < email.length; i++) {
+    h ^= email.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16);
+}
+
+function readPanelResetLog(now: number): Record<string, number> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(PANEL_RESET_RATE_LIMIT_STORAGE_KEY) || '{}');
+    const out: Record<string, number> = {};
+    if (parsed && typeof parsed === 'object') {
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === 'number' && now - v < PANEL_RESET_COOLDOWN_MS) out[k] = v;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * "Esqueci minha senha" do login do painel (público). Usa `sendPasswordResetEmail` e SEMPRE resolve
+ * sem revelar se a conta existe (erros como `auth/user-not-found` são ignorados).
+ * Limite client-side: 1 pedido a cada 60 s por e-mail (sessionStorage).
+ * TODO(security): o limite é apenas client-side; o Firebase Auth aplica sua própria cota no servidor.
+ * Recomenda-se habilitar a "proteção contra enumeração de e-mail" no Firebase Auth.
+ */
+export async function requestPanelPasswordReset(
+  email: string
+): Promise<{ throttled: boolean; retryInSeconds: number; invalidEmail: boolean }> {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (!cleanEmail || cleanEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return { throttled: false, retryInSeconds: 0, invalidEmail: true };
+  }
+
+  const now = Date.now();
+  const key = hashEmailForRateLimit(cleanEmail);
+  const log = readPanelResetLog(now);
+  const last = log[key];
+  if (typeof last === 'number') {
+    const retryInSeconds = Math.max(1, Math.ceil((PANEL_RESET_COOLDOWN_MS - (now - last)) / 1000));
+    return { throttled: true, retryInSeconds, invalidEmail: false };
+  }
+  log[key] = now;
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.setItem(PANEL_RESET_RATE_LIMIT_STORAGE_KEY, JSON.stringify(log));
+    } catch {}
+  }
+
+  if (isFirebaseMockEnabled()) {
+    await mockRequestPanelPasswordReset(cleanEmail);
+    return { throttled: false, retryInSeconds: 0, invalidEmail: false };
+  }
+
+  try {
+    const { auth } = getFirebaseServices();
+    await sendPasswordResetEmail(auth, cleanEmail);
+  } catch (err: any) {
+    // Não revela existência da conta: apenas registra o código (sem o e-mail) para diagnóstico
+    console.warn('[firebaseService] Pedido de redefinição de senha não concluído.', err?.code || '');
+  }
+  return { throttled: false, retryInSeconds: 0, invalidEmail: false };
 }
 
 /**
@@ -4066,25 +4256,75 @@ export async function reviewReportedIncidentInFirebase(params: {
   };
 }
 
-function normalizeCityKey(raw?: string): string {
-  if (!raw) return '';
-  return raw
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+/**
+ * Campo gravado em `estatisticas/resumo` pelo `backfillCityKeys` quando todas as `ocorrencias` já
+ * possuem `cidade_key`/`estado_key`. Enquanto ele não existir, a consulta por `cidade_key` não é usada
+ * (evita lista incompleta numa base parcialmente migrada: documentos novos já têm a chave, os antigos não).
+ */
+export const CITY_KEYS_BACKFILL_MARKER_FIELD = 'cidade_key_backfill_em' as const;
+
+let cityKeysBackfillMarkerCache: { ready: boolean; checkedAt: number } | null = null;
+const CITY_KEYS_MARKER_NEGATIVE_TTL_MS = 5 * 60 * 1000;
+
+async function isCityKeysBackfillReady(db: Firestore): Promise<boolean> {
+  if (cityKeysBackfillMarkerCache?.ready) return true;
+  if (
+    cityKeysBackfillMarkerCache &&
+    Date.now() - cityKeysBackfillMarkerCache.checkedAt < CITY_KEYS_MARKER_NEGATIVE_TTL_MS
+  ) {
+    return false;
+  }
+  let ready = false;
+  try {
+    const snap = await getDoc(doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID));
+    ready = Boolean(snap.exists() && snap.data()?.[CITY_KEYS_BACKFILL_MARKER_FIELD]);
+  } catch {
+    ready = false;
+  }
+  cityKeysBackfillMarkerCache = { ready, checkedAt: Date.now() };
+  return ready;
+}
+
+/** Restaura as URLs de foto de um documento bruto (uso exclusivo do painel/equipe). */
+function restoreStaffPhotosFromRaw(
+  incident: ReportedIncident,
+  data: Record<string, any>
+): ReportedIncident {
+  const fotoUrl = String(data.fotoUrl || data.foto || data.image || '').trim();
+  const fotoUrl2 = data.fotoUrl2
+    ? String(data.fotoUrl2).trim()
+    : Array.isArray(data.fotosUrls) && data.fotosUrls.length > 1
+      ? String(data.fotosUrls[1] || '').trim()
+      : '';
+  const fotosUrls =
+    Array.isArray(data.fotosUrls) && data.fotosUrls.length > 0
+      ? data.fotosUrls.map((u: unknown) => String(u || '').trim()).filter(Boolean)
+      : [fotoUrl, fotoUrl2].filter(Boolean);
+  return {
+    ...incident,
+    fotoUrl,
+    fotoUrl2,
+    fotosUrls,
+    maskedImageUrl: fotoUrl,
+    em_revisao_denuncia: true
+  };
 }
 
 /**
  * Lista as ocorrências ativas da coleção `ocorrencias` para a aba "Denúncias" (Parcerias / Admin):
  * - Filtra exclusivamente pela cidade cadastrada do usuário (`cidade`), caso definida.
+ *   Após o backfill (`backfillCityKeys`), consulta direto por `where('cidade_key', '==', ...)`;
+ *   se a consulta vier vazia ou a base ainda não tiver sido migrada, cai na leitura antiga (coleção inteira).
  * - Se `center` for informado (modo "Ao meu redor"), busca ocorrências num raio de 5 km (padrão) do GPS da pessoa.
+ * - `includeStaffPhotos: true` mantém as fotos das ocorrências "Em revisão de denúncia" (com
+ *   `em_revisao_denuncia: true`) para a equipe do painel; o público continua sem vê-las.
  */
 export async function fetchPartnerIncidentsFromFirebase(options: {
   cidade?: string;
   estado?: string;
   center?: { latitude: number; longitude: number } | null;
   radiusKm?: number;
+  includeStaffPhotos?: boolean;
 }): Promise<ReportedIncident[]> {
   if (isFirebaseMockEnabled()) {
     return mockFetchPartnerIncidentsFromFirebase(options);
@@ -4096,6 +4336,31 @@ export async function fetchPartnerIncidentsFromFirebase(options: {
   const radiusMeters = (options.radiusKm ?? 5) * 1000;
 
   let docsList: Array<{ id: string; data: Record<string, any> }> = [];
+
+  const tryLoadByCityKey = async (): Promise<boolean> => {
+    if (!targetCityKey) return false;
+    if (!(await isCityKeysBackfillReady(db))) return false;
+    try {
+      const keyedSnap = await getDocs(query(colRef, where('cidade_key', '==', targetCityKey)));
+      if (keyedSnap.empty) {
+        console.warn(
+          '[firebaseService] Consulta por cidade_key vazia; usando leitura completa (base possivelmente sem backfill).'
+        );
+        return false;
+      }
+      keyedSnap.forEach((docSnap) => {
+        docsList.push({ id: docSnap.id, data: docSnap.data() || {} });
+      });
+      return true;
+    } catch (err: any) {
+      console.warn(
+        '[firebaseService] Falha na consulta por cidade_key; usando leitura completa.',
+        err?.code || ''
+      );
+      docsList = [];
+      return false;
+    }
+  };
 
   if (
     options.center &&
@@ -4120,7 +4385,7 @@ export async function fetchPartnerIncidentsFromFirebase(options: {
         docsList.push({ id: docSnap.id, data: docSnap.data() || {} });
       });
     }
-  } else {
+  } else if (!(await tryLoadByCityKey())) {
     const snap = await getDocs(colRef);
     let realTransito = 0;
     let realUrbana = 0;
@@ -4230,8 +4495,12 @@ export async function fetchPartnerIncidentsFromFirebase(options: {
   const results: ReportedIncident[] = [];
 
   for (const item of docsList) {
-    const incident = mapDocToIncident(item.id, item.data);
-    if (!incident) continue;
+    const mapped = mapDocToIncident(item.id, item.data);
+    if (!mapped) continue;
+    const incident =
+      options.includeStaffPhotos && mapped.em_revisao_denuncia
+        ? restoreStaffPhotosFromRaw(mapped, item.data)
+        : mapped;
     if (incident.possivel_duplicidade) continue;
 
     if (targetCityKey) {
@@ -4355,6 +4624,15 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
     alreadyCountedInStats = wasMarkedResolved && currentStatsResolvidos > 0;
   } catch {}
 
+  // P5: enquanto a ocorrência estiver "Em revisão de denúncia", a correção não pode ser declarada
+  if (isIncidentUnderReportReview(existingData)) {
+    const reviewErr = new Error(
+      'Esta ocorrência está em revisão de denúncia. Aguarde a moderação para declarar a correção.'
+    ) as Error & { code?: string };
+    reviewErr.code = 'UNDER_REPORT_REVIEW';
+    throw reviewErr;
+  }
+
   const { bytes, contentType } = base64ToUint8Array(payload.foto);
   let fotoResolucaoUrl = '';
   const storageSuffix = `${ocorrenciaId}_${Date.now()}`;
@@ -4415,6 +4693,10 @@ export async function resolveUrbanIncidentByPartnerInFirebase(
         bairro: existingData.bairro || inc.bairro || '',
         cidade: existingData.cidade || inc.cidade || '',
         estado: existingData.estado || inc.estado || '',
+        ...buildCityStateKeys(
+          existingData.cidade || inc.cidade || '',
+          existingData.estado || inc.estado || ''
+        ),
         ocorrenciaFotoUrl: existingData.fotoUrl || inc.fotoUrl || inc.maskedImageUrl || '',
         ocorrenciaDescricao: existingData.descricao || inc.descricao || '',
         resolvido_por: resolvidoPor
@@ -4878,6 +5160,276 @@ export async function reviewResolvedIncidentInFirebase(params: {
     data_revisao: nowIso,
     revisado_por: reviewerEmail,
     observacao_admin: observacaoAdmin.trim()
+  };
+}
+
+// ============================================================================
+// CHAVES DE CIDADE/ESTADO (BACKFILL) E TEMPO REAL DO PAINEL
+// ============================================================================
+
+export type CityKeysBackfillCollection = 'ocorrencias' | 'resolvidos' | 'reportadas';
+
+export interface CityKeysBackfillProgress {
+  collection: CityKeysBackfillCollection;
+  /** Documentos lidos até agora (acumulado em todas as coleções). */
+  scanned: number;
+  /** Documentos atualizados até agora (acumulado em todas as coleções). */
+  updated: number;
+}
+
+const CITY_KEYS_BACKFILL_BATCH_SIZE = 400;
+
+function readExplicitAdminRole(rawDoc: Record<string, any>): boolean {
+  const d: Record<string, any> = {};
+  for (const [k, v] of Object.entries(rawDoc || {})) {
+    d[k.trim().toLowerCase()] = v;
+  }
+  if (d.ativo === false || String(d.ativo).trim().toLowerCase() === 'false') return false;
+  const rawRole = String(d.role ?? d.tipo ?? d.cargo ?? d.perfil ?? '').trim().toLowerCase();
+  return rawRole === 'admin';
+}
+
+/**
+ * Garante que o usuário atual é admin ativo do painel. Fail-closed: exige sessão válida, perfil `admin`
+ * e um documento em `usuarios` com `role: 'admin'` explícito (o fallback "admin por padrão" do
+ * `resolveMulteiPanelUserProfile` não é suficiente aqui).
+ */
+async function assertCurrentUserIsExplicitPanelAdmin(): Promise<User> {
+  const denied = () => {
+    const err = new Error('Ação permitida apenas para administradores.') as Error & { code?: string };
+    err.code = 'PERMISSION_DENIED';
+    return err;
+  };
+  const { db, auth } = getFirebaseServices();
+  const user = auth.currentUser;
+  if (!user || getPanelSessionRemainingMs(user) <= 0) throw denied();
+
+  let profile: MulteiPanelUserProfile | null = null;
+  try {
+    profile = await resolveMulteiPanelUserProfile(user, { forceRefresh: true });
+  } catch {
+    throw denied();
+  }
+  if (!profile || profile.role !== 'admin' || profile.ativo === false) throw denied();
+
+  try {
+    const direct = await getDoc(doc(db, USUARIOS_COLLECTION, user.uid));
+    if (direct.exists()) {
+      if (readExplicitAdminRole(direct.data() || {})) return user;
+      throw denied();
+    }
+    const email = (user.email || '').trim().toLowerCase();
+    if (!email) throw denied();
+    const byEmail = await getDocs(
+      query(collection(db, USUARIOS_COLLECTION), where('email', '==', email), limit(5))
+    );
+    if (!byEmail.empty && byEmail.docs.every((d) => readExplicitAdminRole(d.data() || {}))) {
+      return user;
+    }
+  } catch {
+    throw denied();
+  }
+  throw denied();
+}
+
+/**
+ * Preenche `cidade_key`/`estado_key` em `ocorrencias`, `resolvidos` e `reportadas` (somente admin).
+ * - Lê em páginas ordenadas por ID e grava com `writeBatch` (até 400 documentos por lote).
+ * - Idempotente: só atualiza documentos cuja chave está ausente ou diferente da calculada.
+ * - Ao terminar sem erros, grava o marcador `estatisticas/resumo.cidade_key_backfill_em`, que libera a
+ *   consulta por `cidade_key` em `fetchPartnerIncidentsFromFirebase`.
+ */
+export async function backfillCityKeys(options?: {
+  onProgress?: (progress: CityKeysBackfillProgress) => void;
+}): Promise<{ updated: number; scanned: number }> {
+  if (isFirebaseMockEnabled()) {
+    return mockBackfillCityKeys(options);
+  }
+  await assertCurrentUserIsExplicitPanelAdmin();
+  const { db } = getFirebaseServices();
+
+  const collections: CityKeysBackfillCollection[] = [
+    OCORRENCIAS_COLLECTION,
+    RESOLVIDOS_COLLECTION,
+    REPORTADAS_COLLECTION
+  ] as CityKeysBackfillCollection[];
+  let scanned = 0;
+  let updated = 0;
+
+  const emit = (collectionName: CityKeysBackfillCollection) => {
+    try {
+      options?.onProgress?.({ collection: collectionName, scanned, updated });
+    } catch {}
+  };
+
+  for (const colName of collections) {
+    let lastDoc: QueryDocumentSnapshot<DocumentData> | null = null;
+    emit(colName);
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const constraints: QueryConstraint[] = [orderBy(documentId())];
+      if (lastDoc) constraints.push(startAfter(lastDoc));
+      constraints.push(limit(CITY_KEYS_BACKFILL_BATCH_SIZE));
+      const page = await getDocs(query(collection(db, colName), ...constraints));
+      if (page.empty) break;
+
+      const batch = writeBatch(db);
+      let pendingWrites = 0;
+      page.forEach((docSnap) => {
+        const d = docSnap.data() || {};
+        const keys = buildCityStateKeys(d.cidade, d.estado);
+        if (d.cidade_key !== keys.cidade_key || d.estado_key !== keys.estado_key) {
+          batch.update(docSnap.ref, keys);
+          pendingWrites++;
+        }
+      });
+      if (pendingWrites > 0) {
+        await batch.commit();
+      }
+      scanned += page.size;
+      updated += pendingWrites;
+      emit(colName);
+
+      if (page.size < CITY_KEYS_BACKFILL_BATCH_SIZE) break;
+      lastDoc = page.docs[page.docs.length - 1] || null;
+      if (!lastDoc) break;
+    }
+  }
+
+  try {
+    await setDoc(
+      doc(db, ESTATISTICAS_COLLECTION, ESTATISTICAS_DOC_ID),
+      { [CITY_KEYS_BACKFILL_MARKER_FIELD]: new Date().toISOString() },
+      { merge: true }
+    );
+    cityKeysBackfillMarkerCache = { ready: true, checkedAt: Date.now() };
+  } catch (markerErr: any) {
+    console.warn('[firebaseService] Backfill concluído, mas o marcador não foi gravado.', markerErr?.code || '');
+  }
+
+  return { updated, scanned };
+}
+
+export type PanelChangeCollection = 'ocorrencias' | 'reportadas' | 'resolvidos';
+
+export interface PanelChangeEvent {
+  collection: PanelChangeCollection;
+  type: 'added' | 'modified' | 'removed';
+  id: string;
+  data?: any;
+}
+
+export interface SubscribePanelChangesOptions {
+  role: 'admin' | 'parceria';
+  /** Chave normalizada da cidade (`normalizeCityKey`). Obrigatória para `parceria`. */
+  cidadeKey?: string;
+  /** ISO da abertura do painel: só documentos com data >= este valor geram eventos. */
+  sinceIso: string;
+}
+
+/**
+ * Tempo real do painel (só sinaliza mudanças; a UI faz o refresh silencioso com debounce).
+ * Usa `onSnapshot` restrito a documentos com data >= `sinceIso` para minimizar leituras:
+ * - parceria: `ocorrencias` (`cidade_key` + `data`, e `cidade_key` + `data_revisao_denuncia`)
+ *   e `resolvidos` (`cidade_key` + `data`);
+ * - admin: `reportadas` (`ultima_data_report`) e `resolvidos` (`data`); com `cidadeKey`, também `ocorrencias` da cidade.
+ * O primeiro snapshot de cada consulta é ignorado. Erros (ex.: permissão) são registrados uma única vez, sem lançar.
+ */
+export function subscribePanelChanges(
+  options: SubscribePanelChangesOptions,
+  onChange: (evt: PanelChangeEvent) => void
+): () => void {
+  if (typeof window === 'undefined') return () => {};
+  if (isFirebaseMockEnabled()) {
+    return mockSubscribePanelChanges(options, onChange);
+  }
+
+  const sinceIso = String(options?.sinceIso || '').trim();
+  if (!sinceIso || Number.isNaN(new Date(sinceIso).getTime())) {
+    console.warn('[firebaseService] subscribePanelChanges: sinceIso inválido; tempo real desativado.');
+    return () => {};
+  }
+  const cidadeKey = normalizeCityKey(options?.cidadeKey);
+  const role = options?.role === 'admin' ? 'admin' : 'parceria';
+
+  let db: Firestore;
+  try {
+    db = getFirebaseServices().db;
+  } catch {
+    return () => {};
+  }
+
+  let loggedError = false;
+  let stopped = false;
+  const unsubs: Array<() => void> = [];
+
+  const listen = (collectionName: PanelChangeCollection, constraints: QueryConstraint[]) => {
+    let isInitial = true;
+    try {
+      const unsub = onSnapshot(
+        query(collection(db, collectionName), ...constraints),
+        (snap) => {
+          if (stopped) return;
+          if (isInitial) {
+            isInitial = false;
+            return;
+          }
+          snap.docChanges().forEach((change) => {
+            try {
+              onChange({
+                collection: collectionName,
+                type: change.type,
+                id: change.doc.id,
+                data: change.type === 'removed' ? undefined : change.doc.data()
+              });
+            } catch {}
+          });
+        },
+        (err: any) => {
+          if (!loggedError) {
+            loggedError = true;
+            console.warn(
+              '[firebaseService] Tempo real do painel indisponível; use a atualização manual.',
+              err?.code || ''
+            );
+          }
+        }
+      );
+      unsubs.push(unsub);
+    } catch (err: any) {
+      if (!loggedError) {
+        loggedError = true;
+        console.warn('[firebaseService] Falha ao iniciar o tempo real do painel.', err?.code || '');
+      }
+    }
+  };
+
+  if (role === 'parceria') {
+    if (!cidadeKey) {
+      console.warn('[firebaseService] subscribePanelChanges: parceria sem cidadeKey; tempo real desativado.');
+      return () => {};
+    }
+    listen(OCORRENCIAS_COLLECTION, [where('cidade_key', '==', cidadeKey), where('data', '>=', sinceIso)]);
+    listen(OCORRENCIAS_COLLECTION, [
+      where('cidade_key', '==', cidadeKey),
+      where(REPORT_REVIEW_DATE_FIELD, '>=', sinceIso)
+    ]);
+    listen(RESOLVIDOS_COLLECTION, [where('cidade_key', '==', cidadeKey), where('data', '>=', sinceIso)]);
+  } else {
+    listen(REPORTADAS_COLLECTION, [where('ultima_data_report', '>=', sinceIso)]);
+    listen(RESOLVIDOS_COLLECTION, [where('data', '>=', sinceIso)]);
+    if (cidadeKey) {
+      listen(OCORRENCIAS_COLLECTION, [where('cidade_key', '==', cidadeKey), where('data', '>=', sinceIso)]);
+    }
+  }
+
+  return () => {
+    stopped = true;
+    for (const unsub of unsubs.splice(0)) {
+      try {
+        unsub();
+      } catch {}
+    }
   };
 }
 

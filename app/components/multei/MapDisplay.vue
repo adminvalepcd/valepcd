@@ -92,6 +92,12 @@ const props = defineProps({
   bottomPadding: {
     type: Number,
     default: 0
+  },
+  // ID da ocorrência a destacar (ex.: "Abrir local no Multei" vindo do painel). O pino correspondente
+  // fica maior, com cor de destaque, acima dos demais, com pulso, e o mapa centraliza nele.
+  highlightIncidentId: {
+    type: String,
+    default: ''
   }
 });
 
@@ -717,6 +723,109 @@ const getCoordsWithSpiderOffset = (incidents) => {
   return { positions, multiGroups };
 };
 
+// ---------------------------------------------------------------------------
+// Destaque de pino (`highlightIncidentId`)
+// ---------------------------------------------------------------------------
+const HIGHLIGHT_PIN_COLOR = '#e11d48';
+let highlightPulseOverlay = null;
+let lastCenteredHighlightId = '';
+
+const clearHighlightPulse = () => {
+  if (highlightPulseOverlay) {
+    try {
+      highlightPulseOverlay.setMap(null);
+    } catch {}
+    highlightPulseOverlay = null;
+  }
+};
+
+const prefersReducedMotion = () => {
+  try {
+    return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+  } catch {
+    return false;
+  }
+};
+
+/** Anel pulsante sob o pino destacado (OverlayView com elemento criado via DOM, sem innerHTML). */
+const showHighlightPulse = (googleMaps, position) => {
+  clearHighlightPulse();
+  if (!map.value || !googleMaps?.OverlayView) return;
+
+  class HighlightPulseOverlay extends googleMaps.OverlayView {
+    constructor(pos) {
+      super();
+      this.pos = pos;
+      this.div = null;
+    }
+    onAdd() {
+      const div = document.createElement('div');
+      div.className = prefersReducedMotion()
+        ? 'multei-highlight-pulse multei-highlight-pulse--static'
+        : 'multei-highlight-pulse';
+      div.setAttribute('aria-hidden', 'true');
+      this.div = div;
+      const panes = this.getPanes();
+      panes?.overlayLayer?.appendChild(div);
+    }
+    draw() {
+      const projection = this.getProjection();
+      if (!projection || !this.div) return;
+      const point = projection.fromLatLngToDivPixel(new googleMaps.LatLng(this.pos.lat, this.pos.lng));
+      if (!point) return;
+      this.div.style.left = `${point.x}px`;
+      this.div.style.top = `${point.y}px`;
+    }
+    onRemove() {
+      if (this.div) {
+        this.div.remove();
+        this.div = null;
+      }
+    }
+  }
+
+  try {
+    highlightPulseOverlay = new HighlightPulseOverlay(position);
+    highlightPulseOverlay.setMap(map.value);
+  } catch {
+    highlightPulseOverlay = null;
+  }
+};
+
+const buildHighlightPinIcon = (googleMaps, rawCount) => {
+  const count = Math.max(1, Number(rawCount) || 1);
+  const labelText = count >= 100 ? '+99' : String(count);
+  const inner =
+    count > 1
+      ? `<text x="24" y="19.5" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="${count >= 100 ? 10.5 : 13}" fill="${HIGHLIGHT_PIN_COLOR}">${labelText}</text>`
+      : `<circle cx="24" cy="19.5" r="4.6" fill="${HIGHLIGHT_PIN_COLOR}"/>`;
+  return {
+    url:
+      'data:image/svg+xml;charset=UTF-8,' +
+      encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 62" width="48" height="62">
+          <defs>
+            <filter id="pin-shadow-hl" x="-25%" y="-15%" width="150%" height="140%">
+              <feDropShadow dx="0" dy="3" stdDeviation="2.6" flood-color="#000000" flood-opacity="0.45"/>
+            </filter>
+          </defs>
+          <ellipse cx="24" cy="59.5" rx="7" ry="2.2" fill="#000000" opacity="0.3"/>
+          <path d="M24 1.5C11.6 1.5 1.5 11.6 1.5 24c0 15.6 19.6 33.8 20.8 34.9.9.8 2.5.8 3.4 0C26.9 57.8 46.5 39.6 46.5 24 46.5 11.6 36.4 1.5 24 1.5z" fill="${HIGHLIGHT_PIN_COLOR}" stroke="#ffffff" stroke-width="3" filter="url(#pin-shadow-hl)"/>
+          <circle cx="24" cy="19.5" r="11" fill="#ffffff"/>
+          ${inner}
+        </svg>
+      `),
+    scaledSize: new googleMaps.Size(48, 62),
+    anchor: new googleMaps.Point(24, 59)
+  };
+};
+
+const incidentMatchesHighlight = (incident, groupList, targetId) => {
+  if (!targetId) return false;
+  if (String(incident?.id ?? '') === targetId) return true;
+  return groupList.some((item) => String(item?.id ?? '') === targetId);
+};
+
 const updateMarkers = () => {
   if (!map.value || !window.google?.maps) return;
   const googleMaps = window.google.maps;
@@ -733,6 +842,7 @@ const updateMarkers = () => {
   }
 
   clearSpiderGraphics();
+  clearHighlightPulse();
 
   if (clusterer.value) {
     clusterer.value.clearMarkers(true);
@@ -919,6 +1029,10 @@ const updateMarkers = () => {
     });
   });
 
+  const highlightId = String(props.highlightIncidentId || '').trim();
+  let highlightedPosition = null;
+  const clusteredMarkers = [];
+
   const newMarkers = incidents.map((incident, index) => {
     const pos = positions[index] || { lat: incident.latitude, lng: incident.longitude };
     const groupList = Array.isArray(incident?.groupItems) && incident.groupItems.length > 0
@@ -928,7 +1042,8 @@ const updateMarkers = () => {
     const isResolved = groupList.every((item) => isIncidentResolved(item));
     const natureza = String(incident?.natureza || 'infracao_veicular').trim().toLowerCase();
     const variant = isResolved ? 'resolvido' : natureza === 'urbana' ? 'urbana' : 'pcd';
-    const pinIcon = buildPinIcon(variant, groupCount);
+    const isHighlighted = !highlightedPosition && incidentMatchesHighlight(incident, groupList, highlightId);
+    const pinIcon = isHighlighted ? buildHighlightPinIcon(googleMaps, groupCount) : buildPinIcon(variant, groupCount);
 
     const baseLocationTitle =
       incident.description ||
@@ -944,11 +1059,20 @@ const updateMarkers = () => {
 
     const marker = markRaw(new googleMaps.Marker({
       position: { lat: pos.lat, lng: pos.lng },
-      title: markerTitle,
+      title: isHighlighted ? `Ocorrência selecionada • ${markerTitle}` : markerTitle,
       icon: pinIcon,
-      zIndex: groupCount >= 100 ? 300 : groupCount > 1 ? 200 + Math.min(groupCount, 99) : 100,
-      map: clusterer.value ? null : map.value
+      zIndex: isHighlighted
+        ? (Number(googleMaps.Marker?.MAX_ZINDEX) || 1000000) + 1
+        : groupCount >= 100 ? 300 : groupCount > 1 ? 200 + Math.min(groupCount, 99) : 100,
+      // O pino destacado nunca entra no agrupador, para não ficar escondido dentro de um cluster
+      map: clusterer.value && !isHighlighted ? null : map.value
     }));
+
+    if (isHighlighted) {
+      highlightedPosition = { lat: pos.lat, lng: pos.lng };
+    } else {
+      clusteredMarkers.push(marker);
+    }
 
     marker.addListener('click', () => {
       emit('markerClick', incident);
@@ -960,7 +1084,18 @@ const updateMarkers = () => {
   activeMarkers = newMarkers;
 
   if (clusterer.value) {
-    clusterer.value.addMarkers(newMarkers);
+    clusterer.value.addMarkers(clusteredMarkers);
+  }
+
+  if (highlightedPosition) {
+    showHighlightPulse(googleMaps, highlightedPosition);
+    if (lastCenteredHighlightId !== highlightId && !props.pinLocation) {
+      lastCenteredHighlightId = highlightId;
+      map.value.panTo(highlightedPosition);
+      if ((map.value.getZoom() || 0) < 16) {
+        map.value.setZoom(16);
+      }
+    }
   }
 
   emitVisibleBounds();
@@ -1024,6 +1159,13 @@ watch(() => props.incidents, () => {
   updateMarkers();
 }, { deep: true });
 
+watch(() => props.highlightIncidentId, (newId) => {
+  if (!newId) {
+    lastCenteredHighlightId = '';
+  }
+  updateMarkers();
+});
+
 onMounted(async () => {
   const handleAuthFailure = () => {
     mapError.value = "Google Maps authentication failed. Please verify API key permissions and billing in Google Cloud Console.";
@@ -1058,6 +1200,7 @@ onBeforeUnmount(() => {
     radiusBoundaryCircle = null;
   }
   clearSpiderGraphics();
+  clearHighlightPulse();
   if (listenerRef) {
     listenerRef.remove();
     listenerRef = null;
@@ -1202,6 +1345,47 @@ onBeforeUnmount(() => {
   100% {
     transform: translateY(0) scale(1);
     opacity: 1;
+  }
+}
+</style>
+
+<style>
+/* Anel do pino destacado (criado via JS dentro do painel do Google Maps, por isso fora do escopo) */
+.multei-highlight-pulse {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  margin-left: -28px;
+  margin-top: -28px;
+  border-radius: 50%;
+  border: 3px solid rgba(225, 29, 72, 0.85);
+  background: rgba(225, 29, 72, 0.18);
+  pointer-events: none;
+  animation: multeiHighlightPulse 1.6s ease-out infinite;
+}
+
+.multei-highlight-pulse--static {
+  animation: none;
+  transform: scale(1);
+  opacity: 0.9;
+}
+
+@keyframes multeiHighlightPulse {
+  0% {
+    transform: scale(0.45);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .multei-highlight-pulse {
+    animation: none;
+    transform: scale(1);
+    opacity: 0.9;
   }
 }
 </style>
