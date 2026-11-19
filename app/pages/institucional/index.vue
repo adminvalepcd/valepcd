@@ -34,7 +34,6 @@
               <a 
                 v-if="!doc.content && doc.file" 
                 :href="doc.file" 
-                target="_blank" 
                 download 
                 class="btn btn-secondary btn-sm inline-flex"
                 @click.stop
@@ -61,7 +60,7 @@
             </div>
 
             <div class="document-actions-footer" v-if="doc.file">
-              <a :href="doc.file" target="_blank" download class="btn btn-secondary btn-sm">
+              <a :href="doc.file" download class="btn btn-secondary btn-sm">
                 📄 {{ $t('institutional.downloadPdf') }} <span class="sr-only">{{ $t('institutional.downloadPdfContext', { title: doc.title }) }}</span>
               </a>
             </div>
@@ -119,7 +118,7 @@ const parseInlineMarkdown = (text) => {
   html = html.replace(/!\[([^\]]*?)\]\(([^)]+?)\)/g, '<img src="$2" alt="$1" class="content-image" />')
   
   // Normal links: [text](url) -> <a href="$2" target="_blank" rel="noopener">$1</a>
-  html = html.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+  html = html.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, (match, label, href) => buildMarkdownLink(label, href, t('common.opensInNewWindow')))
   
   // Bold: **text** -> <strong>text</strong>
   html = html.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')

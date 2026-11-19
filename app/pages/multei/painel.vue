@@ -22,8 +22,7 @@
 
         <NuxtLink to="/multei/sobre" target="_blank" rel="noopener" class="btn-secondary-nav">
           <span aria-hidden="true">📊</span>
-          <span>Estatísticas ao vivo</span>
-          <span class="sr-only">(abre em nova aba)</span>
+          <span>Estatísticas ao vivo</span><NewWindowIcon />
         </NuxtLink>
 
         <span v-if="isDevMockMode" class="dev-mock-pill">
@@ -437,8 +436,7 @@
               rel="noopener"
               class="btn-open-multei-tab"
             >
-              Ver no mapa completo <span aria-hidden="true">↗</span>
-              <span class="sr-only">(abre em nova aba)</span>
+              Ver no mapa completo<NewWindowIcon />
             </NuxtLink>
             <button
               type="button"

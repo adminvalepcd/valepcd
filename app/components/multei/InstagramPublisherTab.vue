@@ -56,7 +56,7 @@
           rel="noopener noreferrer"
           class="ig-permalink-btn"
         >
-          Abrir publicação no Instagram ↗
+          Abrir publicação no Instagram<NewWindowIcon />
         </a>
       </div>
       <button
@@ -165,7 +165,7 @@
                     {{ formatTimeBr(post.publishedAt) }} ({{ post.itemIds.length }} slide(s)) —
                   </span>
                   <a :href="post.permalink" target="_blank" rel="noopener noreferrer">
-                    Abrir no Instagram ↗
+                    Abrir no Instagram<NewWindowIcon />
                   </a>
                 </li>
               </ul>

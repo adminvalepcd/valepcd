@@ -10,14 +10,20 @@
         <p class="hero-lead">
           {{ $t('home.heroLead') }}
         </p>
-        <div class="hero-actions">
-          <NuxtLink :to="localePath('/servicos')" class="btn btn-primary">
-            {{ $t('home.btnServices') }}
+        <nav class="hero-actions" :aria-label="$t('home.heroPathsLabel')">
+          <NuxtLink :to="localePath('/psicoterapia')" class="btn btn-primary hero-path">
+            {{ $t('home.heroCtaCare') }}
           </NuxtLink>
-          <NuxtLink :to="localePath('/institucional/sobre')" class="btn btn-secondary">
-            {{ $t('home.btnHistory') }}
+          <NuxtLink :to="localePath('/servicos')" class="btn btn-secondary hero-path">
+            {{ $t('home.heroCtaBusiness') }}
           </NuxtLink>
-        </div>
+          <NuxtLink :to="localePath('/doar')" class="btn btn-secondary hero-path">
+            {{ $t('home.heroCtaSupport') }}
+          </NuxtLink>
+        </nav>
+        <NuxtLink :to="localePath('/institucional/sobre')" class="hero-story-link">
+          {{ $t('home.heroStoryLink') }} &rarr;
+        </NuxtLink>
       </div>
     </section>
 
@@ -27,34 +33,39 @@
         <span class="badge flex-center-self">{{ $t('home.badgeProjects') }}</span>
         <h2 id="highlights-title" class="section-title text-center">{{ $t('home.sectionTitle') }}</h2>
         <p class="section-subtitle text-center">{{ $t('home.sectionSubtitle') }}</p>
-        
+
         <div class="grid-responsive highlight-grid">
           <!-- Project 1: Psicoterapia -->
           <div class="pillar-card glass pulse-hover">
             <div class="pillar-img-container">
-              <img src="/images/saude.webp" :alt="$t('home.cardSaudeTitle')" class="pillar-img" />
+              <img src="/images/saude.webp" alt="" class="pillar-img" loading="lazy" />
             </div>
             <h3>{{ $t('home.cardSaudeTitle') }}</h3>
             <p>{{ $t('home.cardSaudeDesc') }}</p>
-            <a href="https://docs.google.com/forms/d/e/1FAIpQLSfxBMKBY0qycEHDWJSEQ1-mhtQVPb3g7GWwpd5mgrXkWUDpLA/viewform" target="_blank" rel="noopener noreferrer" class="link-more">{{ $t('home.cardSaudeLink') }}<span class="sr-only">{{ $t('home.opensInAnotherWindow') }}</span> &rarr;</a>
+            <div class="card-links">
+              <a href="https://docs.google.com/forms/d/e/1FAIpQLSfxBMKBY0qycEHDWJSEQ1-mhtQVPb3g7GWwpd5mgrXkWUDpLA/viewform" target="_blank" rel="noopener noreferrer" class="btn btn-primary card-cta">{{ $t('home.cardSaudeLink') }}<NewWindowIcon /></a>
+              <NuxtLink :to="localePath('/psicoterapia')" class="link-more">
+                {{ $t('home.cardSaudeMore') }} &rarr;
+              </NuxtLink>
+            </div>
           </div>
 
           <!-- Project 2: Bandeira do Orgulho -->
           <div class="pillar-card glass pulse-hover">
             <div class="pillar-img-container">
-              <img src="/images/bandeira.webp" :alt="$t('home.cardBandeiraTitle')" class="pillar-img" />
+              <img src="/images/bandeira.webp" alt="" class="pillar-img" loading="lazy" />
             </div>
             <h3>{{ $t('home.cardBandeiraTitle') }}</h3>
             <p>{{ $t('home.cardBandeiraDesc') }}</p>
             <a href="/downloads/bandeira.jpg" download="bandeira.jpg" class="link-more" id="downloadBandeira" @click="trackDownloadBandeira">
-              {{ $t('home.cardBandeiraLink') }}<span class="sr-only">: {{ $t('home.cardBandeiraSrText') }}</span> &rarr;
+              {{ $t('home.cardBandeiraLink') }} &rarr;
             </a>
           </div>
-          
+
           <!-- Project 3: Leke Virtual -->
           <div class="pillar-card glass pulse-hover">
             <div class="pillar-img-container">
-              <img src="/images/logo-leke.webp" :alt="$t('home.cardLekeTitle')" class="pillar-img" />
+              <img src="/images/logo-leke.webp" alt="" class="pillar-img" loading="lazy" />
             </div>
             <h3>{{ $t('home.cardLekeTitle') }}</h3>
             <p>{{ $t('home.cardLekeDesc') }}</p>
@@ -63,10 +74,12 @@
             </NuxtLink>
           </div>
 
-          <!-- Project 4: Multei (Contador em Tempo Real) -->
+          <!-- Project 4: Mapa colaborativo (fase de testes, sem revelar nome/endereço) -->
           <div
             class="pillar-card multei-live-card glass pulse-hover"
             :class="{ 'is-live-pulsing': isMulteiPulsing }"
+            @focusin="isMulteiCardFocused = true"
+            @focusout="onMulteiCardFocusOut"
           >
             <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">
               {{ multeiLiveSrAnnouncement }}
@@ -78,9 +91,10 @@
                 <span>{{ $t('home.cardMulteiLiveLabel') }}</span>
               </div>
 
-              <div class="multei-counters-split">
-                <!-- Bloco 1: Total de Denúncias -->
+              <div class="multei-counters-split" :aria-busy="isLoadingMulteiStats ? 'true' : 'false'">
+                <!-- Bloco 1: Total de ocorrências -->
                 <div class="multei-counter-block">
+                  <span class="multei-counter-icon" aria-hidden="true">📍</span>
                   <div class="multei-counter-value-row">
                     <span
                       class="multei-counter-number"
@@ -104,8 +118,9 @@
                   </span>
                 </div>
 
-                <!-- Bloco 2: Total de Resoluções -->
+                <!-- Bloco 2: Total de resolvidos -->
                 <div class="multei-counter-block is-resolved-block">
+                  <span class="multei-counter-icon" aria-hidden="true">✅</span>
                   <div class="multei-counter-value-row">
                     <span
                       class="multei-counter-number is-resolved-number"
@@ -129,6 +144,11 @@
                   </span>
                 </div>
               </div>
+
+              <p class="multei-updated-at">
+                <span v-if="isLoadingMulteiStats">{{ $t('home.cardMulteiLoading') }}</span>
+                <span v-else-if="multeiUpdatedAtLabel">{{ $t('home.cardMulteiUpdatedAt', { time: multeiUpdatedAtLabel }) }}</span>
+              </p>
             </div>
 
             <h3>{{ $t('home.cardMulteiTitle') }}</h3>
@@ -137,15 +157,19 @@
               href="https://forms.gle/eYk83VudkMAKuYir6"
               target="_blank"
               rel="noopener noreferrer"
-              class="link-more"
+              class="btn btn-primary card-cta"
             >
-              {{ $t('home.cardMulteiComingSoon') }}<span class="sr-only">{{ $t('home.opensInAnotherWindow') }}</span> &rarr;
+              {{ $t('home.cardMulteiComingSoon') }}<NewWindowIcon />
             </a>
           </div>
-
         </div>
       </div>
     </section>
+
+    <!-- Prévia da seção de impacto (somente dev ou ?preview=impacto, aguardando validação) -->
+    <ClientOnly>
+      <HomeImpactSection v-if="showImpactPreview" />
+    </ClientOnly>
 
     <!-- Support & Business Solutions Section -->
     <section class="actions-section container" aria-labelledby="actions-title">
@@ -158,11 +182,11 @@
         <!-- Card 1: Doações/Comunidade -->
         <div class="action-card donate-card glass">
           <span class="badge">{{ $t('home.cardDonateBadge') }}</span>
-          <h2>{{ $t('home.cardDonateTitle') }}</h2>
+          <h3>{{ $t('home.cardDonateTitle') }}</h3>
           <p>
             {{ $t('home.cardDonateDesc') }}
           </p>
-          <NuxtLink :to="localePath('/contato')" class="btn btn-primary">
+          <NuxtLink :to="localePath('/doar')" class="btn btn-primary">
             {{ $t('home.cardDonateBtn') }}
           </NuxtLink>
         </div>
@@ -170,7 +194,7 @@
         <!-- Card 2: Empresas -->
         <div class="action-card corporate-card glass">
           <span class="badge">{{ $t('home.cardCorporateBadge') }}</span>
-          <h2>{{ $t('home.cardCorporateTitle') }}</h2>
+          <h3>{{ $t('home.cardCorporateTitle') }}</h3>
           <p>
             {{ $t('home.cardCorporateDesc') }}
           </p>
@@ -180,27 +204,85 @@
         </div>
       </div>
     </section>
+
+    <!-- Posts recentes do blog -->
+    <section v-if="recentPosts && recentPosts.length" class="blog-section" aria-labelledby="home-blog-title">
+      <div class="container">
+        <span class="badge flex-center-self">{{ $t('home.blogBadge') }}</span>
+        <h2 id="home-blog-title" class="section-title text-center">{{ $t('home.blogTitle') }}</h2>
+        <p class="section-subtitle text-center">{{ $t('home.blogSubtitle') }}</p>
+        <ul class="blog-grid" role="list">
+          <li v-for="post in recentPosts" :key="post.slug" class="blog-card glass">
+            <div v-if="post.image" class="blog-card-img-wrap">
+              <img :src="post.image" alt="" class="blog-card-img" loading="lazy" />
+            </div>
+            <div class="blog-card-body">
+              <span v-if="post.category" class="blog-card-category">{{ post.category }}</span>
+              <h3 class="blog-card-title">
+                <NuxtLink :to="localePath('/blog/' + post.slug)" class="blog-card-link">
+                  {{ post.title }}
+                </NuxtLink>
+              </h3>
+              <time v-if="post.date" class="blog-card-date" :datetime="post.date">{{ formatPostDate(post.date) }}</time>
+              <p class="blog-card-desc">{{ post.description }}</p>
+              <span class="link-more" aria-hidden="true">{{ $t('home.blogReadPost') }} &rarr;</span>
+            </div>
+          </li>
+        </ul>
+        <div class="blog-see-all">
+          <NuxtLink :to="localePath('/blog')" class="btn btn-secondary">
+            {{ $t('home.blogSeeAll') }}
+          </NuxtLink>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import {
-  fetchMulteiStatsOnce,
-  subscribeToMulteiLiveEvents,
-  subscribeToMulteiStatsDocument
-} from '~/services/firebaseService'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
+import { fetchMulteiStatsOnce } from '~/services/firebaseService'
 
 const { t, locale } = useI18n()
 const localePath = useLocalePath()
+const route = useRoute()
+
+const LOCALE_MAP = { pt: 'pt-BR', en: 'en-US', es: 'es-ES' }
+const currentLocaleTag = () => LOCALE_MAP[locale.value] || 'pt-BR'
+
+// Seção de impacto: rascunho para validação. Só aparece em dev ou com ?preview=impacto.
+const showImpactPreview = computed(() => import.meta.dev || route.query.preview === 'impacto')
+
+// ---------- Posts recentes do blog ----------
+const { data: recentPosts } = await useFetch('/api/posts', {
+  key: 'home-recent-posts',
+  default: () => [],
+  transform: (posts) => (Array.isArray(posts) ? posts : [])
+    .slice(0, 3)
+    .map(({ slug, title, date, description, image, category }) => ({
+      slug,
+      title,
+      date,
+      description: description && description.length > 160 ? description.slice(0, 157).trimEnd() + '…' : description,
+      image,
+      category
+    }))
+})
+
+const formatPostDate = (value) => {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString(currentLocaleTag(), { day: '2-digit', month: 'long', year: 'numeric' })
+}
+
+// ---------- Contador do mapa colaborativo (fase de testes) ----------
+// Leitura única do Firestore com cache local; atualiza a cada poucos minutos e só com a aba visível.
+const MULTEI_REFRESH_MS = 3 * 60 * 1000
+const MULTEI_LAST_FETCH_KEY = 'vale_home_multei_stats_fetched_at'
 
 const isLoadingMulteiStats = ref(true)
-const multeiStats = ref({
-  totalGeral: 0,
-  infracoesTransito: 0,
-  mobilidadeUrbana: 0,
-  resolvidos: 0
-})
+const multeiStats = ref({ totalGeral: 0, infracoesTransito: 0, mobilidadeUrbana: 0, resolvidos: 0 })
 const animatedTotalGeral = ref(0)
 const animatedResolvidos = ref(0)
 const showPlusOneBadge = ref(false)
@@ -208,243 +290,198 @@ const plusOneRenderKey = ref(0)
 const showPlusOneResolvedBadge = ref(false)
 const plusOneResolvedRenderKey = ref(0)
 const isMulteiPulsing = ref(false)
+const isMulteiCardFocused = ref(false)
 const multeiLiveSrAnnouncement = ref('')
+const multeiUpdatedAt = ref(0)
 
-let unsubscribeMulteiLive = null
-let unsubscribeMulteiStatsDoc = null
-let hasHydratedRemoteMulteiStats = false
-let animFrameId = null
-let animResolvedFrameId = null
-let badgeTimer = null
-let resolvedBadgeTimer = null
-let pulseTimer = null
-let srTimer = null
+const multeiUpdatedAtLabel = computed(() => {
+  if (!multeiUpdatedAt.value) return ''
+  return new Date(multeiUpdatedAt.value).toLocaleTimeString(currentLocaleTag(), { hour: '2-digit', minute: '2-digit' })
+})
 
-const formatMulteiNumber = (val) => {
-  const num = Number(val) || 0
-  const localeMap = {
-    pt: 'pt-BR',
-    en: 'en-US',
-    es: 'es-ES'
-  }
-  return num.toLocaleString(localeMap[locale.value] || 'pt-BR')
-}
+let hasHydratedMulteiStats = false
+let refreshTimer = null
+let isFetchingMultei = false
+let prefersReducedMotion = false
+const frameIds = { total: null, resolved: null }
+const timers = { badge: null, resolvedBadge: null, pulse: null, sr: null }
 
-const animateTotalValue = (targetValue) => {
-  if (typeof window === 'undefined') {
-    animatedTotalGeral.value = targetValue
+const formatMulteiNumber = (val) => (Number(val) || 0).toLocaleString(currentLocaleTag())
+
+const animateValue = (targetRef, frameKey, targetValue) => {
+  if (typeof window === 'undefined' || prefersReducedMotion) {
+    targetRef.value = targetValue
     return
   }
-
-  if (animFrameId) {
-    cancelAnimationFrame(animFrameId)
-  }
-
-  const startValue = animatedTotalGeral.value || 0
+  if (frameIds[frameKey]) cancelAnimationFrame(frameIds[frameKey])
+  const startValue = targetRef.value || 0
   const diff = targetValue - startValue
-  if (diff === 0) {
-    animatedTotalGeral.value = targetValue
-    return
-  }
-
+  if (diff === 0) return
   const duration = 650
   const startTime = performance.now()
-
   const step = (now) => {
-    const elapsed = now - startTime
-    const progress = Math.min(elapsed / duration, 1)
+    const progress = Math.min((now - startTime) / duration, 1)
     const eased = 1 - Math.pow(1 - progress, 3)
-    animatedTotalGeral.value = Math.round(startValue + diff * eased)
-
+    targetRef.value = Math.round(startValue + diff * eased)
     if (progress < 1) {
-      animFrameId = requestAnimationFrame(step)
+      frameIds[frameKey] = requestAnimationFrame(step)
     } else {
-      animatedTotalGeral.value = targetValue
+      targetRef.value = targetValue
+      frameIds[frameKey] = null
     }
   }
-
-  animFrameId = requestAnimationFrame(step)
+  frameIds[frameKey] = requestAnimationFrame(step)
 }
 
-const animateResolvedValue = (targetValue) => {
-  if (typeof window === 'undefined') {
-    animatedResolvidos.value = targetValue
-    return
+const onMulteiCardFocusOut = (event) => {
+  const card = event.currentTarget
+  if (!card || !card.contains(event.relatedTarget)) {
+    isMulteiCardFocused.value = false
   }
-
-  if (animResolvedFrameId) {
-    cancelAnimationFrame(animResolvedFrameId)
-  }
-
-  const startValue = animatedResolvidos.value || 0
-  const diff = targetValue - startValue
-  if (diff === 0) {
-    animatedResolvidos.value = targetValue
-    return
-  }
-
-  const duration = 650
-  const startTime = performance.now()
-
-  const step = (now) => {
-    const elapsed = now - startTime
-    const progress = Math.min(elapsed / duration, 1)
-    const eased = 1 - Math.pow(1 - progress, 3)
-    animatedResolvidos.value = Math.round(startValue + diff * eased)
-
-    if (progress < 1) {
-      animResolvedFrameId = requestAnimationFrame(step)
-    } else {
-      animatedResolvidos.value = targetValue
-    }
-  }
-
-  animResolvedFrameId = requestAnimationFrame(step)
 }
 
-const triggerPlusOneEffect = (type = 'total') => {
-  isMulteiPulsing.value = true
-  if (pulseTimer) clearTimeout(pulseTimer)
-  pulseTimer = setTimeout(() => {
-    isMulteiPulsing.value = false
-  }, 1400)
+const announce = (message) => {
+  // Anuncia o "+1" apenas quando o foco está no card, para não interromper quem navega em outro ponto.
+  if (!isMulteiCardFocused.value) return
+  if (timers.sr) clearTimeout(timers.sr)
+  multeiLiveSrAnnouncement.value = ''
+  timers.sr = setTimeout(() => {
+    multeiLiveSrAnnouncement.value = message
+  }, 50)
+}
+
+const triggerPlusOneEffect = (type) => {
+  if (!prefersReducedMotion) {
+    isMulteiPulsing.value = true
+    if (timers.pulse) clearTimeout(timers.pulse)
+    timers.pulse = setTimeout(() => { isMulteiPulsing.value = false }, 1400)
+  }
 
   if (type === 'resolvidos') {
     plusOneResolvedRenderKey.value += 1
     showPlusOneResolvedBadge.value = true
-    if (resolvedBadgeTimer) clearTimeout(resolvedBadgeTimer)
-    resolvedBadgeTimer = setTimeout(() => {
-      showPlusOneResolvedBadge.value = false
-    }, 1800)
-
-    if (srTimer) clearTimeout(srTimer)
-    multeiLiveSrAnnouncement.value = ''
-    srTimer = setTimeout(() => {
-      multeiLiveSrAnnouncement.value = `+1 resolução registrada no Multei. Total de resoluções: ${multeiStats.value.resolvidos}`
-    }, 50)
+    if (timers.resolvedBadge) clearTimeout(timers.resolvedBadge)
+    timers.resolvedBadge = setTimeout(() => { showPlusOneResolvedBadge.value = false }, 1800)
+    announce(t('home.cardMulteiSrResolved', { total: formatMulteiNumber(multeiStats.value.resolvidos) }))
   } else {
     plusOneRenderKey.value += 1
     showPlusOneBadge.value = true
-    if (badgeTimer) clearTimeout(badgeTimer)
-    badgeTimer = setTimeout(() => {
-      showPlusOneBadge.value = false
-    }, 1800)
-
-    if (srTimer) clearTimeout(srTimer)
-    multeiLiveSrAnnouncement.value = ''
-    srTimer = setTimeout(() => {
-      multeiLiveSrAnnouncement.value = `+1 ocorrência registrada no Multei. Total: ${multeiStats.value.totalGeral}`
-    }, 50)
+    if (timers.badge) clearTimeout(timers.badge)
+    timers.badge = setTimeout(() => { showPlusOneBadge.value = false }, 1800)
+    announce(t('home.cardMulteiSrNew', { total: formatMulteiNumber(multeiStats.value.totalGeral) }))
   }
 }
 
-const applyMulteiSnapshot = (incoming, options = { notifyDiff: false, isRemote: false }) => {
+const applyMulteiSnapshot = (incoming, { notifyDiff = false } = {}) => {
   if (!incoming) return
   const prevTotal = multeiStats.value.totalGeral
   const prevResolvidos = multeiStats.value.resolvidos
-  const shouldNotify = Boolean(options?.notifyDiff && hasHydratedRemoteMulteiStats)
-
-  isLoadingMulteiStats.value = false
-  if (options?.isRemote) {
-    hasHydratedRemoteMulteiStats = true
-  }
+  const shouldNotify = notifyDiff && hasHydratedMulteiStats
 
   const infracoesTransito = Math.max(0, Number(incoming.infracoesTransito || 0))
   const mobilidadeUrbana = Math.max(0, Number(incoming.mobilidadeUrbana || 0))
   const totalGeral = Math.max(infracoesTransito + mobilidadeUrbana, Number(incoming.totalGeral || 0))
   const resolvidos = Math.max(0, Number(incoming.resolvidos || 0))
 
-  multeiStats.value = {
-    totalGeral,
-    infracoesTransito,
-    mobilidadeUrbana,
-    resolvidos
-  }
-  animateTotalValue(totalGeral)
-  animateResolvedValue(resolvidos)
+  multeiStats.value = { totalGeral, infracoesTransito, mobilidadeUrbana, resolvidos }
+  isLoadingMulteiStats.value = false
+  hasHydratedMulteiStats = true
+  animateValue(animatedTotalGeral, 'total', totalGeral)
+  animateValue(animatedResolvidos, 'resolved', resolvidos)
 
   if (shouldNotify) {
-    if (totalGeral > prevTotal) {
-      triggerPlusOneEffect('total')
-    }
-    if (resolvidos > prevResolvidos) {
-      triggerPlusOneEffect('resolvidos')
-    }
+    if (totalGeral > prevTotal) triggerPlusOneEffect('total')
+    if (resolvidos > prevResolvidos) triggerPlusOneEffect('resolvidos')
   }
 }
 
-onMounted(() => {
-  fetchMulteiStatsOnce((cached) => {
-    if (!hasHydratedRemoteMulteiStats) {
-      applyMulteiSnapshot(cached, { notifyDiff: false, isRemote: false })
-    }
-  })
-    .then((fresh) => {
-      applyMulteiSnapshot(fresh, { notifyDiff: false, isRemote: true })
-    })
-    .catch(() => {
-      isLoadingMulteiStats.value = false
-    })
+const readLastFetchAt = () => {
+  try {
+    return Number(localStorage.getItem(MULTEI_LAST_FETCH_KEY)) || 0
+  } catch {
+    return 0
+  }
+}
 
-  unsubscribeMulteiStatsDoc = subscribeToMulteiStatsDocument((remoteStats) => {
-    applyMulteiSnapshot(remoteStats, { notifyDiff: true, isRemote: true })
-  })
+const writeLastFetchAt = (value) => {
+  try {
+    localStorage.setItem(MULTEI_LAST_FETCH_KEY, String(value))
+  } catch {}
+}
 
-  unsubscribeMulteiLive = subscribeToMulteiLiveEvents((evt) => {
-    const { category, delta } = evt
-    if (
-      category !== 'infracoesTransito' &&
-      category !== 'mobilidadeUrbana' &&
-      category !== 'resolvidos'
-    ) {
-      return
-    }
+const isMulteiStale = () => Date.now() - readLastFetchAt() >= MULTEI_REFRESH_MS
+
+const refreshMulteiStats = async ({ notifyDiff }) => {
+  if (isFetchingMultei) return
+  isFetchingMultei = true
+  try {
+    const fresh = await fetchMulteiStatsOnce(undefined, { forceRefresh: true })
+    const now = Date.now()
+    writeLastFetchAt(now)
+    multeiUpdatedAt.value = now
+    applyMulteiSnapshot(fresh, { notifyDiff })
+  } catch {
     isLoadingMulteiStats.value = false
-    hasHydratedRemoteMulteiStats = true
+  } finally {
+    isFetchingMultei = false
+  }
+}
 
-    if (category === 'resolvidos') {
-      multeiStats.value.resolvidos = Math.max(0, multeiStats.value.resolvidos + delta)
-      animateResolvedValue(multeiStats.value.resolvidos)
-      if (delta > 0) {
-        triggerPlusOneEffect('resolvidos')
+const scheduleNextRefresh = () => {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  const wait = Math.max(5000, MULTEI_REFRESH_MS - (Date.now() - readLastFetchAt()))
+  refreshTimer = setTimeout(async () => {
+    if (document.visibilityState === 'visible') {
+      await refreshMulteiStats({ notifyDiff: true })
+    }
+    scheduleNextRefresh()
+  }, wait)
+}
+
+const onVisibilityChange = async () => {
+  if (document.visibilityState !== 'visible') return
+  if (isMulteiStale()) {
+    await refreshMulteiStats({ notifyDiff: true })
+  }
+  scheduleNextRefresh()
+}
+
+onMounted(async () => {
+  prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+
+  if (!isMulteiStale()) {
+    // Cache recente: nenhuma leitura no Firestore agora.
+    const lastAt = readLastFetchAt()
+    let usedCache = false
+    try {
+      const raw = localStorage.getItem('multei_stats_cache_v1')
+      const parsed = raw ? JSON.parse(raw) : null
+      if (parsed?.stats) {
+        multeiUpdatedAt.value = lastAt
+        applyMulteiSnapshot(parsed.stats)
+        usedCache = true
       }
-      return
+    } catch {}
+    if (!usedCache) {
+      await refreshMulteiStats({ notifyDiff: false })
     }
+  } else {
+    await refreshMulteiStats({ notifyDiff: false })
+  }
 
-    if (category === 'infracoesTransito') {
-      multeiStats.value.infracoesTransito = Math.max(0, multeiStats.value.infracoesTransito + delta)
-    } else {
-      multeiStats.value.mobilidadeUrbana = Math.max(0, multeiStats.value.mobilidadeUrbana + delta)
-    }
-    multeiStats.value.totalGeral = Math.max(
-      multeiStats.value.infracoesTransito + multeiStats.value.mobilidadeUrbana,
-      multeiStats.value.totalGeral + delta
-    )
-    animateTotalValue(multeiStats.value.totalGeral)
-
-    if (delta > 0) {
-      triggerPlusOneEffect('total')
-    }
-  })
+  scheduleNextRefresh()
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
 onBeforeUnmount(() => {
-  if (typeof unsubscribeMulteiLive === 'function') {
-    unsubscribeMulteiLive()
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', onVisibilityChange)
   }
-  if (typeof unsubscribeMulteiStatsDoc === 'function') {
-    unsubscribeMulteiStatsDoc()
+  if (refreshTimer) clearTimeout(refreshTimer)
+  if (typeof window !== 'undefined') {
+    Object.values(frameIds).forEach((id) => { if (id) cancelAnimationFrame(id) })
   }
-  if (animFrameId && typeof window !== 'undefined') {
-    cancelAnimationFrame(animFrameId)
-  }
-  if (animResolvedFrameId && typeof window !== 'undefined') {
-    cancelAnimationFrame(animResolvedFrameId)
-  }
-  if (badgeTimer) clearTimeout(badgeTimer)
-  if (resolvedBadgeTimer) clearTimeout(resolvedBadgeTimer)
-  if (pulseTimer) clearTimeout(pulseTimer)
-  if (srTimer) clearTimeout(srTimer)
+  Object.values(timers).forEach((id) => { if (id) clearTimeout(id) })
 })
 
 function trackDownloadBandeira() {
@@ -603,7 +640,9 @@ function trackDownloadBandeira() {
 .link-more {
   color: var(--secondary);
   font-weight: 700;
-  text-decoration: none;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
   transition: color var(--transition-fast);
   margin-top: auto;
   font-size: 1rem;
@@ -611,6 +650,7 @@ function trackDownloadBandeira() {
 
 .link-more:hover {
   color: var(--primary);
+  text-decoration-thickness: 3px;
 }
 
 /* Card Multei com Contador em Tempo Real */
@@ -862,7 +902,7 @@ function trackDownloadBandeira() {
   background: linear-gradient(135deg, rgba(109, 40, 217, 0.06), rgba(219, 39, 119, 0.04));
 }
 
-.action-card h2 {
+.action-card h3 {
   font-size: clamp(1.6rem, 2.8vw, 2.2rem);
   font-weight: 800;
   color: var(--text);
@@ -878,5 +918,238 @@ function trackDownloadBandeira() {
 .action-card .btn {
   width: 100%;
   max-width: 300px;
+}
+
+/* Hero: três caminhos */
+.hero-path {
+  min-width: 200px;
+}
+
+.hero-story-link {
+  color: var(--secondary);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.hero-story-link:hover {
+  color: var(--primary);
+}
+
+/* Links dos cards de projeto */
+.card-links {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+}
+
+.card-cta {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+.card-links .card-cta,
+.card-links .link-more {
+  margin-top: 0;
+}
+
+/* Contador do mapa colaborativo */
+.multei-live-card:focus-within {
+  border-color: var(--primary);
+}
+
+.multei-counter-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.multei-updated-at {
+  margin: 0;
+  min-height: 1.2em;
+  font-size: 0.8rem !important;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Blog recente */
+.blog-section {
+  padding: 5rem 0;
+}
+
+.blog-grid {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.75rem;
+}
+
+@media (max-width: 960px) {
+  .blog-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.blog-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  transition: transform var(--transition-smooth), border-color var(--transition-smooth), box-shadow var(--transition-smooth);
+}
+
+.blog-card:hover,
+.blog-card:focus-within {
+  transform: translateY(-4px);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-md);
+}
+
+.blog-card-img-wrap {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.blog-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.blog-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.5rem;
+  flex: 1;
+}
+
+.blog-card-category {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--primary);
+}
+
+.blog-card-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.blog-card-link {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.blog-card:hover .blog-card-link {
+  text-decoration-thickness: 2px;
+}
+
+/* Card inteiro clicável, mantendo um único link acessível */
+.blog-card-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.blog-card-link:focus-visible {
+  outline: none;
+}
+
+.blog-card:has(.blog-card-link:focus-visible) {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.blog-card-date {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.blog-card-desc {
+  font-size: 0.98rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.blog-card .link-more {
+  margin-top: auto;
+}
+
+.blog-see-all {
+  display: flex;
+  justify-content: center;
+  margin-top: 2.5rem;
+}
+
+/* Menos animações quando o sistema pede */
+@media (prefers-reduced-motion: reduce) {
+  .pillar-card,
+  .pillar-card:hover,
+  .action-card:hover,
+  .blog-card:hover,
+  .blog-card:focus-within {
+    transform: none;
+  }
+
+  .pillar-card:hover .pillar-img,
+  .pillar-card:hover .multei-counter-number {
+    transform: none;
+  }
+
+  .multei-live-dot {
+    animation: none;
+  }
+
+  .plus-one-pop-enter-active {
+    animation: none;
+  }
+}
+/* Mobile: hero mais compacto para caber inteiro na primeira tela */
+@media (max-width: 768px) {
+  .hero-section {
+    min-height: auto;
+    padding: 1.75rem 0 2.5rem;
+  }
+
+  .hero-container {
+    gap: 1.1rem;
+  }
+
+  .hero-heading {
+    font-size: clamp(1.75rem, 7.4vw, 2.4rem);
+  }
+
+  .hero-lead {
+    font-size: 1.02rem;
+    line-height: 1.6;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.7rem;
+    width: 100%;
+    max-width: 320px;
+    margin-top: 0.25rem;
+  }
+
+  .hero-path {
+    min-width: 0;
+    width: 100%;
+    padding-top: 0.8rem;
+    padding-bottom: 0.8rem;
+  }
 }
 </style>

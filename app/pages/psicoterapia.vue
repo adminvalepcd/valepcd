@@ -38,9 +38,9 @@
           <a id="btn-register-psycho"
             href="https://docs.google.com/forms/d/e/1FAIpQLSfxBMKBY0qycEHDWJSEQ1-mhtQVPb3g7GWwpd5mgrXkWUDpLA/viewform"
             target="_blank" rel="noopener noreferrer" class="btn btn-primary">
-            {{ $t('psychotherapy.btnRegister') }} &rarr;
+            {{ $t('psychotherapy.btnRegister') }}<NewWindowIcon />
           </a>
-          <NuxtLink id="btn-donate-psycho" :to="localePath('/contato')" class="btn btn-secondary">
+          <NuxtLink id="btn-donate-psycho" :to="localePath('/doar')" class="btn btn-secondary">
             {{ $t('psychotherapy.btnDonate') }}
           </NuxtLink>
         </div>

@@ -6,7 +6,7 @@
         <div class="logo-container">
           <img 
             :src="currentTheme === 'dark' ? '/images/logo Vale PcD branca.webp' : '/images/logo Vale PcD.webp'" 
-            alt="Logo Vale PCD"
+            alt="Vale PCD"
             class="logo-img"
           />
         </div>
@@ -16,8 +16,8 @@
       </div>
 
       <!-- Quick Links -->
-      <div class="footer-nav" :aria-label="$t('footer.navigation')">
-        <h3 class="footer-heading">{{ $t('footer.navigation') }}</h3>
+      <nav class="footer-nav" aria-labelledby="footer-nav-title">
+        <h3 id="footer-nav-title" class="footer-heading">{{ $t('footer.navigation') }}</h3>
         <ul class="footer-links">
           <li><NuxtLink :to="localePath('/')" class="footer-link">{{ $t('nav.home') }}</NuxtLink></li>
           <li><NuxtLink :to="localePath('/servicos')" class="footer-link">{{ $t('nav.services') }}</NuxtLink></li>
@@ -38,16 +38,17 @@
               </li>
             </ul>
           </li>
+          <li><NuxtLink :to="localePath('/doar')" class="footer-link">{{ $t('nav.donate') }}</NuxtLink></li>
           <li><NuxtLink :to="localePath('/contato')" class="footer-link">{{ $t('nav.contact') }}</NuxtLink></li>
         </ul>
-      </div>
+      </nav>
 
       <!-- Legal / Accessibility Info -->
       <div class="footer-accessibility">
         <h3 class="footer-heading">{{ $t('footer.commitment') }}</h3>
         <ul class="footer-links">
           <li>
-            <span class="badge">{{ $t('footer.badge') }}</span>
+            <NuxtLink :to="localePath('/acessibilidade')" class="footer-link">{{ $t('footer.accessibilityStatement') }}</NuxtLink>
           </li>
           <li class="commitment-text">
             {{ $t('footer.wcag') }}
@@ -64,11 +65,11 @@
         {{ $t('footer.copyright', { year: currentYear }) }}
       </p>
       <div class="social-links">
-        <a href="https://instagram.com/valepcd" target="_blank" rel="noopener noreferrer" aria-label="Instagram" class="social-link">
-          Instagram
+        <a href="https://instagram.com/valepcd" target="_blank" rel="noopener noreferrer" class="social-link">
+          Instagram<NewWindowIcon />
         </a>
-        <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" class="social-link">
-          LinkedIn
+        <a href="https://www.linkedin.com/company/76738785/" target="_blank" rel="noopener noreferrer" class="social-link">
+          LinkedIn<NewWindowIcon />
         </a>
       </div>
     </div>

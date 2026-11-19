@@ -265,6 +265,12 @@ img {
   animation: pulse-glow 2s infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .pulse-hover:hover {
+    animation: none;
+  }
+}
+
 /* ==========================================================================
    OPTIMIZED UTILITY CLASSES (Bootstrap-Compatible Naming)
    ========================================================================== */
@@ -482,4 +488,19 @@ body.ads-suppressed div[id^="aswift_"] {
   min-height: 0 !important;
   overflow: hidden !important;
   z-index: -9999 !important;
+}
+
+/* Indicador de link que abre em outra janela (NewWindowIcon.vue e links do Markdown) */
+.new-window-indicator {
+  display: inline;
+  white-space: nowrap;
+}
+
+.ext-icon {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-left: 0.3em;
+  vertical-align: -0.08em;
+  flex-shrink: 0;
 }

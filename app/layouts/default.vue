@@ -1,7 +1,7 @@
 <template>
   <div class="app-layout">
     <!-- Atalho de teclado invisível para pular para o conteúdo direto (Acessibilidade) -->
-    <a href="#main-content" class="skip-to-content btn btn-secondary">Pular para o conteúdo principal</a>
+    <a href="#main-content" class="skip-to-content btn btn-secondary">{{ $t('nav.skipToContent') }}</a>
 
     <!-- Header Acessível -->
     <AppHeader />
@@ -57,5 +57,10 @@
   z-index: 999999;
   background-color: var(--surface); /* Fundo opaco para não sobrepor com o texto do header */
   box-shadow: var(--shadow-md);
+}
+@media (max-width: 960px) {
+  .main-content {
+    padding-top: 64px; /* Header mais baixo no mobile */
+  }
 }
 </style>

@@ -81,7 +81,7 @@ const parseInlineMarkdown = (text) => {
   });
   
   // Links normais: [text](url) -> <a href="url" target="_blank" rel="noopener">$1</a>
-  html = html.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  html = html.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, (match, label, href) => buildMarkdownLink(label, href, t('common.opensInNewWindow')));
   
   // Negrito: **text** -> <strong>text</strong>
   html = html.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
