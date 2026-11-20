@@ -1,28 +1,21 @@
 <template>
-  <!--
-    RASCUNHO PARA VALIDAÇÃO — seção de impacto / prova social.
-    Só é exibida em desenvolvimento ou com ?preview=impacto (ver app/pages/index.vue).
-    Confira os números antes de publicar (e depois traduza os textos em i18n/locales).
-  -->
+  <!-- Seção de impacto / prova social da home (aprovada) -->
   <section class="impact-section" aria-labelledby="impact-title">
     <div class="container">
-      <span class="badge flex-center-self">Nosso impacto</span>
-      <h2 id="impact-title" class="section-title text-center">O que já construímos juntos</h2>
-      <p class="section-subtitle text-center">
-        Desde 2020, o Vale PCD acolhe, informa e abre portas para pessoas com deficiência LGBTI+.
-      </p>
+      <span class="badge flex-center-self">{{ $t('impact.badge') }}</span>
+      <h2 id="impact-title" class="section-title text-center">{{ $t('impact.title') }}</h2>
+      <p class="section-subtitle text-center">{{ $t('impact.subtitle') }}</p>
 
       <ul class="impact-grid" role="list">
-        <li v-for="item in stats" :key="item.label" class="impact-card glass">
+        <li v-for="item in stats" :key="item.key" class="impact-card glass">
           <span class="impact-icon" aria-hidden="true">{{ item.icon }}</span>
           <span class="impact-value">{{ item.value }}</span>
           <span class="impact-label">{{ item.label }}</span>
         </li>
       </ul>
 
-
       <div class="impact-partners">
-        <h3 class="impact-partners-title">Quem já caminhou com a gente</h3>
+        <h3 class="impact-partners-title">{{ $t('impact.partnersTitle') }}</h3>
         <LogoCarousel id-prefix="impacto-parceiros" />
       </div>
     </div>
@@ -30,33 +23,23 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+
+const { t } = useI18n()
 const yearsActive = new Date().getFullYear() - 2020
 
-const stats = [
-  { icon: '🗓️', value: `${yearsActive} anos`, label: 'de atuação (desde 2020)' },
-  { icon: '💬', value: '+8.000', label: 'atendimentos psicológicos realizados (dado da página Psicoterapia)' },
-  { icon: '🤝', value: '+1.000', label: 'pessoas inscritas e acolhidas (dado da página Psicoterapia)' },
-  { icon: '🏢', value: '+80', label: 'empresas atendidas com mentorias e palestras' }
-]
-
+const stats = computed(() => [
+  { key: 'years', icon: '🗓️', value: t('impact.yearsValue', { years: yearsActive }), label: t('impact.yearsLabel') },
+  { key: 'sessions', icon: '💬', value: t('impact.sessionsValue'), label: t('impact.sessionsLabel') },
+  { key: 'people', icon: '🤝', value: t('impact.peopleValue'), label: t('impact.peopleLabel') },
+  { key: 'companies', icon: '🏢', value: t('impact.companiesValue'), label: t('impact.companiesLabel') }
+])
 </script>
 
 <style scoped>
 .impact-section {
   padding: 5rem 0;
   background: linear-gradient(180deg, transparent, rgba(134, 0, 125, 0.05), transparent);
-}
-
-.impact-preview-flag {
-  margin: 0 auto 1.5rem;
-  width: fit-content;
-  padding: 0.4rem 0.9rem;
-  border-radius: var(--radius-full);
-  border: 2px dashed #b45309;
-  background: #fef3c7;
-  color: #78350f;
-  font-size: 0.85rem;
-  font-weight: 700;
 }
 
 .flex-center-self {

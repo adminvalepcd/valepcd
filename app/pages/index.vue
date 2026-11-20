@@ -166,10 +166,8 @@
       </div>
     </section>
 
-    <!-- Prévia da seção de impacto (somente dev ou ?preview=impacto, aguardando validação) -->
-    <ClientOnly>
-      <HomeImpactSection v-if="showImpactPreview" />
-    </ClientOnly>
+    <!-- Nosso impacto + carrossel de parceiros -->
+    <HomeImpactSection />
 
     <!-- Support & Business Solutions Section -->
     <section class="actions-section container" aria-labelledby="actions-title">
@@ -241,18 +239,14 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRoute } from 'vue-router'
 import { fetchMulteiStatsOnce } from '~/services/firebaseService'
 
 const { t, locale } = useI18n()
 const localePath = useLocalePath()
-const route = useRoute()
 
 const LOCALE_MAP = { pt: 'pt-BR', en: 'en-US', es: 'es-ES' }
 const currentLocaleTag = () => LOCALE_MAP[locale.value] || 'pt-BR'
 
-// Seção de impacto: rascunho para validação. Só aparece em dev ou com ?preview=impacto.
-const showImpactPreview = computed(() => import.meta.dev || route.query.preview === 'impacto')
 
 // ---------- Posts recentes do blog ----------
 const { data: recentPosts } = await useFetch('/api/posts', {

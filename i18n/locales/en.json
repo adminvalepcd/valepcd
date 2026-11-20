@@ -494,5 +494,19 @@
     "pause": "Pause animation",
     "play": "Resume animation",
     "end": "End of the list of partner companies"
+  },
+  "impact": {
+    "badge": "Our impact",
+    "title": "What we have built together",
+    "subtitle": "Since 2020, Vale PCD has welcomed, informed and opened doors for LGBTI+ people with disabilities.",
+    "yearsValue": "{years} years",
+    "yearsLabel": "of work (since 2020)",
+    "sessionsValue": "8,000+",
+    "sessionsLabel": "psychological sessions provided",
+    "peopleValue": "1,000+",
+    "peopleLabel": "people registered and welcomed",
+    "companiesValue": "80+",
+    "companiesLabel": "companies served with mentoring and talks",
+    "partnersTitle": "Who has walked with us"
   }
 }

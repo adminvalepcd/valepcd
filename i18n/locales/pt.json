@@ -494,5 +494,19 @@
     "pause": "Pausar animação",
     "play": "Retomar animação",
     "end": "Fim da lista de empresas parceiras"
+  },
+  "impact": {
+    "badge": "Nosso impacto",
+    "title": "O que já construímos juntos",
+    "subtitle": "Desde 2020, o Vale PCD acolhe, informa e abre portas para pessoas com deficiência LGBTI+.",
+    "yearsValue": "{years} anos",
+    "yearsLabel": "de atuação (desde 2020)",
+    "sessionsValue": "+8.000",
+    "sessionsLabel": "atendimentos psicológicos realizados",
+    "peopleValue": "+1.000",
+    "peopleLabel": "pessoas inscritas e acolhidas",
+    "companiesValue": "+80",
+    "companiesLabel": "empresas atendidas com mentorias e palestras",
+    "partnersTitle": "Quem já caminhou com a gente"
   }
 }

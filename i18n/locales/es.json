@@ -494,5 +494,19 @@
     "pause": "Pausar animación",
     "play": "Reanudar animación",
     "end": "Fin de la lista de empresas aliadas"
+  },
+  "impact": {
+    "badge": "Nuestro impacto",
+    "title": "Lo que ya construimos juntos",
+    "subtitle": "Desde 2020, Vale PCD acoge, informa y abre puertas para personas con discapacidad LGBTI+.",
+    "yearsValue": "{years} años",
+    "yearsLabel": "de trabajo (desde 2020)",
+    "sessionsValue": "+8.000",
+    "sessionsLabel": "atenciones psicológicas realizadas",
+    "peopleValue": "+1.000",
+    "peopleLabel": "personas inscritas y acogidas",
+    "companiesValue": "+80",
+    "companiesLabel": "empresas atendidas con mentorías y charlas",
+    "partnersTitle": "Quienes ya caminaron con nosotros"
   }
 }
