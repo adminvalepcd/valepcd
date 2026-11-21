@@ -221,7 +221,7 @@
             <div class="analyzing-progress-fill"></div>
           </div>
           <span v-if="isPreparingValidationAd" class="analyzing-sub">
-            A cada 2 ocorrências registradas, exibimos um anúncio curto para manter o Multei gratuito.
+            A cada 2 ocorrências registradas ou 4 análises de fotos, exibimos um anúncio curto para manter o Multei gratuito.
           </span>
           <span v-else class="analyzing-sub">Avaliando veículos, segurança e dados sensíveis...</span>
           
@@ -258,8 +258,8 @@
             <div class="error-badge" aria-hidden="true">🎬</div>
             <h3 class="error-heading is-api-error">Anúncio não concluído</h3>
             <p class="error-explanation" role="status">
-              A foto não foi analisada porque o anúncio foi fechado antes do fim. A cada 2 ocorrências registradas, exibimos
-              um anúncio curto para manter o Multei gratuito.
+              A foto não foi analisada porque o anúncio foi fechado antes do fim. A cada 2 ocorrências registradas
+              ou 4 análises de fotos, exibimos um anúncio curto para manter o Multei gratuito.
             </p>
             <div class="modal-actions mt-4">
               <button type="button" class="btn btn-primary"
@@ -1665,16 +1665,17 @@ const successAdSlot = computed(() =>
         successAdStatus.value = String(payload?.status || '');
       };
 
-      // --- Anúncio premiado após 3 validações de imagem por IA ---
-      // Regra: toda validação realmente enviada à IA incrementa o contador (cache local não conta).
-      // Validações da 1ª foto (incl. reanálises/novas tentativas) exigem anúncio quando count >= 3;
-      // após recompensa (ou falha aberta) o contador volta a 0. Validações da 2ª foto nunca exigem anúncio,
-      // garantindo que uma ocorrência com 2 fotos nunca seja interrompida por anúncio.
+      // --- Anúncio premiado a cada 4 análises de foto por IA (o que mais consome a cota do Gemini) ---
+      // Regra: toda análise realmente enviada à IA (1ª ou 2ª foto, incl. reanálises e fotos recusadas)
+      // incrementa o contador; reutilização do cache local não conta.
+      // Quando o contador chega a 4, a próxima análise (1ª ou 2ª foto) exige um anúncio premiado;
+      // após recompensa (ou falha aberta) os contadores voltam a 0.
+      // No fluxo normal (anúncio no início da ocorrência + até 2 fotos por ocorrência), a 2ª foto
+      // de uma ocorrência válida não é interrompida: o bloqueio na 2ª foto só ocorre com tentativas repetidas.
       const AI_VALIDATION_COUNT_KEY = 'multei_ai_validation_count';
-      const AI_VALIDATIONS_PER_AD = 3;
-      // Regra principal: a cada 2 ocorrências salvas, a próxima ocorrência começa com um anúncio premiado
-      // (substitui a antiga espera de 1 minuto após 5 fotos). O limite de 3 validações acima continua
-      // valendo só como proteção contra tentativas repetidas de fotos recusadas.
+      const AI_VALIDATIONS_PER_AD = 4;
+      // Regra complementar: a cada 2 ocorrências salvas, a próxima ocorrência começa com um anúncio premiado
+      // (substitui a antiga espera de 1 minuto após 5 fotos).
       const SAVED_OCCURRENCES_COUNT_KEY = 'multei_saved_occurrences_since_ad';
       const SAVED_OCCURRENCES_PER_AD = 2;
       const isPreparingValidationAd = ref(false);
@@ -2533,7 +2534,7 @@ const processSelectedImage = async (file) => {
 
     // Se não estiver em cache (ou se for a 2ª tentativa permitida), chama a IA do Google Gemini
     if (!analysis) {
-      // Anúncio premiado a cada 2 ocorrências salvas (ou após 3 validações sem salvar, contra abuso)
+      // Anúncio premiado a cada 2 ocorrências salvas ou a cada 4 análises de foto
       const gate = await ensureRewardedAdBeforeValidation(runId);
       if (gate === 'stale' || isStale()) return;
       if (gate === 'blocked') {
@@ -2766,7 +2767,16 @@ const processSelectedImage = async (file) => {
         }
 
         if (!secondAnalysis) {
-          // Validações da 2ª foto contam no contador, mas nunca são bloqueadas por anúncio
+          // 2ª foto: exige anúncio quando já houve 4 análises desde o último anúncio
+          if (readAiValidationCount() >= AI_VALIDATIONS_PER_AD) {
+            const secondGate = await ensureRewardedAdBeforeValidation(runId);
+            if (secondGate === 'stale' || isStale()) return;
+            if (secondGate === 'blocked') {
+              secondPhotoAdBlocked.value = true;
+              step.value = 'preview';
+              return;
+            }
+          }
           analyzingStatusText.value = 'Verificando placa, credencial e aplicando máscaras na 2ª foto...';
           registerAiValidationSent();
           secondAnalysis = await analyzeSecondTrafficPhoto(geminiClient, secondOptimizedBase64);

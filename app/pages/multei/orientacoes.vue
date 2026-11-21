@@ -136,7 +136,7 @@
           <strong>Sistema Experimental sujeito a falhas:</strong> Esta é uma versão <em>Beta</em>. A IA pode ocasionalmente recusar uma foto válida, demorar alguns segundos extras ou não identificar um ângulo complexo de primeira.
         </li>
         <li>
-          <strong>Cotas e Limites do Google Gemini:</strong> Utilizamos a API do Google Gemini para visão computacional. Para evitar sobrecarga e manter a ferramenta gratuita para a comunidade, há um limite de requisições por minuto. Para ajudar a custear a análise, um breve anúncio recompensado é exibido a cada 2 ocorrências registradas (antes de começar a próxima). Uma ocorrência com até 2 fotos nunca é interrompida por anúncio no meio do registro.
+          <strong>Cotas e Limites do Google Gemini:</strong> Utilizamos a API do Google Gemini para visão computacional. Para evitar sobrecarga e manter a ferramenta gratuita para a comunidade, há um limite de requisições por minuto. Para ajudar a custear a análise, um breve anúncio recompensado é exibido a cada 2 ocorrências registradas (antes de começar a próxima) ou a cada 4 análises de fotos, já que a análise por IA é o que mais consome. No uso normal, uma ocorrência com até 2 fotos não é interrompida no meio do registro; o anúncio na 2ª foto só aparece quando há muitas tentativas seguidas.
         </li>
         <li>
           <strong>Moderação Comunitária Ativa:</strong> Caso perceba que alguma foto no mapa não borrou adequadamente uma placa ou rosto, clique no pino da ocorrência e utilize o botão <strong>"<span aria-hidden="true">🚩</span> Reportar ocorrência"</strong>. A ocorrência continua no mapa, mas com a foto oculta e o selo <strong>"Em revisão de denúncia"</strong>, até que a moderação a restaure ou a remova.
