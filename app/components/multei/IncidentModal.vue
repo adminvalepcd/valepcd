@@ -418,13 +418,6 @@
               Marcar como resolvido
             </button>
           </div>
-          <button
-            type="button"
-            @click="emit('close')"
-            class="btn btn-secondary btn-close-footer"
-          >
-            Fechar
-          </button>
         </div>
       </div>
 
@@ -2195,11 +2188,6 @@ watch(isUnderReportReview, (flagged) => {
 .btn-resolved:hover {
   background-color: var(--primary-hover, #6e0066);
   transform: translateY(-1px);
-}
-
-.btn-close-footer {
-  padding: 0.65rem 1.25rem;
-  font-size: 0.9rem;
 }
 
 .btn-report {
