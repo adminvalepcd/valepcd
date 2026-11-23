@@ -213,6 +213,14 @@ const form = ref({
 
 const successMessage = ref('')
 
+// Pré-seleciona o assunto quando a página é aberta a partir de um serviço (ex.: /contato?assunto=events)
+const SUBJECT_VALUES = ['digital', 'events', 'guides', 'consulting', 'jobs', 'discounts', 'map', 'professional', 'health', 'privacy', 'other']
+const route = useRoute()
+const initialSubject = String(route.query.assunto || '')
+if (SUBJECT_VALUES.includes(initialSubject)) {
+  form.value.subject = initialSubject
+}
+
 const handleSubmit = () => {
   successMessage.value = t('contact.successMsg')
   form.value = {
